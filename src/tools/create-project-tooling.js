@@ -1,4 +1,4 @@
-const { createWeixinChannelAdapter } = require("../adapters/channel/weixin");
+const { createChannelAdapter } = require("../adapters/channel");
 const { SessionStore } = require("../adapters/runtime/codex/session-store");
 const { createTimelineIntegration } = require("../integrations/timeline");
 const { ChannelFileService } = require("../services/channel-file-service");
@@ -16,7 +16,7 @@ function createProjectTooling(config, options = {}) {
     filePath: config.sessionsFile,
     runtimeId: config.runtime || "codex",
   });
-  const channelAdapter = options.channelAdapter || createWeixinChannelAdapter(config);
+  const channelAdapter = options.channelAdapter || createChannelAdapter(config);
   const timelineIntegration = options.timelineIntegration || createTimelineIntegration(config);
   const runtimeContextStore = options.runtimeContextStore || new RuntimeContextStore({
     filePath: config.projectToolContextFile,

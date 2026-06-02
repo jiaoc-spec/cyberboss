@@ -2,7 +2,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
-const { createWeixinChannelAdapter } = require("../adapters/channel/weixin");
+const { createChannelAdapter } = require("../adapters/channel");
 const { DEFAULT_MIN_WEIXIN_CHUNK, MAX_MIN_WEIXIN_CHUNK } = require("../adapters/channel/weixin/config-store");
 const { persistIncomingWeixinAttachments } = require("../adapters/channel/weixin/media-receive");
 const { createCodexRuntimeAdapter } = require("../adapters/runtime/codex");
@@ -61,7 +61,7 @@ function createRuntimeAdapter(config) {
 class CyberbossApp {
   constructor(config) {
     this.config = config;
-    this.channelAdapter = createWeixinChannelAdapter(config);
+    this.channelAdapter = createChannelAdapter(config);
     this.timelineIntegration = createTimelineIntegration(config);
     const projectTooling = createProjectTooling(config, {
       channelAdapter: this.channelAdapter,
@@ -147,7 +147,7 @@ class CyberbossApp {
     if (this.config.startWithLocationServer) {
       await this.ensureLocationServerStarted();
     }
-    console.log("[cyberboss] bridge loop started; waiting for WeChat messages.");
+    console.log(`[cyberboss] bridge loop started; waiting for ${this.channelAdapter.describe().id} messages.`);
     if (this.config.startWithCheckin) {
       console.log("[cyberboss] checkin: enabled");
       void runSystemCheckinPoller(this.config).catch((error) => {
@@ -175,7 +175,7 @@ class CyberbossApp {
             syncBuffer: this.channelAdapter.loadSyncBuffer(),
             timeoutMs: this.resolveLongPollTimeoutMs(),
           });
-          assertWeixinUpdateResponse(response);
+          assertChannelUpdateResponse(response, this.channelAdapter.describe().id);
           consecutiveFailures = 0;
           const messages = sortInboundUpdateMessages(Array.isArray(response?.msgs) ? response.msgs : []);
           for (const message of messages) {
@@ -1678,7 +1678,7 @@ class CyberbossApp {
     return {
       userId,
       contextToken,
-      provider: "weixin",
+      provider: this.channelAdapter.describe().id,
     };
   }
 }
@@ -1817,12 +1817,12 @@ function createShutdownController(onStop) {
   };
 }
 
-function assertWeixinUpdateResponse(response) {
+function assertChannelUpdateResponse(response, channelId = "channel") {
   const ret = normalizeErrorCode(response?.ret);
   const errcode = normalizeErrorCode(response?.errcode);
   if ((ret !== 0 && ret !== null) || (errcode !== 0 && errcode !== null)) {
     const error = new Error(
-      `weixin getUpdates ret=${ret ?? ""} errcode=${errcode ?? ""} errmsg=${normalizeText(response?.errmsg) || ""}`
+      `${channelId} getUpdates ret=${ret ?? ""} errcode=${errcode ?? ""} errmsg=${normalizeText(response?.errmsg) || ""}`
     );
     error.ret = ret;
     error.errcode = errcode;

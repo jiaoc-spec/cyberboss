@@ -131,12 +131,17 @@ CYBERBOSS_USER_NAME=YourName
 CYBERBOSS_USER_GENDER=female
 CYBERBOSS_ALLOWED_USER_IDS=your_wechat_user_id
 CYBERBOSS_WORKSPACE_ROOT=/absolute/path/to/your/project
+CYBERBOSS_CHANNEL=weixin
 ```
 
 Common optional variables:
 
 ```dotenv
 CYBERBOSS_RUNTIME=codex
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_CHAT_IDS=
+TELEGRAM_API_BASE_URL=https://api.telegram.org
+TELEGRAM_FILE_BASE_URL=https://api.telegram.org
 CYBERBOSS_CODEX_ENDPOINT=ws://127.0.0.1:8765
 CYBERBOSS_CODEX_COMMAND=
 CYBERBOSS_CODEX_MODEL=
@@ -175,6 +180,14 @@ What these do:
 
 - `CYBERBOSS_RUNTIME`
   Choose `codex` or `claudecode`. The command set stays the same.
+- `CYBERBOSS_CHANNEL`
+  Choose the message channel. Current values are `weixin` and `telegram`. Telegram uses the Bot API and does not require WeChat QR login.
+- `TELEGRAM_BOT_TOKEN`
+  Telegram bot token. Create a bot with `@BotFather`, then set this value. Required when `CYBERBOSS_CHANNEL=telegram`.
+- `TELEGRAM_ALLOWED_CHAT_IDS`
+  Optional comma-separated Telegram chat id allowlist. Leave empty for first validation, then add your own chat id once the bot is working.
+- `TELEGRAM_API_BASE_URL` / `TELEGRAM_FILE_BASE_URL`
+  Telegram API and file download base URLs. Defaults to `https://api.telegram.org`; override only for proxies or custom gateways.
 - `CYBERBOSS_CODEX_ENDPOINT`
   Reuse an existing shared Codex app-server instead of spawning a private runtime.
 - `CYBERBOSS_CODEX_COMMAND`
@@ -263,7 +276,7 @@ When `CYBERBOSS_RUNTIME=claudecode`, Cyberboss also upserts a workspace-local `.
 ### Terminal commands for end users
 
 - `npm run login`
-  Log into WeChat and save the bot account locally
+  Log in to the current channel. WeChat scans a QR code; Telegram validates `TELEGRAM_BOT_TOKEN` and saves the bot account locally
 - `npm run accounts`
   List saved local accounts
 - `npm run shared:start`
@@ -283,7 +296,7 @@ Switch the runtime with `CYBERBOSS_RUNTIME`. You do not need a different command
 
 `npm run start` and `npm run start:checkin` are still useful for minimal local debugging, but they are not the recommended way to observe or debug the real shared bridge workflow.
 
-### WeChat commands for end users
+### Chat commands for end users
 
 - `/bind /absolute/path`
   Bind the current chat to a project workspace
@@ -302,7 +315,7 @@ Switch the runtime with `CYBERBOSS_RUNTIME`. You do not need a different command
 - `/checkin <min>-<max>`
   Update the proactive random check-in range for the current project
 - `/chunk <number>`
-  Adjust the minimum merge size for short WeChat reply chunks
+  Adjust the minimum merge size for short reply chunks
 - `/yes`
   Allow the current approval once
 - `/always`
@@ -314,9 +327,9 @@ Switch the runtime with `CYBERBOSS_RUNTIME`. You do not need a different command
 - `/model <id>`
   Switch model
 - `/star`
-  Show the GitHub star guide inside WeChat
+  Show the GitHub star guide
 - `/help`
-  Show WeChat command help
+  Show current channel command help
 
 Plain text messages go directly to the bound thread. If nothing is bound yet, bind a workspace first:
 
@@ -324,7 +337,36 @@ Plain text messages go directly to the bound thread. If nothing is bound yet, bi
 /bind /absolute/path
 ```
 
-### Observe the same thread from WeChat and terminal
+### Use Telegram as the channel
+
+If WeChat QR login is not available for your account, switch to Telegram:
+
+```dotenv
+CYBERBOSS_CHANNEL=telegram
+TELEGRAM_BOT_TOKEN=123456:your_bot_token
+TELEGRAM_ALLOWED_CHAT_IDS=
+```
+
+Then run:
+
+```bash
+npm run login
+npm run shared:start
+```
+
+Send these commands to the bot in Telegram:
+
+```text
+/status
+/bind /absolute/path
+/checkin 30-90
+```
+
+For the first validation, leave `TELEGRAM_ALLOWED_CHAT_IDS` empty. After the bot receives your message, add your chat id to the allowlist and restart `shared:start`.
+
+Telegram covers Cyberboss's core bridge features: text messages, commands, active check-ins, reminders, diary, timeline, screenshots, and file delivery. It does not provide WeChat-specific QR bridge behavior, WeChat context tokens, WeChat sticker semantics, or WeChat mini-app capabilities.
+
+### Observe the same thread from chat and terminal
 
 If you want WeChat and your local terminal to stay attached to the same shared thread, use shared mode:
 

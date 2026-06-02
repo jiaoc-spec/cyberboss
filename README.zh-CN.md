@@ -136,12 +136,17 @@ CYBERBOSS_USER_NAME=你的名字
 CYBERBOSS_USER_GENDER=female
 CYBERBOSS_ALLOWED_USER_IDS=你的微信 user id
 CYBERBOSS_WORKSPACE_ROOT=/绝对路径/你的项目目录
+CYBERBOSS_CHANNEL=weixin
 ```
 
 可选常用项：
 
 ```dotenv
 CYBERBOSS_RUNTIME=codex
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_CHAT_IDS=
+TELEGRAM_API_BASE_URL=https://api.telegram.org
+TELEGRAM_FILE_BASE_URL=https://api.telegram.org
 CYBERBOSS_CODEX_ENDPOINT=ws://127.0.0.1:8765
 CYBERBOSS_CODEX_COMMAND=
 CYBERBOSS_CODEX_MODEL=
@@ -180,6 +185,14 @@ CYBERBOSS_LOCATION_BATTERY_HISTORY_LIMIT=100
 
 - `CYBERBOSS_RUNTIME`
   选择 `codex` 或 `claudecode`。两种 runtime 使用同一套命令。
+- `CYBERBOSS_CHANNEL`
+  选择消息入口。当前支持 `weixin` 和 `telegram`。Telegram 使用 Bot API，不需要微信二维码登录。
+- `TELEGRAM_BOT_TOKEN`
+  Telegram bot token。先在 Telegram 里找 `@BotFather` 创建 bot，然后把 token 填到这里。设置 `CYBERBOSS_CHANNEL=telegram` 时必填。
+- `TELEGRAM_ALLOWED_CHAT_IDS`
+  可选的 Telegram chat id 白名单，多个值用逗号分隔。第一次验证可以先留空；bot 能收到消息后，建议填入自己的 chat id。
+- `TELEGRAM_API_BASE_URL` / `TELEGRAM_FILE_BASE_URL`
+  Telegram API 与文件下载地址。默认都是 `https://api.telegram.org`，只有代理或自建 API 网关时才需要改。
 - `CYBERBOSS_CODEX_ENDPOINT`
   复用已有的共享 Codex app-server，而不是新起私有 runtime。
 - `CYBERBOSS_CODEX_COMMAND`
@@ -271,7 +284,7 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 ### 用户自己会用到的终端命令
 
 - `npm run login`
-  扫码登录微信，并把 bot 账号保存到本地
+  登录当前 channel。WeChat 会扫码登录；Telegram 会验证 `TELEGRAM_BOT_TOKEN` 并把 bot 账号保存到本地
 - `npm run accounts`
   查看本地已保存的账号
 - `npm run shared:start`
@@ -291,7 +304,7 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 
 `npm run start` / `npm run start:checkin` 可以用于本地最小链路调试，但不适合观察共享桥的真实行为，也不适合作为共享线程问题的默认排查入口。因此 README 只把共享模式作为默认入口。
 
-### 用户在微信里会用到的命令
+### 用户在消息入口里会用到的命令
 
 - `/bind /绝对路径`
   绑定当前聊天使用的项目目录
@@ -310,7 +323,7 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 - `/checkin <min>-<max>`
   调整当前项目的随机 checkin 区间
 - `/chunk <number>`
-  调整微信短回复的最小合并字符数
+  调整短回复的最小合并字符数
 - `/yes`
   允许当前待处理授权一次
 - `/always`
@@ -322,15 +335,44 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 - `/model <id>`
   切换模型
 - `/star`
-  在微信里查看 GitHub star 引导
+  查看 GitHub star 引导
 - `/help`
-  查看微信内命令帮助
+  查看当前 channel 内命令帮助
 
 普通文本消息会直接发送到当前绑定线程。如果当前还没绑定项目，先执行：
 
 ```text
 /bind /绝对路径
 ```
+
+### 使用 Telegram 入口
+
+如果微信二维码提示“不支持”，可以把 channel 切到 Telegram：
+
+```dotenv
+CYBERBOSS_CHANNEL=telegram
+TELEGRAM_BOT_TOKEN=123456:your_bot_token
+TELEGRAM_ALLOWED_CHAT_IDS=
+```
+
+然后运行：
+
+```bash
+npm run login
+npm run shared:start
+```
+
+在 Telegram 里给 bot 发：
+
+```text
+/status
+/bind /绝对路径
+/checkin 30-90
+```
+
+第一次验证时可以先让 `TELEGRAM_ALLOWED_CHAT_IDS` 留空。看到 bot 能收到消息后，把自己的 chat id 加入白名单，再重启 `shared:start`。
+
+Telegram 能覆盖 Cyberboss 的核心能力：文本消息、命令、主动 check-in、提醒、日记、timeline、截图/文件回传。它不包含微信特有的二维码桥接、微信上下文 token、微信侧表情包生态和微信轻应用能力。
 
 ### 双端监控同一条线程
 

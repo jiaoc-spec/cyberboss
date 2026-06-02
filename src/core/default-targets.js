@@ -1,10 +1,9 @@
-const { loadPersistedContextTokens } = require("../adapters/channel/weixin/context-token-store");
-
 function resolvePreferredSenderId({
   config,
   accountId,
   explicitUser = "",
   sessionStore = null,
+  contextTokens = null,
 }) {
   const normalizedExplicitUser = normalizeText(explicitUser);
   if (normalizedExplicitUser) {
@@ -23,7 +22,7 @@ function resolvePreferredSenderId({
     return bindingCandidates[0];
   }
 
-  const persistedUserIds = Object.keys(loadPersistedContextTokens(config, accountId) || {})
+  const persistedUserIds = Object.keys(contextTokens || {})
     .map((value) => normalizeText(value))
     .filter(Boolean);
   if (persistedUserIds.length === 1) {
