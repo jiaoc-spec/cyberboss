@@ -22,7 +22,13 @@ class UsageStore {
     }
 
     const lastKey = `${runtimeId}:${threadId}`;
-    const previous = normalizeUsageTotals(this.state.lastTotals?.[lastKey] || {});
+    const previousRaw = this.state.lastTotals?.[lastKey] || null;
+    if (!previousRaw) {
+      this.state.lastTotals[lastKey] = totals;
+      this.write();
+      return null;
+    }
+    const previous = normalizeUsageTotals(previousRaw);
     const delta = subtractUsageTotals(totals, previous);
     this.state.lastTotals[lastKey] = totals;
     if (!hasAnyUsage(delta)) {
