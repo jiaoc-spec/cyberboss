@@ -2,6 +2,7 @@ const { createChannelAdapter } = require("../adapters/channel");
 const { SessionStore } = require("../adapters/runtime/codex/session-store");
 const { createTimelineIntegration } = require("../integrations/timeline");
 const { CalendarService } = require("../services/calendar-service");
+const { CalendarTimelineSyncService } = require("../services/calendar-timeline-sync-service");
 const { ChannelFileService } = require("../services/channel-file-service");
 const { DiaryService } = require("../services/diary-service");
 const { HealthService } = require("../services/health-service");
@@ -27,8 +28,10 @@ function createProjectTooling(config, options = {}) {
   const channelFile = new ChannelFileService({ config, channelAdapter, sessionStore });
   const diary = new DiaryService({ config });
   const timeline = new TimelineService({ config, channelAdapter, timelineIntegration, sessionStore });
+  const calendar = new CalendarService({ config });
   const services = {
-    calendar: new CalendarService({ config }),
+    calendar,
+    calendarTimelineSync: new CalendarTimelineSyncService({ config, calendar, timeline }),
     diary,
     health: new HealthService({ config, diary }),
     reminder: new ReminderService({ config, channelAdapter, sessionStore }),

@@ -176,6 +176,7 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
           ]);
           const response = await this.channelAdapter.getUpdates({
@@ -196,6 +197,7 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
           ]);
         } catch (error) {
@@ -952,6 +954,25 @@ class CyberbossApp {
       }
     } catch (error) {
       console.error(`[cyberboss] health import failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushPendingCalendarTimelineSync() {
+    if (!this.config.calendarTimelineSync || !this.projectServices?.calendarTimelineSync) {
+      return;
+    }
+    const intervalMs = Number(this.config.calendarTimelineSyncIntervalMs) || 600_000;
+    if (this.lastCalendarTimelineSyncAtMs && Date.now() - this.lastCalendarTimelineSyncAtMs < intervalMs) {
+      return;
+    }
+    this.lastCalendarTimelineSyncAtMs = Date.now();
+    try {
+      const result = await this.projectServices.calendarTimelineSync.sync();
+      if (result.imported?.length) {
+        console.log(`[cyberboss] calendar timeline sync completed count=${result.imported.length}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] calendar timeline sync failed: ${formatErrorMessage(error)}`);
     }
   }
 
