@@ -87,6 +87,13 @@ const COMMAND_GROUPS = [
         status: "active",
       },
       {
+        action: "usage.summary",
+        summary: "Show token usage and estimated cost for today, this week, and this month",
+        terminal: [],
+        weixin: ["/usage"],
+        status: "active",
+      },
+      {
         action: "thread.new",
         summary: "Switch to a fresh thread draft",
         terminal: [],
@@ -323,6 +330,7 @@ function actionEmoji(action) {
   switch (action.action) {
     case "workspace.bind": return "📍";
     case "workspace.status": return "📊";
+    case "usage.summary": return "💸";
     case "thread.new": return "🆕";
     case "thread.reread": return "🔄";
     case "thread.compact": return "🗜️";

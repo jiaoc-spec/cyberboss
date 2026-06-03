@@ -26,6 +26,7 @@ const { CheckinConfigStore, parseCheckinRangeMinutes, resolveDefaultCheckinRange
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("./default-targets");
 const { StreamDelivery } = require("./stream-delivery");
 const { ThreadStateStore } = require("./thread-state-store");
+const { UsageStore } = require("./usage-store");
 const { DeferredSystemReplyStore } = require("./deferred-system-reply-store");
 const { SystemMessageQueueStore } = require("./system-message-queue-store");
 const { SystemMessageDispatcher } = require("./system-message-dispatcher");
@@ -72,6 +73,11 @@ class CyberbossApp {
     this.runtimeContextStore = projectTooling.runtimeContextStore;
     this.runtimeAdapter = createRuntimeAdapter(config);
     this.threadStateStore = new ThreadStateStore();
+    this.usageStore = new UsageStore({
+      filePath: config.usageFile,
+      timeZone: config.usageTimeZone,
+      pricing: config.usagePricing,
+    });
     this.systemMessageQueue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
@@ -957,6 +963,9 @@ class CyberbossApp {
       case "status":
         await this.handleStatusCommand(normalized);
         return;
+      case "usage":
+        await this.handleUsageCommand(normalized);
+        return;
       case "new":
         await this.handleNewCommand(normalized);
         return;
@@ -1089,6 +1098,15 @@ class CyberbossApp {
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
       text: lines.join("\n"),
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleUsageCommand(normalized) {
+    const summary = this.usageStore.summarize();
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text: formatUsageSummary(summary),
       contextToken: normalized.contextToken,
     });
   }
@@ -1464,6 +1482,9 @@ class CyberbossApp {
   }
 
   async handleRuntimeEvent(event) {
+    if (event?.type === "runtime.context.updated") {
+      this.usageStore.recordRuntimeContext(event.payload);
+    }
     const failureReplyTarget = event?.type === "runtime.turn.failed"
       ? this.streamDelivery.resolveReplyTargetForRun({
           threadId: event?.payload?.threadId,
@@ -1749,6 +1770,57 @@ function formatContextUsage(currentTokens, contextWindow) {
   const clampedCurrent = Math.min(safeCurrent, safeWindow);
   const leftPercent = Math.max(0, Math.min(100, Math.round(((safeWindow - clampedCurrent) / safeWindow) * 100)));
   return `${formatCompactNumber(clampedCurrent)}/${formatCompactNumber(safeWindow)} | ${leftPercent}% left`;
+}
+
+function formatUsageSummary(summary = {}) {
+  const pricing = summary.pricing || {};
+  return [
+    "💸 Usage",
+    `timezone: ${summary.timeZone || "UTC"}`,
+    "",
+    formatUsageLine("today", summary.today, summary.todayCostUsd),
+    formatUsageLine("this week", summary.week, summary.weekCostUsd),
+    formatUsageLine("this month", summary.month, summary.monthCostUsd),
+    "",
+    `estimate: ${formatPricingSummary(pricing)}`,
+  ].join("\n");
+}
+
+function formatUsageLine(label, usage = {}, costUsd = 0) {
+  const total = Number(usage.totalTokens) || 0;
+  const input = Number(usage.inputTokens) || 0;
+  const cached = Number(usage.cachedInputTokens) || 0;
+  const output = Number(usage.outputTokens) || 0;
+  const reasoning = Number(usage.reasoningTokens) || 0;
+  const details = [
+    `in ${formatCompactNumber(input)}`,
+    `cached ${formatCompactNumber(cached)}`,
+    `out ${formatCompactNumber(output)}`,
+    `reasoning ${formatCompactNumber(reasoning)}`,
+  ].join(" · ");
+  return `${label}: ${formatCompactNumber(total)} tokens | ${formatUsd(costUsd)}\n  ${details}`;
+}
+
+function formatUsd(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return "$0.00";
+  }
+  if (amount < 0.01) {
+    return `$${amount.toFixed(4)}`;
+  }
+  return `$${amount.toFixed(2)}`;
+}
+
+function formatPricingSummary(pricing = {}) {
+  const input = Number(pricing.inputUsdPer1M) || 0;
+  const cached = Number(pricing.cachedInputUsdPer1M) || 0;
+  const output = Number(pricing.outputUsdPer1M) || 0;
+  const reasoning = Number(pricing.reasoningUsdPer1M) || 0;
+  if (input || cached || output || reasoning) {
+    return `configured itemized USD/1M tokens`;
+  }
+  return `$${(Number(pricing.blendedUsdPer1M) || 2).toFixed(2)}/1M blended tokens`;
 }
 
 function buildLocationMovementSystemText(event) {

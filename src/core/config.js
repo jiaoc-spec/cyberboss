@@ -36,6 +36,15 @@ function readConfig() {
     deferredSystemReplyQueueFile: path.join(stateDir, "deferred-system-replies.json"),
     checkinConfigFile: path.join(stateDir, "checkin-config.json"),
     timelineScreenshotQueueFile: path.join(stateDir, "timeline-screenshot-queue.json"),
+    usageFile: path.join(stateDir, "usage.json"),
+    usageTimeZone: readTextEnv("CYBERBOSS_USAGE_TIME_ZONE") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    usagePricing: {
+      inputUsdPer1M: readFloatEnv("CYBERBOSS_USAGE_INPUT_USD_PER_1M"),
+      cachedInputUsdPer1M: readFloatEnv("CYBERBOSS_USAGE_CACHED_INPUT_USD_PER_1M"),
+      outputUsdPer1M: readFloatEnv("CYBERBOSS_USAGE_OUTPUT_USD_PER_1M"),
+      reasoningUsdPer1M: readFloatEnv("CYBERBOSS_USAGE_REASONING_USD_PER_1M"),
+      blendedUsdPer1M: readFloatEnv("CYBERBOSS_USAGE_BLENDED_USD_PER_1M") || 2,
+    },
     projectToolContextFile: path.join(stateDir, "project-tool-runtime-context.json"),
     weixinInstructionsFile: path.join(stateDir, "weixin-instructions.md"),
     weixinOperationsFile: path.resolve(__dirname, "..", "..", "templates", "weixin-operations.md"),
@@ -126,6 +135,15 @@ function readIntEnv(name) {
     return undefined;
   }
   const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readFloatEnv(name) {
+  const value = readTextEnv(name);
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
