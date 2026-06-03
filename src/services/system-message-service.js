@@ -2,14 +2,13 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
-const { loadPersistedContextTokens } = require("../adapters/channel/weixin/context-token-store");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { SystemMessageQueueStore } = require("../core/system-message-queue-store");
 
 class SystemMessageService {
-  constructor({ config, sessionStore }) {
+  constructor({ config, channelAdapter, sessionStore }) {
     this.config = config;
+    this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.queue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
   }
@@ -20,13 +19,17 @@ class SystemMessageService {
       throw new Error("system send requires text");
     }
 
-    const account = resolveSelectedAccount(this.config);
+    const account = this.channelAdapter.resolveAccount();
+    const contextTokens = typeof this.channelAdapter.getKnownContextTokens === "function"
+      ? this.channelAdapter.getKnownContextTokens()
+      : {};
     const senderId = normalizeText(userId)
       || normalizeText(context?.senderId)
       || resolvePreferredSenderId({
         config: this.config,
         accountId: account.accountId,
         sessionStore: this.sessionStore,
+        contextTokens,
       });
     const resolvedWorkspaceRoot = normalizeText(workspaceRoot)
       || normalizeText(context?.workspaceRoot)
@@ -54,7 +57,6 @@ class SystemMessageService {
       throw new Error(`workspace is not a directory: ${resolvedWorkspaceRoot}`);
     }
 
-    const contextTokens = loadPersistedContextTokens(this.config, account.accountId);
     if (!contextTokens[senderId]) {
       throw new Error(`Cannot find a context token for user ${senderId}. Let this user talk to the bot once first.`);
     }

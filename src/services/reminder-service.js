@@ -1,7 +1,5 @@
 const crypto = require("crypto");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
-const { loadPersistedContextTokens } = require("../adapters/channel/weixin/context-token-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
 const { resolvePreferredSenderId } = require("../core/default-targets");
 const { resolveBodyInput } = require("./text-input");
@@ -15,8 +13,9 @@ const DELAY_UNIT_MS = {
 const LOCAL_TIMEZONE_OFFSET = "+08:00";
 
 class ReminderService {
-  constructor({ config, sessionStore }) {
+  constructor({ config, channelAdapter, sessionStore }) {
     this.config = config;
+    this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.queue = new ReminderQueueStore({ filePath: config.reminderQueueFile });
   }
@@ -40,19 +39,22 @@ class ReminderService {
       throw new Error("Missing a valid time. Use delayMinutes or dueAt like 2026-04-07T21:30+08:00.");
     }
 
-    const account = resolveSelectedAccount(this.config);
+    const account = this.channelAdapter.resolveAccount();
+    const contextTokens = typeof this.channelAdapter.getKnownContextTokens === "function"
+      ? this.channelAdapter.getKnownContextTokens()
+      : {};
     const senderId = resolveReminderSenderId({
       config: this.config,
       accountId: account.accountId,
       explicitUser: userId,
       context,
       sessionStore: this.sessionStore,
+      contextTokens,
     });
     if (!senderId) {
-      throw new Error("Cannot determine the WeChat user for this reminder.");
+      throw new Error("Cannot determine the channel user for this reminder.");
     }
 
-    const contextTokens = loadPersistedContextTokens(this.config, account.accountId);
     const contextToken = String(contextTokens[senderId] || "").trim();
     if (!contextToken) {
       throw new Error(`Cannot find context_token for ${senderId}. Let this user talk to the bot once first.`);
@@ -71,7 +73,7 @@ class ReminderService {
   }
 }
 
-function resolveReminderSenderId({ config, accountId, explicitUser = "", context = {}, sessionStore = null }) {
+function resolveReminderSenderId({ config, accountId, explicitUser = "", context = {}, sessionStore = null, contextTokens = {} }) {
   const explicit = normalizeText(explicitUser);
   if (explicit) {
     return explicit;
@@ -84,6 +86,7 @@ function resolveReminderSenderId({ config, accountId, explicitUser = "", context
     config,
     accountId,
     sessionStore,
+    contextTokens,
   });
 }
 

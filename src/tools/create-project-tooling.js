@@ -24,11 +24,11 @@ function createProjectTooling(config, options = {}) {
   const channelFile = new ChannelFileService({ config, channelAdapter, sessionStore });
   const services = {
     diary: new DiaryService({ config }),
-    reminder: new ReminderService({ config, sessionStore }),
-    system: new SystemMessageService({ config, sessionStore }),
+    reminder: new ReminderService({ config, channelAdapter, sessionStore }),
+    system: new SystemMessageService({ config, channelAdapter, sessionStore }),
     channelFile,
     sticker: new StickerService({ config, channelAdapter, sessionStore, channelFileService: channelFile }),
-    timeline: new TimelineService({ config, timelineIntegration, sessionStore }),
+    timeline: new TimelineService({ config, channelAdapter, timelineIntegration, sessionStore }),
     whereabouts: new WhereaboutsService({
       config: {
         storeFile: config.locationStoreFile,

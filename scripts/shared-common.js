@@ -26,7 +26,7 @@ const listenUrl = `ws://127.0.0.1:${port}`;
 const stateDir = process.env.CYBERBOSS_STATE_DIR || path.join(os.homedir(), ".cyberboss");
 const logDir = path.join(stateDir, "logs");
 const appServerPidFile = path.join(logDir, "shared-app-server.pid");
-const bridgePidFile = path.join(logDir, "shared-wechat.pid");
+const bridgePidFile = path.join(logDir, "shared-channel.pid");
 const appServerLogFile = path.join(logDir, "shared-app-server.log");
 const accountsDir = path.join(stateDir, "accounts");
 const sessionFile = process.env.CYBERBOSS_SESSIONS_FILE || path.join(stateDir, "sessions.json");
@@ -232,7 +232,7 @@ function resolveBoundThread(workspaceRoot) {
     };
   }
 
-  throw new Error(`no bound WeChat thread found for workspace: ${workspaceRoot}`);
+  throw new Error(`no bound channel thread found for workspace: ${workspaceRoot}`);
 }
 
 function getThreadId(binding, workspaceRoot, runtimeId = "") {

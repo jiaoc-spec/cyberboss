@@ -1,13 +1,13 @@
 const crypto = require("crypto");
 const path = require("path");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
 const { resolvePreferredSenderId } = require("../core/default-targets");
 const { TimelineScreenshotQueueStore } = require("../core/timeline-screenshot-queue-store");
 
 class TimelineService {
-  constructor({ config, timelineIntegration, sessionStore }) {
+  constructor({ config, channelAdapter, timelineIntegration, sessionStore }) {
     this.config = config;
+    this.channelAdapter = channelAdapter;
     this.timelineIntegration = timelineIntegration;
     this.sessionStore = sessionStore;
     this.screenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
@@ -177,13 +177,17 @@ class TimelineService {
     sidePadding = undefined,
     locale = "",
   } = {}, context = {}) {
-    const account = resolveSelectedAccount(this.config);
+    const account = this.channelAdapter.resolveAccount();
+    const contextTokens = typeof this.channelAdapter.getKnownContextTokens === "function"
+      ? this.channelAdapter.getKnownContextTokens()
+      : {};
     const senderId = normalizeText(userId)
       || normalizeText(context?.senderId)
       || resolvePreferredSenderId({
         config: this.config,
         accountId: account.accountId,
         sessionStore: this.sessionStore,
+        contextTokens,
       });
 
     if (!senderId) {

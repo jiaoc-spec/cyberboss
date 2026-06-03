@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
+const { createChannelAdapter } = require("../adapters/channel");
 const { SessionStore } = require("../adapters/runtime/codex/session-store");
 const { CheckinConfigStore, resolveDefaultCheckinRange } = require("../core/checkin-config-store");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
@@ -9,11 +9,15 @@ const { SystemMessageQueueStore } = require("../core/system-message-queue-store"
 const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = "%USER% comes to mind again.";
 
 async function runSystemCheckinPoller(config) {
-  const account = resolveSelectedAccount(config);
+  const channelAdapter = createChannelAdapter(config);
+  const account = channelAdapter.resolveAccount();
+  const contextTokens = typeof channelAdapter.getKnownContextTokens === "function"
+    ? channelAdapter.getKnownContextTokens()
+    : {};
   const queue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
   const checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
   const sessionStore = new SessionStore({ filePath: config.sessionsFile });
-  const target = resolvePollerTarget({ config, account, sessionStore });
+  const target = resolvePollerTarget({ config, account, sessionStore, contextTokens });
   const defaultRange = resolveDefaultCheckinRange();
   let currentRange = checkinConfigStore.getRange(defaultRange);
 
@@ -44,12 +48,13 @@ async function runSystemCheckinPoller(config) {
   }
 }
 
-function resolvePollerTarget({ config, account, sessionStore }) {
+function resolvePollerTarget({ config, account, sessionStore, contextTokens }) {
   const senderId = resolvePreferredSenderId({
     config,
     accountId: account.accountId,
     explicitUser: process.env.CYBERBOSS_CHECKIN_USER_ID || "",
     sessionStore,
+    contextTokens,
   });
   const workspaceRoot = resolvePreferredWorkspaceRoot({
     config,
@@ -60,7 +65,7 @@ function resolvePollerTarget({ config, account, sessionStore }) {
   });
 
   if (!senderId) {
-    throw new Error("Cannot determine the WeChat user for the checkin poller. Set CYBERBOSS_CHECKIN_USER_ID or let the only active user talk to the bot once first.");
+    throw new Error("Cannot determine the channel user for the checkin poller. Set CYBERBOSS_CHECKIN_USER_ID or let the only active user talk to the bot once first.");
   }
   if (!workspaceRoot) {
     throw new Error("Cannot determine the workspace for the checkin poller. Set CYBERBOSS_WORKSPACE_ROOT first.");
