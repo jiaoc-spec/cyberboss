@@ -134,6 +134,7 @@ npm install
 ```dotenv
 CYBERBOSS_USER_NAME=你的名字
 CYBERBOSS_USER_GENDER=female
+CYBERBOSS_TIME_ZONE=
 CYBERBOSS_ASK_WHEN_UNCERTAIN=true
 CYBERBOSS_ALLOWED_USER_IDS=你的微信 user id
 CYBERBOSS_WORKSPACE_ROOT=/绝对路径/你的项目目录
@@ -196,6 +197,8 @@ CYBERBOSS_LOCATION_BATTERY_HISTORY_LIMIT=100
   选择 `codex` 或 `claudecode`。两种 runtime 使用同一套命令。
 - `CYBERBOSS_CHANNEL`
   选择消息入口。当前支持 `weixin` 和 `telegram`。Telegram 使用 Bot API，不需要微信二维码登录。
+- `CYBERBOSS_TIME_ZONE`
+  给模型显示消息时间、格式化主动系统时间时使用的时区。例如：`Europe/Berlin`。
 - `CYBERBOSS_ASK_WHEN_UNCERTAIN`
   默认 `true`。当日记、时间线、学习统计、运动统计、心情/能量推断或周总结缺少关键信息时，Cyberboss 会短短反问一次，而不是编造缺失内容。设为 `false` 时，不确定字段会保留为 unknown / 未记录。
 - `CYBERBOSS_DIARY_BACKEND`

@@ -46,7 +46,7 @@ function buildMergedInboundPrepared({
 
 function assembleRuntimeTurnText({ prepared, config = {}, visionContext = {} }) {
   const lines = [];
-  const localTime = formatWechatLocalTime(prepared?.receivedAt);
+  const localTime = formatChannelLocalTime(prepared?.receivedAt, config?.timeZone || config?.diaryTimeZone);
   const originalText = normalizeText(prepared?.originalText ?? prepared?.text);
   const attachments = Array.isArray(prepared?.attachments) ? prepared.attachments : [];
   const attachmentFailures = Array.isArray(prepared?.attachmentFailures) ? prepared.attachmentFailures : [];
@@ -190,7 +190,7 @@ function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function formatWechatLocalTime(receivedAt) {
+function formatChannelLocalTime(receivedAt, timeZone = "UTC") {
   const value = typeof receivedAt === "string" ? receivedAt.trim() : "";
   if (!value) {
     return "";
@@ -200,7 +200,7 @@ function formatWechatLocalTime(receivedAt) {
     return value;
   }
   return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
+    timeZone: normalizeText(timeZone) || "UTC",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

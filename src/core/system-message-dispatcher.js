@@ -30,7 +30,7 @@ class SystemMessageDispatcher {
       threadKey: `system:${message.senderId}`,
       senderId: message.senderId,
       messageId: message.id,
-      text: buildSystemInboundText(message?.text, message?.createdAt),
+      text: buildSystemInboundText(message?.text, message?.createdAt, this.config),
       attachments: [],
       command: "message",
       contextToken,
@@ -40,9 +40,9 @@ class SystemMessageDispatcher {
   }
 }
 
-function buildSystemInboundText(text, createdAt = "") {
+function buildSystemInboundText(text, createdAt = "", config = {}) {
   const body = normalizeText(text);
-  const localTime = formatSystemLocalTime(createdAt);
+  const localTime = formatSystemLocalTime(createdAt, config?.timeZone || config?.diaryTimeZone);
   const sections = [
     ...(localTime ? [`[${localTime}]`, ""] : []),
     "SYSTEM ACTION MODE: internal trigger, not user chat.",
@@ -59,13 +59,13 @@ function buildSystemInboundText(text, createdAt = "") {
   return sections.join("\n").trim();
 }
 
-function formatSystemLocalTime(value) {
+function formatSystemLocalTime(value, timeZone = "UTC") {
   const normalized = normalizeIsoTime(value);
   if (!normalized) {
     return "";
   }
   return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
+    timeZone: normalizeText(timeZone) || "UTC",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

@@ -428,9 +428,12 @@ class CyberbossApp {
       return;
     }
     try {
+      const captureTime = resolveCaptureLocalDateTime(normalized?.receivedAt, this.config);
       await this.projectServices.diary.append({
         title: `${this.channelAdapter.describe().id} 自动记录`,
-        text: buildAutoDiaryCaptureText(normalized),
+        text: buildAutoDiaryCaptureText(normalized, this.config),
+        date: captureTime.date,
+        time: captureTime.time,
       });
       console.log(`[cyberboss] diary auto-captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
     } catch (error) {
@@ -1806,9 +1809,9 @@ function formatUsageSummary(summary = {}) {
   ].join("\n");
 }
 
-function buildAutoDiaryCaptureText(normalized = {}) {
+function buildAutoDiaryCaptureText(normalized = {}, config = {}) {
   const provider = normalizeText(normalized.provider) || "channel";
-  const receivedAt = normalizeText(normalized.receivedAt);
+  const receivedAt = formatConfiguredLocalDateTime(normalized.receivedAt, config.diaryTimeZone || config.timeZone);
   const text = normalizeText(normalized.text);
   const lines = [
     `- 来源：${provider}`,
@@ -1819,6 +1822,51 @@ function buildAutoDiaryCaptureText(normalized = {}) {
   lines.push("- 内容：");
   lines.push(...quoteMarkdown(text));
   return lines.join("\n");
+}
+
+function resolveCaptureLocalDateTime(receivedAt, config = {}) {
+  const timeZone = normalizeText(config.diaryTimeZone) || normalizeText(config.timeZone) || "UTC";
+  const date = parseDateOrNow(receivedAt);
+  return {
+    date: formatDatePart(date, timeZone),
+    time: formatTimePart(date, timeZone),
+  };
+}
+
+function formatConfiguredLocalDateTime(receivedAt, timeZone = "") {
+  const zone = normalizeText(timeZone) || process.env.CYBERBOSS_DIARY_TIME_ZONE || process.env.CYBERBOSS_TIME_ZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const value = normalizeText(receivedAt);
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return `${formatDatePart(date, zone)} ${formatTimePart(date, zone)}`;
+}
+
+function parseDateOrNow(value) {
+  const parsed = new Date(normalizeText(value));
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function formatDatePart(date, timeZone) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function formatTimePart(date, timeZone) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function quoteMarkdown(text) {

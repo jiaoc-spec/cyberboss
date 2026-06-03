@@ -129,6 +129,7 @@ Before running the first command, set at least:
 ```dotenv
 CYBERBOSS_USER_NAME=YourName
 CYBERBOSS_USER_GENDER=female
+CYBERBOSS_TIME_ZONE=
 CYBERBOSS_ASK_WHEN_UNCERTAIN=true
 CYBERBOSS_ALLOWED_USER_IDS=your_wechat_user_id
 CYBERBOSS_WORKSPACE_ROOT=/absolute/path/to/your/project
@@ -191,6 +192,8 @@ What these do:
   Choose `codex` or `claudecode`. The command set stays the same.
 - `CYBERBOSS_CHANNEL`
   Choose the message channel. Current values are `weixin` and `telegram`. Telegram uses the Bot API and does not require WeChat QR login.
+- `CYBERBOSS_TIME_ZONE`
+  Time zone used when showing incoming message timestamps to the model and formatting proactive system times. Example: `Europe/Berlin`.
 - `CYBERBOSS_ASK_WHEN_UNCERTAIN`
   Default `true`. When diary, timeline, study stats, workout stats, mood/energy inference, or weekly review data is unclear, Cyberboss asks one concise follow-up question instead of inventing missing details. Set `false` to mark unclear fields as unknown without asking.
 - `CYBERBOSS_DIARY_BACKEND`
