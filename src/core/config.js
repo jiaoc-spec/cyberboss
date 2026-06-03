@@ -66,6 +66,8 @@ function readConfig() {
     obsidianDailyFolder: readTextEnv("OBSIDIAN_DAILY_FOLDER") || readTextEnv("CYBERBOSS_OBSIDIAN_DAILY_FOLDER") || "03. 🔵 Tagebuch/01. 日记",
     obsidianDailySection: readTextEnv("OBSIDIAN_DAILY_SECTION") || readTextEnv("CYBERBOSS_OBSIDIAN_DAILY_SECTION") || "## 今日记录",
     obsidianDailyTemplateFile: readTextEnv("OBSIDIAN_DAILY_TEMPLATE_FILE") || readTextEnv("CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE") || "",
+    calendarProvider: readTextEnv("CYBERBOSS_CALENDAR_PROVIDER") || "apple",
+    appleCalendarScriptFile: readTextEnv("CYBERBOSS_APPLE_CALENDAR_SCRIPT_FILE") || path.resolve(__dirname, "..", "..", "scripts", "apple-calendar-read.swift"),
     locationStoreFile: path.join(stateDir, "locations.json"),
     locationHost: readTextEnv("CYBERBOSS_LOCATION_HOST") || "0.0.0.0",
     locationPort: readIntEnv("CYBERBOSS_LOCATION_PORT") || 4318,

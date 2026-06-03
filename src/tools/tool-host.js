@@ -69,6 +69,37 @@ function listProjectToolNames() {
 
 const PROJECT_TOOLS = [
   {
+    name: "cyberboss_calendar_read",
+    description: "Read calendar events from the configured calendar provider. On macOS, the default Apple Calendar provider uses EventKit and the user's locally synced Apple/iCloud calendars.",
+    shortHint: "Read Apple Calendar events for today or the next few days.",
+    topics: ["calendar", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        provider: { type: "string", description: "Optional provider. Current value: apple." },
+        start: { type: "string", description: "Optional ISO datetime range start." },
+        end: { type: "string", description: "Optional ISO datetime range end." },
+        days: { type: "integer", description: "Optional number of days from start/today. Default 7." },
+        calendars: {
+          type: "array",
+          description: "Optional Apple Calendar names to include.",
+          items: { type: "string" },
+        },
+        includeNotes: { type: "boolean", description: "Whether to include event notes." },
+        includeUrls: { type: "boolean", description: "Whether to include event URLs." },
+        requestAccess: { type: "boolean", description: "Whether to trigger the macOS Calendar permission request when access has not been granted yet." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.calendar.read(args);
+      return {
+        text: `Calendar events loaded: ${Array.isArray(result?.events) ? result.events.length : 0}.`,
+        data: result,
+      };
+    },
+  },
+  {
     name: "cyberboss_diary_append",
     description: "Append a diary entry into the configured diary backend. Use this for conversational daily capture; when the Obsidian backend is enabled, entries go to the user's Obsidian Daily Note.",
     shortHint: "Append a diary entry with direct text content.",
