@@ -95,7 +95,7 @@ function extractExplicitRangeEvents(text, context) {
   }
 
   const events = [];
-  for (let index = 0; index < times.length - 1; index += 2) {
+  for (let index = 0; index < times.length - 1; index += 1) {
     const start = times[index];
     const end = times[index + 1];
     const startDate = localTimeToDate(context.localDate, start, context.timeZone);
@@ -103,7 +103,8 @@ function extractExplicitRangeEvents(text, context) {
     if (!isUsableRange(startDate, endDate)) {
       continue;
     }
-    const classification = classifyActivity(text);
+    const rangeText = extractRangeContext(text, times, index);
+    const classification = classifyRangeActivity(rangeText, text);
     events.push(buildEvent({
       startDate,
       endDate,
@@ -120,13 +121,18 @@ function extractExplicitRangeEvents(text, context) {
 }
 
 function extractPendingStart(text, context) {
-  if (looksLikeFuturePlan(text) || !/(开始|start|begin|现在.*(做|学|练|运动|休息|睡)|准备.*开始)/i.test(text)) {
+  if (looksLikeFuturePlan(text)) {
+    return null;
+  }
+  const isCommute = isCommuteStart(text);
+  const isGenericStart = /(开始|start|begin|现在.*(做|学|练|运动|休息|睡)|准备.*开始)/i.test(text);
+  if (!isCommute && !isGenericStart) {
     return null;
   }
   if (/(结束|完成|finish|done|end)/i.test(text)) {
     return null;
   }
-  const classification = classifyActivity(text);
+  const classification = isCommute ? commuteClassification() : classifyActivity(text);
   return {
     startAt: formatDateTimeWithOffset(context.receivedDate, context.timeZone),
     localDate: context.localDate,
@@ -141,7 +147,10 @@ function closePendingEvents(text, context) {
   if (!pending?.startAt) {
     return [];
   }
-  if (!/(结束|完成|做完|学完|练完|finish|done|end)/i.test(text)) {
+  const pendingClassification = pending.classification || {};
+  const closesGenericActivity = /(结束|完成|做完|学完|练完|finish|done|end)/i.test(text);
+  const closesCommute = pendingClassification.subcategoryId === "travel.commute" && isCommuteArrival(text);
+  if (!closesGenericActivity && !closesCommute) {
     return [];
   }
 
@@ -152,7 +161,7 @@ function closePendingEvents(text, context) {
   }
 
   const classification = preferSpecificClassification(
-    classifyActivity(`${pending.text || ""}\n${text}`),
+    closesCommute ? commuteClassification() : classifyActivity(`${pending.text || ""}\n${text}`),
     pending.classification
   );
   return [
@@ -171,7 +180,10 @@ function closePendingEvents(text, context) {
 }
 
 function clearClosedPending(state, pendingKey, text) {
-  if (/(结束|完成|做完|学完|练完|finish|done|end)/i.test(text) && state.pending?.[pendingKey]) {
+  const pendingClassification = state.pending?.[pendingKey]?.classification || {};
+  const closesGenericActivity = /(结束|完成|做完|学完|练完|finish|done|end)/i.test(text);
+  const closesCommute = pendingClassification.subcategoryId === "travel.commute" && isCommuteArrival(text);
+  if ((closesGenericActivity || closesCommute) && state.pending?.[pendingKey]) {
     delete state.pending[pendingKey];
   }
 }
@@ -189,6 +201,9 @@ function pruneExpiredPending(state, nowDate) {
 
 function classifyActivity(text) {
   const normalized = normalizeText(text).toLowerCase();
+  if (/(通勤|出发|到家|回家|车站|地铁|公交|火车|tram|bus|bahn|commute|unterwegs)/i.test(normalized)) {
+    return commuteClassification();
+  }
   if (/(weiterbildung|praxisanleitung|praxisleiter|课程|上课|听课|培训|seminar|lesson|course)/i.test(normalized)) {
     return classification("Weiterbildung / 课程学习", "study", "study.course", "evt.learning", ["study", "course"]);
   }
@@ -200,9 +215,6 @@ function classifyActivity(text) {
   }
   if (/(走路|散步|walk|步行)/i.test(normalized)) {
     return classification("走路 / 散步", "exercise", "exercise.walk", "evt.walk", ["walk"]);
-  }
-  if (/(通勤|出发|到家|回家|车站|地铁|公交|火车|tram|bus|bahn|commute)/i.test(normalized)) {
-    return classification("通勤", "travel", "travel.commute", "evt.commute", ["commute"]);
   }
   if (/(睡|nap|午睡|小睡|休息|躺)/i.test(normalized)) {
     return classification("睡眠 / 休息", "rest", "rest.nap", "evt.nap", ["rest"]);
@@ -221,6 +233,33 @@ function classifyActivity(text) {
 
 function classification(title, categoryId, subcategoryId, eventNodeId, tags) {
   return { title, categoryId, subcategoryId, eventNodeId, tags };
+}
+
+function commuteClassification() {
+  return classification("通勤 / 路上时间", "travel", "travel.commute", "evt.commute", ["commute", "transit"]);
+}
+
+function classifyRangeActivity(rangeText, fullText) {
+  const context = normalizeText(rangeText);
+  const combined = `${context}\n${normalizeText(fullText)}`;
+  if (/(出发|离开|去|前往|车站|地铁|公交|火车|tram|bus|bahn|到家|回家|unterwegs)/i.test(context)) {
+    return commuteClassification();
+  }
+  if (/(下课|课程结束|培训结束|weiterbildung.*结束|class.*end)/i.test(context) && /(到家|回家|车站|地铁|公交|火车|tram|bus|bahn)/i.test(context)) {
+    return commuteClassification();
+  }
+  if (/(weiterbildung|praxisanleitung|praxisleiter|课程|上课|听课|培训|seminar|lesson|course|护理学校|学校|pflegeschule)/i.test(combined)) {
+    return classification("Weiterbildung / 课程学习", "study", "study.course", "evt.learning", ["study", "course"]);
+  }
+  return classifyActivity(combined);
+}
+
+function isCommuteStart(text) {
+  return /(出发了?|离开了?|在路上|去(护理学校|学校|上课|车站|上班|医院|praxis|pflegeschule)|前往|unterwegs|on my way)/i.test(text);
+}
+
+function isCommuteArrival(text) {
+  return /(到家了?|回到家|到(护理学校|学校|车站|公司|医院|praxis|pflegeschule)了?|到了|arrived|ankommen|angekommen)/i.test(text);
 }
 
 function chooseMealEventNode(text) {
@@ -274,10 +313,20 @@ function extractTimes(text) {
     const hour = Number(match[1]);
     const minute = match[2] === undefined ? 0 : Number(match[2]);
     if (Number.isFinite(hour) && Number.isFinite(minute)) {
-      times.push({ hour, minute });
+      times.push({ hour, minute, index: match.index, endIndex: pattern.lastIndex });
     }
   }
   return times;
+}
+
+function extractRangeContext(text, times, index) {
+  const start = times[index];
+  const end = times[index + 1];
+  const nextStart = times[index + 2]?.index ?? text.length;
+  const beforeStart = index === 0 ? text.slice(0, start.index) : "";
+  const between = text.slice(start.endIndex, end.index);
+  const afterEnd = text.slice(end.endIndex, nextStart);
+  return `${beforeStart} ${between} ${afterEnd}`.trim();
 }
 
 function looksLikeFuturePlan(text) {
