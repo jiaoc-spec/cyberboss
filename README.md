@@ -133,6 +133,7 @@ CYBERBOSS_ASK_WHEN_UNCERTAIN=true
 CYBERBOSS_ALLOWED_USER_IDS=your_wechat_user_id
 CYBERBOSS_WORKSPACE_ROOT=/absolute/path/to/your/project
 CYBERBOSS_CHANNEL=weixin
+CYBERBOSS_DIARY_BACKEND=local
 ```
 
 Common optional variables:
@@ -162,6 +163,11 @@ CYBERBOSS_VISION_API_KEY=
 CYBERBOSS_VISION_MODEL=
 CYBERBOSS_VISION_TIMEOUT_MS=30000
 CYBERBOSS_ACCOUNT_ID=
+CYBERBOSS_DIARY_TIME_ZONE=
+CYBERBOSS_OBSIDIAN_VAULT_DIR=
+CYBERBOSS_OBSIDIAN_DAILY_FOLDER=03. 🔵 Tagebuch/01. 日记
+CYBERBOSS_OBSIDIAN_DAILY_SECTION=## 今日记录
+CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE=
 CYBERBOSS_WEIXIN_MIN_CHUNK_CHARS=20
 CYBERBOSS_WEIXIN_BASE_URL=https://ilinkai.weixin.qq.com
 CYBERBOSS_WEIXIN_CDN_BASE_URL=https://novac2c.cdn.weixin.qq.com/c2c
@@ -185,6 +191,14 @@ What these do:
   Choose the message channel. Current values are `weixin` and `telegram`. Telegram uses the Bot API and does not require WeChat QR login.
 - `CYBERBOSS_ASK_WHEN_UNCERTAIN`
   Default `true`. When diary, timeline, study stats, workout stats, mood/energy inference, or weekly review data is unclear, Cyberboss asks one concise follow-up question instead of inventing missing details. Set `false` to mark unclear fields as unknown without asking.
+- `CYBERBOSS_DIARY_BACKEND`
+  Choose `local` or `obsidian`. `local` writes to `~/.cyberboss/diary`; `obsidian` writes diary entries into the configured Obsidian Daily Note.
+- `CYBERBOSS_DIARY_TIME_ZONE`
+  Time zone for diary dates and timestamps. Defaults to the system time zone.
+- `CYBERBOSS_OBSIDIAN_VAULT_DIR`
+  Obsidian vault root used when `CYBERBOSS_DIARY_BACKEND=obsidian`.
+- `CYBERBOSS_OBSIDIAN_DAILY_FOLDER`, `CYBERBOSS_OBSIDIAN_DAILY_SECTION`, `CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE`
+  Obsidian Daily Note folder, insertion section, and optional template file. The template can contain `{{date}}`.
 - `TELEGRAM_BOT_TOKEN`
   Telegram bot token. Create a bot with `@BotFather`, then set this value. Required when `CYBERBOSS_CHANNEL=telegram`.
 - `TELEGRAM_ALLOWED_CHAT_IDS`

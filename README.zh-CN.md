@@ -138,6 +138,7 @@ CYBERBOSS_ASK_WHEN_UNCERTAIN=true
 CYBERBOSS_ALLOWED_USER_IDS=你的微信 user id
 CYBERBOSS_WORKSPACE_ROOT=/绝对路径/你的项目目录
 CYBERBOSS_CHANNEL=weixin
+CYBERBOSS_DIARY_BACKEND=local
 ```
 
 可选常用项：
@@ -167,6 +168,11 @@ CYBERBOSS_VISION_API_KEY=
 CYBERBOSS_VISION_MODEL=
 CYBERBOSS_VISION_TIMEOUT_MS=30000
 CYBERBOSS_ACCOUNT_ID=
+CYBERBOSS_DIARY_TIME_ZONE=
+CYBERBOSS_OBSIDIAN_VAULT_DIR=
+CYBERBOSS_OBSIDIAN_DAILY_FOLDER=03. 🔵 Tagebuch/01. 日记
+CYBERBOSS_OBSIDIAN_DAILY_SECTION=## 今日记录
+CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE=
 CYBERBOSS_WEIXIN_MIN_CHUNK_CHARS=20
 CYBERBOSS_WEIXIN_BASE_URL=https://ilinkai.weixin.qq.com
 CYBERBOSS_WEIXIN_CDN_BASE_URL=https://novac2c.cdn.weixin.qq.com/c2c
@@ -190,6 +196,14 @@ CYBERBOSS_LOCATION_BATTERY_HISTORY_LIMIT=100
   选择消息入口。当前支持 `weixin` 和 `telegram`。Telegram 使用 Bot API，不需要微信二维码登录。
 - `CYBERBOSS_ASK_WHEN_UNCERTAIN`
   默认 `true`。当日记、时间线、学习统计、运动统计、心情/能量推断或周总结缺少关键信息时，Cyberboss 会短短反问一次，而不是编造缺失内容。设为 `false` 时，不确定字段会保留为 unknown / 未记录。
+- `CYBERBOSS_DIARY_BACKEND`
+  选择 `local` 或 `obsidian`。`local` 写入 `~/.cyberboss/diary`；`obsidian` 会把 diary 直接写进配置好的 Obsidian Daily Note。
+- `CYBERBOSS_DIARY_TIME_ZONE`
+  日记日期和时间戳使用的时区。默认使用系统时区。
+- `CYBERBOSS_OBSIDIAN_VAULT_DIR`
+  当 `CYBERBOSS_DIARY_BACKEND=obsidian` 时使用的 Obsidian vault 根目录。
+- `CYBERBOSS_OBSIDIAN_DAILY_FOLDER`、`CYBERBOSS_OBSIDIAN_DAILY_SECTION`、`CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE`
+  Obsidian 日记目录、写入 section、可选模板文件。模板里可以使用 `{{date}}`。
 - `TELEGRAM_BOT_TOKEN`
   Telegram bot token。先在 Telegram 里找 `@BotFather` 创建 bot，然后把 token 填到这里。设置 `CYBERBOSS_CHANNEL=telegram` 时必填。
 - `TELEGRAM_ALLOWED_CHAT_IDS`

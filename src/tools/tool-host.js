@@ -70,7 +70,7 @@ function listProjectToolNames() {
 const PROJECT_TOOLS = [
   {
     name: "cyberboss_diary_append",
-    description: "Append a diary entry into Cyberboss local diary storage.",
+    description: "Append a diary entry into the configured diary backend. Use this for conversational daily capture; when the Obsidian backend is enabled, entries go to the user's Obsidian Daily Note.",
     shortHint: "Append a diary entry with direct text content.",
     topics: ["diary"],
     inputSchema: {
