@@ -388,6 +388,7 @@ class CyberbossApp {
       await this.dispatchChannelCommand(normalized, command);
       return;
     }
+    await this.autoCaptureIncomingDiary(normalized);
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
     const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
@@ -416,6 +417,25 @@ class CyberbossApp {
     }
 
     await this.routePreparedInbound({ bindingKey, workspaceRoot, prepared });
+  }
+
+  async autoCaptureIncomingDiary(normalized) {
+    if (!this.config.diaryAutoCapture || !this.projectServices?.diary) {
+      return;
+    }
+    const text = normalizeCommandArgument(normalized?.text);
+    if (!text) {
+      return;
+    }
+    try {
+      await this.projectServices.diary.append({
+        title: `${this.channelAdapter.describe().id} 自动记录`,
+        text: buildAutoDiaryCaptureText(normalized),
+      });
+      console.log(`[cyberboss] diary auto-captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
+    } catch (error) {
+      console.error(`[cyberboss] diary auto-capture failed: ${formatErrorMessage(error)}`);
+    }
   }
 
   isTurnDispatchBlocked(bindingKey, workspaceRoot, { ignoreBoundary = false } = {}) {
@@ -1784,6 +1804,26 @@ function formatUsageSummary(summary = {}) {
     "",
     `estimate: ${formatPricingSummary(pricing)}`,
   ].join("\n");
+}
+
+function buildAutoDiaryCaptureText(normalized = {}) {
+  const provider = normalizeText(normalized.provider) || "channel";
+  const receivedAt = normalizeText(normalized.receivedAt);
+  const text = normalizeText(normalized.text);
+  const lines = [
+    `- 来源：${provider}`,
+  ];
+  if (receivedAt) {
+    lines.push(`- 接收时间：${receivedAt}`);
+  }
+  lines.push("- 内容：");
+  lines.push(...quoteMarkdown(text));
+  return lines.join("\n");
+}
+
+function quoteMarkdown(text) {
+  const lines = normalizeText(text).split(/\r?\n/);
+  return lines.length ? lines.map((line) => `  > ${line}`) : ["  >"];
 }
 
 function formatUsageLine(label, usage = {}, costUsd = 0) {

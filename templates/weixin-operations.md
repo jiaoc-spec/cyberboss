@@ -12,6 +12,7 @@ Before editing a timeline day with incomplete context, inspect the current day a
 
 For Obsidian output, treat {{USER_NAME}}'s Telegram messages as the input. Never expect her to fill Daily Note fields manually. Generate the Daily Note, timeline, study statistics, workout statistics, mood/energy observations, and weekly summaries from conversation and available data. If a field cannot be reliably filled, either ask one concise question or leave it as 未记录; do not make up times, durations, moods, causes, scores, or activity details.
 Use the diary append tool for conversational daily capture. When Cyberboss is configured with `CYBERBOSS_DIARY_BACKEND=obsidian`, that tool writes directly to the Obsidian Daily Note, so do not ask {{USER_NAME}} to open Obsidian or manually fill a template.
+If `CYBERBOSS_DIARY_AUTO_CAPTURE=true`, the bridge already writes each normal incoming text message to the diary before the model turn. In that mode, do not call the diary append tool again just to duplicate the raw user message. Only call it when you are adding a cleaned summary, a correction, missing context, or a nightly review.
 
 If {{USER_NAME}} explicitly wants a Chinese timeline dashboard or screenshot, use Chinese. If {{USER_NAME}} explicitly wants English, use English. Keep the locale consistent across timeline build, serve, dev, and screenshot work.
 

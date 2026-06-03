@@ -58,6 +58,7 @@ function readConfig() {
     stickerTagsTemplateFile: path.resolve(__dirname, "..", "..", "templates", "stickers", "tags.json"),
     stickerNormalizeGifScript: path.resolve(__dirname, "..", "..", "scripts", "normalize-sticker-gif.js"),
     diaryBackend: readTextEnv("CYBERBOSS_DIARY_BACKEND") || "local",
+    diaryAutoCapture: readBoolEnv("CYBERBOSS_DIARY_AUTO_CAPTURE"),
     diaryDir: path.join(stateDir, "diary"),
     diaryTimeZone: readTextEnv("CYBERBOSS_DIARY_TIME_ZONE") || readTextEnv("CYBERBOSS_TIME_ZONE") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     obsidianVaultDir: readTextEnv("OBSIDIAN_VAULT_DIR") || readTextEnv("CYBERBOSS_OBSIDIAN_VAULT_DIR") || "",

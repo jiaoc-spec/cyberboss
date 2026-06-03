@@ -139,6 +139,7 @@ CYBERBOSS_ALLOWED_USER_IDS=你的微信 user id
 CYBERBOSS_WORKSPACE_ROOT=/绝对路径/你的项目目录
 CYBERBOSS_CHANNEL=weixin
 CYBERBOSS_DIARY_BACKEND=local
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
 ```
 
 可选常用项：
@@ -168,6 +169,7 @@ CYBERBOSS_VISION_API_KEY=
 CYBERBOSS_VISION_MODEL=
 CYBERBOSS_VISION_TIMEOUT_MS=30000
 CYBERBOSS_ACCOUNT_ID=
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
 CYBERBOSS_DIARY_TIME_ZONE=
 CYBERBOSS_OBSIDIAN_VAULT_DIR=
 CYBERBOSS_OBSIDIAN_DAILY_FOLDER=03. 🔵 Tagebuch/01. 日记
@@ -198,6 +200,8 @@ CYBERBOSS_LOCATION_BATTERY_HISTORY_LIMIT=100
   默认 `true`。当日记、时间线、学习统计、运动统计、心情/能量推断或周总结缺少关键信息时，Cyberboss 会短短反问一次，而不是编造缺失内容。设为 `false` 时，不确定字段会保留为 unknown / 未记录。
 - `CYBERBOSS_DIARY_BACKEND`
   选择 `local` 或 `obsidian`。`local` 写入 `~/.cyberboss/diary`；`obsidian` 会把 diary 直接写进配置好的 Obsidian Daily Note。
+- `CYBERBOSS_DIARY_AUTO_CAPTURE`
+  默认 `false`。设为 `true` 后，每条普通聊天文本会在模型处理前自动追加到 diary backend；斜杠命令不会记录。
 - `CYBERBOSS_DIARY_TIME_ZONE`
   日记日期和时间戳使用的时区。默认使用系统时区。
 - `CYBERBOSS_OBSIDIAN_VAULT_DIR`

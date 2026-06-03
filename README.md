@@ -134,6 +134,7 @@ CYBERBOSS_ALLOWED_USER_IDS=your_wechat_user_id
 CYBERBOSS_WORKSPACE_ROOT=/absolute/path/to/your/project
 CYBERBOSS_CHANNEL=weixin
 CYBERBOSS_DIARY_BACKEND=local
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
 ```
 
 Common optional variables:
@@ -163,6 +164,7 @@ CYBERBOSS_VISION_API_KEY=
 CYBERBOSS_VISION_MODEL=
 CYBERBOSS_VISION_TIMEOUT_MS=30000
 CYBERBOSS_ACCOUNT_ID=
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
 CYBERBOSS_DIARY_TIME_ZONE=
 CYBERBOSS_OBSIDIAN_VAULT_DIR=
 CYBERBOSS_OBSIDIAN_DAILY_FOLDER=03. 🔵 Tagebuch/01. 日记
@@ -193,6 +195,8 @@ What these do:
   Default `true`. When diary, timeline, study stats, workout stats, mood/energy inference, or weekly review data is unclear, Cyberboss asks one concise follow-up question instead of inventing missing details. Set `false` to mark unclear fields as unknown without asking.
 - `CYBERBOSS_DIARY_BACKEND`
   Choose `local` or `obsidian`. `local` writes to `~/.cyberboss/diary`; `obsidian` writes diary entries into the configured Obsidian Daily Note.
+- `CYBERBOSS_DIARY_AUTO_CAPTURE`
+  Default `false`. Set `true` to automatically append every normal incoming chat text to the diary backend before the model turn. Slash commands are skipped.
 - `CYBERBOSS_DIARY_TIME_ZONE`
   Time zone for diary dates and timestamps. Defaults to the system time zone.
 - `CYBERBOSS_OBSIDIAN_VAULT_DIR`
