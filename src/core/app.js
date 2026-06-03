@@ -176,6 +176,7 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushPendingHealthImports(),
           ]);
           const response = await this.channelAdapter.getUpdates({
             syncBuffer: this.channelAdapter.loadSyncBuffer(),
@@ -195,6 +196,7 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushPendingHealthImports(),
           ]);
         } catch (error) {
           if (shutdown.stopped) {
@@ -905,6 +907,25 @@ class CyberbossApp {
           preserveBlock: true,
         }).catch(() => {});
       }
+    }
+  }
+
+  async flushPendingHealthImports() {
+    if (!this.config.healthAutoImport || !this.projectServices?.health) {
+      return;
+    }
+    const intervalMs = Number(this.config.healthImportIntervalMs) || 300_000;
+    if (this.lastHealthImportCheckAtMs && Date.now() - this.lastHealthImportCheckAtMs < intervalMs) {
+      return;
+    }
+    this.lastHealthImportCheckAtMs = Date.now();
+    try {
+      const result = await this.projectServices.health.importPending({ limit: 20 });
+      if (result.imported?.length) {
+        console.log(`[cyberboss] health imports completed count=${result.imported.length}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] health import failed: ${formatErrorMessage(error)}`);
     }
   }
 

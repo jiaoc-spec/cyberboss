@@ -124,6 +124,26 @@ const PROJECT_TOOLS = [
     },
   },
   {
+    name: "cyberboss_health_import",
+    description: "Import pending Apple Health / Shortcuts export files from the configured health inbox into the diary backend, usually Obsidian Daily Notes.",
+    shortHint: "Import Health inbox files into the Daily Note.",
+    topics: ["health", "diary", "obsidian"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", description: "Maximum files to import this turn. Default 20." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.health.importPending(args);
+      return {
+        text: `Health imports completed: ${Array.isArray(result.imported) ? result.imported.length : 0}.`,
+        data: result,
+      };
+    },
+  },
+  {
     name: "cyberboss_reminder_create",
     description: "Create a reminder in Cyberboss.",
     shortHint: "Create a reminder with direct text plus delayMinutes or dueAt.",
