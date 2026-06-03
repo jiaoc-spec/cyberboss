@@ -8,6 +8,7 @@ const { HealthService } = require("../services/health-service");
 const { ReminderService } = require("../services/reminder-service");
 const { StickerService } = require("../services/sticker-service");
 const { SystemMessageService } = require("../services/system-message-service");
+const { TimelineAutoCaptureService } = require("../services/timeline-auto-capture-service");
 const { TimelineService } = require("../services/timeline-service");
 const { RuntimeContextStore } = require("./runtime-context-store");
 const { ProjectToolHost } = require("./tool-host");
@@ -25,6 +26,7 @@ function createProjectTooling(config, options = {}) {
   });
   const channelFile = new ChannelFileService({ config, channelAdapter, sessionStore });
   const diary = new DiaryService({ config });
+  const timeline = new TimelineService({ config, channelAdapter, timelineIntegration, sessionStore });
   const services = {
     calendar: new CalendarService({ config }),
     diary,
@@ -33,7 +35,8 @@ function createProjectTooling(config, options = {}) {
     system: new SystemMessageService({ config, channelAdapter, sessionStore }),
     channelFile,
     sticker: new StickerService({ config, channelAdapter, sessionStore, channelFileService: channelFile }),
-    timeline: new TimelineService({ config, channelAdapter, timelineIntegration, sessionStore }),
+    timeline,
+    timelineAutoCapture: new TimelineAutoCaptureService({ config, timeline }),
     whereabouts: new WhereaboutsService({
       config: {
         storeFile: config.locationStoreFile,

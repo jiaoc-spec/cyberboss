@@ -62,6 +62,8 @@ function readConfig() {
     diaryAutoCapture: readBoolEnv("CYBERBOSS_DIARY_AUTO_CAPTURE"),
     diaryDir: path.join(stateDir, "diary"),
     diaryTimeZone: readTextEnv("CYBERBOSS_DIARY_TIME_ZONE") || readTextEnv("CYBERBOSS_TIME_ZONE") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    timelineAutoCapture: readOptionalBoolEnv("CYBERBOSS_TIMELINE_AUTO_CAPTURE") !== false,
+    timelineAutoCaptureStateFile: readTextEnv("CYBERBOSS_TIMELINE_AUTO_CAPTURE_STATE_FILE") || path.join(stateDir, "timeline-auto-capture.json"),
     obsidianVaultDir: readTextEnv("OBSIDIAN_VAULT_DIR") || readTextEnv("CYBERBOSS_OBSIDIAN_VAULT_DIR") || "",
     obsidianDailyFolder: readTextEnv("OBSIDIAN_DAILY_FOLDER") || readTextEnv("CYBERBOSS_OBSIDIAN_DAILY_FOLDER") || "03. 🔵 Tagebuch/01. 日记",
     obsidianDailySection: readTextEnv("OBSIDIAN_DAILY_SECTION") || readTextEnv("CYBERBOSS_OBSIDIAN_DAILY_SECTION") || "## 今日记录",

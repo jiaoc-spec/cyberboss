@@ -391,6 +391,7 @@ class CyberbossApp {
       return;
     }
     await this.autoCaptureIncomingDiary(normalized);
+    await this.autoCaptureIncomingTimeline(normalized);
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
     const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
@@ -440,6 +441,31 @@ class CyberbossApp {
       console.log(`[cyberboss] diary auto-captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
     } catch (error) {
       console.error(`[cyberboss] diary auto-capture failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async autoCaptureIncomingTimeline(normalized) {
+    if (!this.config.timelineAutoCapture || !this.projectServices?.timelineAutoCapture) {
+      return;
+    }
+    const text = normalizeCommandArgument(normalized?.text);
+    if (!text) {
+      return;
+    }
+    try {
+      const result = await this.projectServices.timelineAutoCapture.captureMessage({
+        text,
+        receivedAt: normalized?.receivedAt,
+        senderId: normalized?.senderId,
+        provider: normalized?.provider,
+      });
+      if (result.events?.length) {
+        console.log(`[cyberboss] timeline auto-captured count=${result.events.length} sender=${normalized.senderId || ""}`);
+      } else if (result.pending) {
+        console.log(`[cyberboss] timeline auto-capture pending sender=${normalized.senderId || ""}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] timeline auto-capture failed: ${formatErrorMessage(error)}`);
     }
   }
 
