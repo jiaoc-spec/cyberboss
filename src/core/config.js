@@ -130,6 +130,8 @@ function readConfig() {
     deepseekTimeoutMs: readIntEnv("CYBERBOSS_DEEPSEEK_TIMEOUT_MS") || 30_000,
     deepseekMaxOutputTokens: readIntEnv("CYBERBOSS_DEEPSEEK_MAX_OUTPUT_TOKENS") || 1200,
     deepseekFallbackAfterMs: readIntEnv("CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS") || 90_000,
+    deepseekDailyRoutingEnabled: readOptionalBoolEnv("CYBERBOSS_DEEPSEEK_DAILY_ROUTING_ENABLED") === true,
+    deepseekDailyMaxChars: readIntEnv("CYBERBOSS_DEEPSEEK_DAILY_MAX_CHARS") || 800,
     visionMode: readTextEnv("CYBERBOSS_VISION_MODE") || "auto",
     visionProvider: readTextEnv("CYBERBOSS_VISION_PROVIDER") || "openai-compatible",
     visionApiBaseUrl: readTextEnv("CYBERBOSS_VISION_API_BASE_URL"),

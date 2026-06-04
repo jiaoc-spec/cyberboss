@@ -27,6 +27,7 @@ class UsageStore {
       const dayKey = localDateKey(new Date(), this.timeZone);
       const day = this.state.days[dayKey] || createEmptyUsageBucket();
       this.state.days[dayKey] = addUsageTotals(day, turnUsage);
+      this.addRuntimeDay(runtimeId, dayKey, turnUsage);
       this.state.lastTotals[`${runtimeId}:${threadId}`] = normalizeUsageTotals(context);
       this.pruneRecordedTurns();
       this.write();
@@ -56,6 +57,7 @@ class UsageStore {
     const dayKey = localDateKey(new Date(), this.timeZone);
     const day = this.state.days[dayKey] || createEmptyUsageBucket();
     this.state.days[dayKey] = addUsageTotals(day, delta);
+    this.addRuntimeDay(runtimeId, dayKey, delta);
     this.write();
     return { date: dayKey, delta, totals };
   }
@@ -76,6 +78,19 @@ class UsageStore {
     const today = normalizeUsageTotals(this.state.days[todayKey] || {});
     const week = sumBuckets(this.state.days, weekKeys);
     const month = sumBuckets(this.state.days, monthKeys);
+    const byRuntime = Object.fromEntries(Object.entries(this.state.runtimeDays || {}).map(([runtimeId, days]) => {
+      const runtimeToday = normalizeUsageTotals(days[todayKey] || {});
+      const runtimeWeek = sumBuckets(days, weekKeys);
+      const runtimeMonth = sumBuckets(days, monthKeys);
+      return [runtimeId, {
+        today: runtimeToday,
+        week: runtimeWeek,
+        month: runtimeMonth,
+        todayCostUsd: estimateCostUsd(runtimeToday, this.pricing),
+        weekCostUsd: estimateCostUsd(runtimeWeek, this.pricing),
+        monthCostUsd: estimateCostUsd(runtimeMonth, this.pricing),
+      }];
+    }));
     return {
       timeZone: this.timeZone,
       pricing: this.pricing,
@@ -86,7 +101,15 @@ class UsageStore {
       todayCostUsd: estimateCostUsd(today, this.pricing),
       weekCostUsd: estimateCostUsd(week, this.pricing),
       monthCostUsd: estimateCostUsd(month, this.pricing),
+      byRuntime,
     };
+  }
+
+  addRuntimeDay(runtimeId, dayKey, usage) {
+    this.state.runtimeDays = this.state.runtimeDays || {};
+    const days = this.state.runtimeDays[runtimeId] || {};
+    days[dayKey] = addUsageTotals(days[dayKey] || createEmptyUsageBucket(), usage);
+    this.state.runtimeDays[runtimeId] = days;
   }
 
   write() {
@@ -108,15 +131,16 @@ class UsageStore {
 }
 
 function readState(filePath) {
-  const empty = { version: 2, days: {}, lastTotals: {}, recordedTurns: {} };
+  const empty = { version: 3, days: {}, runtimeDays: {}, lastTotals: {}, recordedTurns: {} };
   if (!filePath) {
     return empty;
   }
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
     return {
-      version: 2,
+      version: 3,
       days: parsed?.days && typeof parsed.days === "object" ? parsed.days : {},
+      runtimeDays: parsed?.runtimeDays && typeof parsed.runtimeDays === "object" ? parsed.runtimeDays : {},
       lastTotals: parsed?.lastTotals && typeof parsed.lastTotals === "object" ? parsed.lastTotals : {},
       recordedTurns: parsed?.recordedTurns && typeof parsed.recordedTurns === "object" ? parsed.recordedTurns : {},
     };

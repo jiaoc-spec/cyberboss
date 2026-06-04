@@ -35,6 +35,7 @@ const { TurnGateStore } = require("./turn-gate-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
+const { ModelRouterService } = require("../services/model-router-service");
 const {
   matchesCommandPrefix,
   canonicalizeCommandTokens,
@@ -98,6 +99,8 @@ class CyberbossApp {
     });
     this.turnGateStore = new TurnGateStore();
     this.deepseekFallback = new DeepSeekFallbackService({ config });
+    this.modelRouter = new ModelRouterService({ config });
+    this.deepseekConversationBySender = new Map();
     this.fallbackContextByRunKey = new Map();
     this.pendingInboundByScope = new Map();
     this.pendingImageInboundByScope = new Map();
@@ -168,6 +171,9 @@ class CyberbossApp {
     console.log(`[cyberboss] runtimeModels=${runtimeState.models?.length || 0}`);
     console.log(
       `[cyberboss] deepseekFallback=${this.deepseekFallback.isEnabled() ? "enabled" : "disabled"} model=${this.config.deepseekModel || ""}`
+    );
+    console.log(
+      `[cyberboss] deepseekDailyRouting=${this.config.deepseekDailyRoutingEnabled ? "enabled" : "disabled"} maxChars=${this.config.deepseekDailyMaxChars || 0}`
     );
     if (this.config.startWithLocationServer) {
       await this.ensureLocationServerStarted();
@@ -430,6 +436,22 @@ class CyberbossApp {
     const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
     if (!prepared) {
       return;
+    }
+
+    if (!this.isTurnDispatchBlocked(bindingKey, workspaceRoot)) {
+      const routing = this.modelRouter.decide({
+        text: prepared.originalText || prepared.text,
+        senderId: prepared.senderId,
+        provider: prepared.provider,
+        attachments: prepared.attachments,
+        attachmentFailures: prepared.attachmentFailures,
+      });
+      if (routing.mode === "deepseek") {
+        const sent = await this.dispatchDeepSeekDailyReply({ prepared, routing });
+        if (sent) {
+          return;
+        }
+      }
     }
 
     if (shouldBatchImageOnlyInbound(prepared)) {
@@ -1177,6 +1199,12 @@ class CyberbossApp {
       case "usage":
         await this.handleUsageCommand(normalized);
         return;
+      case "codex":
+        await this.handleRoutingCommand(normalized, "codex");
+        return;
+      case "deepseek":
+        await this.handleRoutingCommand(normalized, "deepseek");
+        return;
       case "new":
         await this.handleNewCommand(normalized);
         return;
@@ -1318,6 +1346,17 @@ class CyberbossApp {
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
       text: formatUsageSummary(summary),
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleRoutingCommand(normalized, mode) {
+    this.modelRouter.setNextMode(normalized.senderId, mode);
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text: mode === "codex"
+        ? "下一条普通消息会交给 Codex。"
+        : "下一条普通消息会交给 DeepSeek。",
       contextToken: normalized.contextToken,
     });
   }
@@ -1935,12 +1974,7 @@ class CyberbossApp {
       if (!result.used || !result.text) {
         return false;
       }
-      this.usageStore.recordRuntimeContext({
-        runtimeId: "deepseek",
-        threadId: `fallback:${target.userId}`,
-        turnId: crypto.randomUUID(),
-        turnUsage: result.usage,
-      });
+      this.recordDeepSeekUsage(`fallback:${target.userId}`, result.usage);
       if (provider === "system") {
         const action = parseFallbackSystemAction(result.text);
         if (action.action === "silent") {
@@ -1970,6 +2004,81 @@ class CyberbossApp {
       console.error(`[cyberboss] deepseek fallback failed: ${formatErrorMessage(error)}`);
       return false;
     }
+  }
+
+  async dispatchDeepSeekDailyReply({ prepared, routing } = {}) {
+    if (!prepared?.senderId || !prepared?.contextToken || !this.deepseekFallback?.isEnabled()) {
+      return false;
+    }
+    const text = normalizeText(prepared.originalText || prepared.text);
+    if (!text) {
+      return false;
+    }
+    await this.channelAdapter.sendTyping({
+      userId: prepared.senderId,
+      status: 1,
+      contextToken: prepared.contextToken,
+    }).catch(() => {});
+    try {
+      const history = this.deepseekConversationBySender.get(prepared.senderId) || [];
+      const result = await this.deepseekFallback.generate({
+        userText: text,
+        provider: prepared.provider,
+        mode: "daily",
+        history,
+        context: this.buildDeepSeekDailyContext(),
+      });
+      if (!result.used || !result.text) {
+        return false;
+      }
+      await this.channelAdapter.sendText({
+        userId: prepared.senderId,
+        text: result.text,
+        contextToken: prepared.contextToken,
+      });
+      this.recordDeepSeekUsage(prepared.senderId, result.usage);
+      this.rememberDeepSeekConversation(prepared.senderId, text, result.text);
+      console.log(
+        `[cyberboss] deepseek daily reply sent model=${result.model || ""} reason=${routing?.reason || ""}`
+      );
+      return true;
+    } catch (error) {
+      console.error(`[cyberboss] deepseek daily reply failed: ${formatErrorMessage(error)}`);
+      return false;
+    }
+  }
+
+  recordDeepSeekUsage(senderId, usage) {
+    this.usageStore.recordRuntimeContext({
+      runtimeId: "deepseek",
+      threadId: senderId,
+      turnId: crypto.randomUUID(),
+      turnUsage: usage,
+    });
+  }
+
+  rememberDeepSeekConversation(senderId, userText, assistantText) {
+    const history = this.deepseekConversationBySender.get(senderId) || [];
+    history.push(
+      { role: "user", content: userText },
+      { role: "assistant", content: assistantText },
+    );
+    this.deepseekConversationBySender.set(senderId, history.slice(-12));
+  }
+
+  buildDeepSeekDailyContext() {
+    const priority = this.projectServices?.priorityAwareness?.status?.() || null;
+    if (!priority?.priorities?.length) {
+      return "";
+    }
+    const completed = priority.priorities.filter((item) => item.status === "completed").map((item) => item.label);
+    const open = priority.priorities.filter((item) => item.status === "pending" || item.status === "unknown").map((item) => item.label);
+    return [
+      `Today's explicit priority boundary: ${priority.deadlineLabel || "unknown"} ${priority.deadlineAt || ""}`.trim(),
+      `Completed priorities: ${completed.length ? completed.join(", ") : "none recorded"}`,
+      `Open priorities: ${open.length ? open.join(", ") : "none"}`,
+      "Do not command or invent an order. If the user's message changes this state, acknowledge it while gently preserving awareness of remaining priorities when useful.",
+    ].join("\n");
   }
 
   markFallbackResponseStarted(context) {
@@ -2166,9 +2275,17 @@ function formatUsageSummary(summary = {}) {
     formatUsageLine("today", summary.today, summary.todayCostUsd),
     formatUsageLine("this week", summary.week, summary.weekCostUsd),
     formatUsageLine("this month", summary.month, summary.monthCostUsd),
-    "",
-    `estimate: ${formatPricingSummary(pricing)}`,
   );
+  const runtimeEntries = Object.entries(summary.byRuntime || {}).sort(([left], [right]) => left.localeCompare(right));
+  if (runtimeEntries.length) {
+    lines.push("", "by runtime:");
+    for (const [runtimeId, runtime] of runtimeEntries) {
+      lines.push(
+        `  ${runtimeId}: today ${formatCompactNumber(runtime.today?.totalTokens || 0)} · week ${formatCompactNumber(runtime.week?.totalTokens || 0)} · month ${formatCompactNumber(runtime.month?.totalTokens || 0)} tokens`
+      );
+    }
+  }
+  lines.push("", `estimate: ${formatPricingSummary(pricing)}`);
   return lines.join("\n");
 }
 

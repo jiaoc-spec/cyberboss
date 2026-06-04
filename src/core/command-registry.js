@@ -94,6 +94,20 @@ const COMMAND_GROUPS = [
         status: "active",
       },
       {
+        action: "routing.codex_next",
+        summary: "Force the next normal message to use Codex",
+        terminal: [],
+        weixin: ["/codex"],
+        status: "active",
+      },
+      {
+        action: "routing.deepseek_next",
+        summary: "Force the next normal message to use DeepSeek",
+        terminal: [],
+        weixin: ["/deepseek"],
+        status: "active",
+      },
+      {
         action: "thread.new",
         summary: "Switch to a fresh thread draft",
         terminal: [],
@@ -331,6 +345,8 @@ function actionEmoji(action) {
     case "workspace.bind": return "📍";
     case "workspace.status": return "📊";
     case "usage.summary": return "💸";
+    case "routing.codex_next":
+    case "routing.deepseek_next": return "🔀";
     case "thread.new": return "🆕";
     case "thread.reread": return "🔄";
     case "thread.compact": return "🗜️";

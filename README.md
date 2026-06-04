@@ -159,6 +159,8 @@ CYBERBOSS_DEEPSEEK_API_BASE_URL=https://api.deepseek.com
 CYBERBOSS_DEEPSEEK_TIMEOUT_MS=30000
 CYBERBOSS_DEEPSEEK_MAX_OUTPUT_TOKENS=1200
 CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS=90000
+CYBERBOSS_DEEPSEEK_DAILY_ROUTING_ENABLED=false
+CYBERBOSS_DEEPSEEK_DAILY_MAX_CHARS=800
 CYBERBOSS_DAILY_THREAD_ROLLOVER=false
 CYBERBOSS_PRIORITY_AWARENESS_ENABLED=true
 CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS=300000
@@ -241,6 +243,8 @@ What these do:
   Default `false`. When enabled with `DEEPSEEK_API_KEY`, Cyberboss uses DeepSeek as an independent text fallback when the primary runtime fails synchronously or completes a normal user turn without a usable reply. DeepSeek does not execute local Cyberboss tools, so tool-heavy requests may still need to be retried when the primary runtime is available.
 - `CYBERBOSS_DEEPSEEK_MODEL`, `CYBERBOSS_DEEPSEEK_API_BASE_URL`, `CYBERBOSS_DEEPSEEK_TIMEOUT_MS`, `CYBERBOSS_DEEPSEEK_MAX_OUTPUT_TOKENS`, `CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS`
   Configure the DeepSeek fallback model and request limits. The recommended model is `deepseek-v4-flash`. When Codex has not begun producing a reply before `CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS`, Cyberboss sends the text fallback and cancels the stalled primary turn.
+- `CYBERBOSS_DEEPSEEK_DAILY_ROUTING_ENABLED`, `CYBERBOSS_DEEPSEEK_DAILY_MAX_CHARS`
+  Default `false`. When enabled, ordinary short Telegram text conversations use DeepSeek first, while messages that may need local tools, files, reminders, calendar access, Obsidian, Timeline, analysis, research, or code stay on Codex. Use `/codex` or `/deepseek` to force the next normal message to a specific model.
 - `CYBERBOSS_CODEX_MODEL_PROVIDER`
   Force Codex turns to use a specific provider, such as `ollama` for local models. Leave empty for the default cloud provider.
 - `CYBERBOSS_DAILY_THREAD_ROLLOVER`

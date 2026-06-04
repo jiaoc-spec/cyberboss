@@ -102,6 +102,28 @@ test("UsageStore records per-turn usage once", () => {
   assert.equal(summary.hasRecordedUsage, true);
   assert.equal(summary.today.totalTokens, 36088);
   assert.equal(summary.today.cachedInputTokens, 26496);
+  assert.equal(summary.byRuntime.codex.today.totalTokens, 36088);
+});
+
+test("UsageStore separates Codex and DeepSeek runtime totals", () => {
+  const store = createStore();
+  store.recordRuntimeContext({
+    runtimeId: "codex",
+    threadId: "thread-codex",
+    turnId: "turn-codex",
+    turnUsage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 },
+  });
+  store.recordRuntimeContext({
+    runtimeId: "deepseek",
+    threadId: "thread-deepseek",
+    turnId: "turn-deepseek",
+    turnUsage: { inputTokens: 20, outputTokens: 5, totalTokens: 25 },
+  });
+
+  const summary = store.summarize();
+  assert.equal(summary.today.totalTokens, 135);
+  assert.equal(summary.byRuntime.codex.today.totalTokens, 110);
+  assert.equal(summary.byRuntime.deepseek.today.totalTokens, 25);
 });
 
 test("itemized pricing does not double-charge cached input tokens", () => {

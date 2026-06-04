@@ -49,3 +49,45 @@ test("deepseek fallback is disabled without an API key", async () => {
   assert.equal(result.used, false);
   assert.equal(result.reason, "disabled");
 });
+
+test("deepseek daily mode includes recent conversation and local priority context", async () => {
+  const calls = [];
+  const service = new DeepSeekFallbackService({
+    config: {
+      deepseekFallbackEnabled: true,
+      deepseekApiKey: "secret-key",
+      userName: "Jane",
+    },
+    async fetchImpl(url, options) {
+      calls.push({ url, options });
+      return {
+        ok: true,
+        async json() {
+          return {
+            choices: [{ message: { content: "收到，英语已完成。" } }],
+            usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
+          };
+        },
+      };
+    },
+  });
+
+  await service.generate({
+    mode: "daily",
+    userText: "英语已经学完了",
+    history: [
+      { role: "user", content: "今天有点累" },
+      { role: "assistant", content: "收到。" },
+    ],
+    context: "Open priorities: Sport, Deutsch",
+  });
+
+  const body = JSON.parse(calls[0].options.body);
+  assert.match(body.messages[0].content, /ordinary daily conversation/);
+  assert.match(body.messages[0].content, /Open priorities: Sport, Deutsch/);
+  assert.deepEqual(body.messages.slice(1), [
+    { role: "user", content: "今天有点累" },
+    { role: "assistant", content: "收到。" },
+    { role: "user", content: "英语已经学完了" },
+  ]);
+});
