@@ -37,6 +37,15 @@ function readConfig() {
     systemMessageQueueFile: path.join(stateDir, "system-message-queue.json"),
     deferredSystemReplyQueueFile: path.join(stateDir, "deferred-system-replies.json"),
     checkinConfigFile: path.join(stateDir, "checkin-config.json"),
+    criticalHabitsEnabled: readOptionalBoolEnv("CYBERBOSS_CRITICAL_HABITS_ENABLED") !== false,
+    criticalHabitsStateFile: readTextEnv("CYBERBOSS_CRITICAL_HABITS_STATE_FILE") || path.join(stateDir, "critical-habits-state.json"),
+    criticalHabitsCheckIntervalMs: readIntEnv("CYBERBOSS_CRITICAL_HABITS_CHECK_INTERVAL_MS") || 300_000,
+    criticalHabitsLevelAHour: readIntEnv("CYBERBOSS_CRITICAL_HABITS_LEVEL_A_HOUR") ?? 20,
+    criticalHabitsLevelBHour: readIntEnv("CYBERBOSS_CRITICAL_HABITS_LEVEL_B_HOUR") ?? 18,
+    criticalHabitsLevelBWeekdays: readIntegerListEnv("CYBERBOSS_CRITICAL_HABITS_LEVEL_B_WEEKDAYS", [2, 4, 7]),
+    criticalHabitsLevelA: readHabitListEnv("CYBERBOSS_CRITICAL_HABITS_LEVEL_A"),
+    criticalHabitsLevelB: readHabitListEnv("CYBERBOSS_CRITICAL_HABITS_LEVEL_B"),
+    criticalHabitsLevelC: readHabitListEnv("CYBERBOSS_CRITICAL_HABITS_LEVEL_C"),
     timelineScreenshotQueueFile: path.join(stateDir, "timeline-screenshot-queue.json"),
     usageFile: path.join(stateDir, "usage.json"),
     usageTimeZone: readTextEnv("CYBERBOSS_USAGE_TIME_ZONE") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -131,6 +140,29 @@ function readListEnv(name) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function readIntegerListEnv(name, fallback = []) {
+  const values = readListEnv(name)
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isInteger(value));
+  return values.length ? values : fallback;
+}
+
+function readHabitListEnv(name) {
+  const value = readTextEnv(name);
+  if (!value) {
+    const defaults = require("../services/critical-habits-monitor");
+    if (name.endsWith("LEVEL_A")) return defaults.DEFAULT_LEVEL_A;
+    if (name.endsWith("LEVEL_B")) return defaults.DEFAULT_LEVEL_B;
+    return defaults.DEFAULT_LEVEL_C;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function readTextEnv(name) {

@@ -33,6 +33,7 @@ const { SystemMessageDispatcher } = require("./system-message-dispatcher");
 const { TimelineScreenshotQueueStore } = require("./timeline-screenshot-queue-store");
 const { TurnGateStore } = require("./turn-gate-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
+const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const {
   matchesCommandPrefix,
   canonicalizeCommandTokens,
@@ -83,6 +84,13 @@ class CyberbossApp {
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
     this.reminderQueue = new ReminderQueueStore({ filePath: config.reminderQueueFile });
+    this.criticalHabitsMonitor = new CriticalHabitsMonitor({
+      config,
+      timeline: this.projectServices.timeline,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      systemMessageQueue: this.systemMessageQueue,
+    });
     this.turnGateStore = new TurnGateStore();
     this.pendingInboundByScope = new Map();
     this.pendingImageInboundByScope = new Map();
@@ -178,6 +186,7 @@ class CyberbossApp {
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushCriticalHabitsMonitor(account),
           ]);
           const response = await this.channelAdapter.getUpdates({
             syncBuffer: this.channelAdapter.loadSyncBuffer(),
@@ -199,6 +208,7 @@ class CyberbossApp {
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushCriticalHabitsMonitor(account),
           ]);
         } catch (error) {
           if (shutdown.stopped) {
@@ -1030,6 +1040,14 @@ class CyberbossApp {
           dueAtMs: Date.now() + 5_000,
         });
       }
+    }
+  }
+
+  async flushCriticalHabitsMonitor(account) {
+    try {
+      await this.criticalHabitsMonitor.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] critical habits monitor failed: ${formatErrorMessage(error)}`);
     }
   }
 
