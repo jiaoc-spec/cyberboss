@@ -185,6 +185,91 @@ const PROJECT_TOOLS = [
     },
   },
   {
+    name: "cyberboss_priority_set",
+    description: "Set today's explicit priority-awareness commitments and their shared time boundary. Use this when the user says several things are important before sleep, leaving, work, or another deadline. A list is unordered unless the user explicitly specifies an order.",
+    shortHint: "Set an unordered priority set with a timezone-aware deadline.",
+    topics: ["priority", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      required: ["priorities", "deadlineAt"],
+      properties: {
+        date: { type: "string", description: "Optional local date in YYYY-MM-DD. Default today." },
+        deadlineAt: { type: "string", description: "Required timezone-aware ISO deadline, such as 2026-06-04T16:00:00+02:00." },
+        deadlineLabel: { type: "string", description: "Human boundary label, such as 补觉, 出门, or 上班." },
+        sourceText: { type: "string", description: "Optional original user wording for traceability." },
+        priorities: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["label"],
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+              level: { type: "string", description: "A, B, or C." },
+              meaning: { type: "string" },
+              keywords: { type: "array", items: { type: "string" } },
+              categoryPrefixes: { type: "array", items: { type: "string" } },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.priorityAwareness.set(args);
+      return {
+        text: `Priority awareness set for ${result.date}: ${result.priorities.map((item) => item.label).join(", ")}.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_priority_status",
+    description: "Read today's current priority-awareness state before replying about what is complete, still open, postponed, skipped, or cancelled.",
+    shortHint: "Read the current priority-awareness state.",
+    topics: ["priority", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional local date in YYYY-MM-DD. Default today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.priorityAwareness.status(args);
+      return {
+        text: `Priority awareness state for ${result.date}: ${result.priorities.length} priorities.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_priority_update",
+    description: "Update one priority-awareness commitment when the user completes, postpones, consciously skips, cancels, or reopens it.",
+    shortHint: "Update a priority status.",
+    topics: ["priority", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      required: ["status"],
+      properties: {
+        date: { type: "string", description: "Optional local date in YYYY-MM-DD. Default today." },
+        priorityId: { type: "string", description: "Priority id, such as sport, english, or german." },
+        label: { type: "string", description: "Priority label when id is unknown." },
+        status: { type: "string", description: "pending, unknown, completed, postponed, skipped, or cancelled." },
+        note: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.priorityAwareness.update(args);
+      return {
+        text: `Priority awareness updated for ${result.date}.`,
+        data: result,
+      };
+    },
+  },
+  {
     name: "cyberboss_reminder_create",
     description: "Create a reminder in Cyberboss.",
     shortHint: "Create a reminder with direct text plus delayMinutes or dueAt.",
@@ -531,6 +616,10 @@ const PROJECT_TOOLS = [
     async handler({ services, args }) {
       validateTimelineWriteArgs(args);
       const result = await services.timeline.write(args);
+      services.priorityAwareness?.observeEvents({
+        date: args.date,
+        events: args.events,
+      });
       return {
         text: "Timeline write completed.",
         data: result,

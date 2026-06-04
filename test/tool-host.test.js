@@ -16,6 +16,18 @@ function createHost() {
           return { id: "reminder-1", ...args };
         },
       },
+      priorityAwareness: {
+        set(args) {
+          return { date: args.date || "2026-04-21", priorities: args.priorities, ...args };
+        },
+        status(args) {
+          return { date: args.date || "2026-04-21", priorities: [] };
+        },
+        update(args) {
+          return { date: args.date || "2026-04-21", priorities: [], ...args };
+        },
+        observeEvents() {},
+      },
       system: {
         queueMessage(args) {
           return { id: "system-1", ...args };
@@ -230,6 +242,25 @@ test("tool host validates structured reminder input types", async () => {
       delayMinutes: "30",
     }, {});
   }, /input\.delayMinutes must be an integer/);
+});
+
+test("tool host exposes structured priority awareness tools", async () => {
+  const host = createHost();
+  const setResult = await host.invokeTool("cyberboss_priority_set", {
+    date: "2026-04-21",
+    deadlineAt: "2026-04-21T16:00:00+02:00",
+    deadlineLabel: "补觉",
+    priorities: [
+      { label: "Sport", level: "A" },
+      { label: "Deutsch", level: "A" },
+    ],
+  }, {});
+  const statusResult = await host.invokeTool("cyberboss_priority_status", {
+    date: "2026-04-21",
+  }, {});
+
+  assert.match(setResult.text, /Sport, Deutsch/);
+  assert.equal(statusResult.text, "Priority awareness state for 2026-04-21: 0 priorities.");
 });
 
 test("tool host exposes sticker tools with compact structured outputs", async () => {

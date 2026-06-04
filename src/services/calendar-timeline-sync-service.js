@@ -26,9 +26,9 @@ class CalendarTimelineSyncService {
     const events = [];
     let skipped = 0;
     for (const item of Array.isArray(readResult?.events) ? readResult.events : []) {
-      const event = calendarEventToTimelineEvent(item, timeZone);
-      if (event) {
-        events.push(event);
+      const itemEvents = calendarEventToTimelineEvents(item, timeZone);
+      if (itemEvents.length) {
+        events.push(...itemEvents);
       } else {
         skipped += 1;
       }
@@ -52,35 +52,76 @@ class CalendarTimelineSyncService {
   }
 }
 
-function calendarEventToTimelineEvent(item, timeZone) {
+function calendarEventToTimelineEvents(item, timeZone) {
   if (!item || item.isAllDay) {
-    return null;
+    return [];
   }
   const title = normalizeText(item.title);
   const calendarName = normalizeText(item.calendar);
   const startDate = parseDateOrNow(item.start);
   const endDate = parseDateOrNow(item.end);
   if (!title || !isUsableRange(startDate, endDate)) {
-    return null;
+    return [];
   }
   const classification = classifyCalendarEvent(`${title}\n${calendarName}\n${normalizeText(item.notes)}`);
-  const startAt = formatDateTimeWithOffset(startDate, timeZone);
-  const endAt = formatDateTimeWithOffset(endDate, timeZone);
-  const seed = `${normalizeText(item.id)}|${startAt}|${endAt}|${title}|${calendarName}`;
-  const event = {
-    id: `calendar-${crypto.createHash("sha1").update(seed).digest("hex").slice(0, 14)}`,
-    startAt,
-    endAt,
-    title: classification.title || title,
-    note: `Apple Calendar 同步：${title}${calendarName ? `（日历：${calendarName}）` : ""}`,
-    categoryId: classification.categoryId,
-    subcategoryId: classification.subcategoryId,
-    tags: Array.from(new Set([...(classification.tags || []), "apple-calendar"])),
-  };
-  if (classification.eventNodeId) {
-    event.eventNodeId = classification.eventNodeId;
+  const ranges = splitRangeByLocalDate(startDate, endDate, timeZone);
+  return ranges.map(({ start, end }, index) => {
+    const startAt = formatDateTimeWithOffset(start, timeZone);
+    const endAt = formatDateTimeWithOffset(end, timeZone);
+    const seed = `${normalizeText(item.id)}|${startAt}|${endAt}|${title}|${calendarName}|${index}`;
+    const event = {
+      id: `calendar-${crypto.createHash("sha1").update(seed).digest("hex").slice(0, 14)}`,
+      startAt,
+      endAt,
+      title: classification.title || title,
+      note: `Apple Calendar 同步：${title}${calendarName ? `（日历：${calendarName}）` : ""}${ranges.length > 1 ? "（跨午夜事件已按日期拆分）" : ""}`,
+      categoryId: classification.categoryId,
+      subcategoryId: classification.subcategoryId,
+      tags: Array.from(new Set([...(classification.tags || []), "apple-calendar"])),
+    };
+    if (classification.eventNodeId) {
+      event.eventNodeId = classification.eventNodeId;
+    }
+    return event;
+  });
+}
+
+function splitRangeByLocalDate(startDate, endDate, timeZone) {
+  const ranges = [];
+  let cursor = startDate;
+  while (formatDate(cursor, timeZone) !== formatDate(endDate, timeZone)) {
+    const currentDate = formatDate(cursor, timeZone);
+    const endOfDay = localDateTimeToDate(`${currentDate}T23:59:59`, timeZone);
+    if (!isUsableRange(cursor, endOfDay)) {
+      break;
+    }
+    ranges.push({ start: cursor, end: endOfDay });
+    const nextDate = new Date(endOfDay.getTime() + 1_000);
+    cursor = nextDate;
   }
-  return event;
+  if (isUsableRange(cursor, endDate)) {
+    ranges.push({ start: cursor, end: endDate });
+  }
+  return ranges;
+}
+
+function localDateTimeToDate(value, timeZone) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/);
+  const desiredUtcMs = Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6])
+  );
+  let candidateMs = desiredUtcMs;
+  for (let index = 0; index < 2; index += 1) {
+    const parts = dateParts(new Date(candidateMs), timeZone);
+    const representedUtcMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+    candidateMs += desiredUtcMs - representedUtcMs;
+  }
+  return new Date(candidateMs);
 }
 
 function classifyCalendarEvent(text) {
@@ -205,4 +246,4 @@ function pad(value) {
   return String(value).padStart(2, "0");
 }
 
-module.exports = { CalendarTimelineSyncService };
+module.exports = { CalendarTimelineSyncService, calendarEventToTimelineEvents };

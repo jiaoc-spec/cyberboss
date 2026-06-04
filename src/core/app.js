@@ -80,6 +80,10 @@ class CyberbossApp {
       pricing: config.usagePricing,
     });
     this.systemMessageQueue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
+    if (this.projectServices?.priorityAwareness) {
+      this.projectServices.priorityAwareness.systemMessageQueue = this.systemMessageQueue;
+      this.projectServices.priorityAwareness.sessionStore = this.runtimeAdapter.getSessionStore();
+    }
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
@@ -187,6 +191,7 @@ class CyberbossApp {
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
             this.flushCriticalHabitsMonitor(account),
+            this.flushPriorityAwarenessMonitor(account),
           ]);
           const response = await this.channelAdapter.getUpdates({
             syncBuffer: this.channelAdapter.loadSyncBuffer(),
@@ -209,6 +214,7 @@ class CyberbossApp {
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
             this.flushCriticalHabitsMonitor(account),
+            this.flushPriorityAwarenessMonitor(account),
           ]);
         } catch (error) {
           if (shutdown.stopped) {
@@ -402,8 +408,15 @@ class CyberbossApp {
       await this.dispatchChannelCommand(normalized, command);
       return;
     }
-    await this.autoCaptureIncomingDiary(normalized);
-    await this.autoCaptureIncomingTimeline(normalized);
+    if (typeof this.autoCaptureIncomingDiary === "function") {
+      await this.autoCaptureIncomingDiary(normalized);
+    }
+    if (typeof this.autoCaptureIncomingTimeline === "function") {
+      await this.autoCaptureIncomingTimeline(normalized);
+    }
+    if (typeof this.observeIncomingPriorityCompletion === "function") {
+      this.observeIncomingPriorityCompletion(normalized);
+    }
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
     await this.rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized });
@@ -509,6 +522,9 @@ class CyberbossApp {
         provider: normalized?.provider,
       });
       if (result.events?.length) {
+        this.projectServices.priorityAwareness?.observeEvents({
+          events: result.events,
+        });
         console.log(`[cyberboss] timeline auto-captured count=${result.events.length} sender=${normalized.senderId || ""}`);
       } else if (result.pending) {
         console.log(`[cyberboss] timeline auto-capture pending sender=${normalized.senderId || ""}`);
@@ -1072,6 +1088,28 @@ class CyberbossApp {
       await this.criticalHabitsMonitor.check(account);
     } catch (error) {
       console.error(`[cyberboss] critical habits monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushPriorityAwarenessMonitor(account) {
+    try {
+      await this.projectServices?.priorityAwareness?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] priority awareness monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  observeIncomingPriorityCompletion(normalized) {
+    try {
+      const result = this.projectServices?.priorityAwareness?.observeMessage({
+        text: normalized?.text,
+        receivedAt: normalized?.receivedAt,
+      });
+      if (result?.updated?.length) {
+        console.log(`[cyberboss] priority awareness completed=${result.updated.join(",")}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] priority awareness message observation failed: ${formatErrorMessage(error)}`);
     }
   }
 
