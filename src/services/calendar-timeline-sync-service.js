@@ -126,6 +126,18 @@ function localDateTimeToDate(value, timeZone) {
 
 function classifyCalendarEvent(text) {
   const normalized = normalizeText(text).toLowerCase();
+  if (/(nachtdienst|night\s*shift|夜班)/i.test(normalized)) {
+    return classification("夜班 / Nachtdienst", "work", "work.other", "", ["work", "shift", "night-shift"]);
+  }
+  if (/(frühdienst|fruehdienst|early\s*shift|早班)/i.test(normalized)) {
+    return classification("早班 / Frühdienst", "work", "work.other", "", ["work", "shift", "early-shift"]);
+  }
+  if (/(spätdienst|spaetdienst|late\s*shift|晚班)/i.test(normalized)) {
+    return classification("晚班 / Spätdienst", "work", "work.other", "", ["work", "shift", "late-shift"]);
+  }
+  if (/(^|\n|\s)(arbeit|dienst|shift|上班|班次)($|\n|\s)/i.test(normalized)) {
+    return classification("工作班次", "work", "work.other", "", ["work", "shift"]);
+  }
   if (/(刷手机|看手机|手机|短视频|小红书|抖音|instagram|tiktok|youtube shorts|reels|scroll)/i.test(normalized)) {
     return classification("刷手机 / 屏幕时间", "entertainment", "entertainment.social_media", "evt.phone_scroll", ["phone", "screen-time"]);
   }

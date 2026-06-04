@@ -19,4 +19,8 @@ test("calendar timeline sync splits overnight events by local date", () => {
   assert.match(events[1].startAt, /^2026-06-05T00:00:00\+02:00$/);
   assert.match(events[1].endAt, /^2026-06-05T07:00:00\+02:00$/);
   assert.match(events[0].note, /跨午夜事件已按日期拆分/);
+  assert.equal(events[0].title, "夜班 / Nachtdienst");
+  assert.equal(events[0].categoryId, "work");
+  assert.equal(events[0].subcategoryId, "work.other");
+  assert.ok(events[0].tags.includes("night-shift"));
 });

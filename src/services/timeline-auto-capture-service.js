@@ -330,7 +330,7 @@ function extractRangeContext(text, times, index) {
 }
 
 function looksLikeFuturePlan(text) {
-  return /(待会|等一下|一会儿|明天|后天|可能|希望|打算|计划|提醒我|remind me|will|maybe|tomorrow)/i.test(text);
+  return /(待会|等一下|一会儿|明天|后天|可能|希望|打算|计划|安排|预计|闹钟|提醒我|必须|到时候|睡觉前|睡前|remind me|will|maybe|tomorrow)/i.test(text);
 }
 
 function isUsableRange(startDate, endDate) {
