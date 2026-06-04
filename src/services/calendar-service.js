@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 class CalendarService {
@@ -11,8 +12,11 @@ class CalendarService {
     if (provider !== "apple") {
       throw new Error(`Unsupported calendar provider: ${provider}`);
     }
-    return await readAppleCalendar({
+    const options = {
       scriptFile: this.config.appleCalendarScriptFile,
+      cacheFile: this.config.appleCalendarCacheFile,
+      cacheMaxAgeMs: this.config.appleCalendarCacheMaxAgeMs,
+      preferCache: this.config.appleCalendarPreferCache !== false,
       start: normalizeText(args.start),
       end: normalizeText(args.end),
       days: normalizePositiveInteger(args.days),
@@ -20,7 +24,57 @@ class CalendarService {
       includeNotes: args.includeNotes === true,
       includeUrls: args.includeUrls === true,
       requestAccess: args.requestAccess === true,
-    });
+    };
+    if (options.preferCache && !options.requestAccess) {
+      const cached = readAppleCalendarCache(options);
+      if (cached) {
+        return cached;
+      }
+    }
+    return await readAppleCalendar(options);
+  }
+}
+
+function readAppleCalendarCache(options = {}) {
+  const cacheFile = normalizeText(options.cacheFile);
+  if (!cacheFile || !fs.existsSync(cacheFile)) {
+    return null;
+  }
+  try {
+    const stat = fs.statSync(cacheFile);
+    const maxAgeMs = normalizePositiveInteger(options.cacheMaxAgeMs) || 900_000;
+    if (Date.now() - stat.mtimeMs > maxAgeMs) {
+      return null;
+    }
+    const parsed = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    if (parsed?.authorization !== "granted" || !Array.isArray(parsed.events)) {
+      return null;
+    }
+    const range = resolveRequestedRange(options);
+    const wantedCalendars = new Set(options.calendars.map((name) => name.toLowerCase()));
+    const events = parsed.events
+      .filter((event) => isEventInRange(event, range.start, range.end))
+      .filter((event) => wantedCalendars.size === 0 || wantedCalendars.has(normalizeText(event.calendar).toLowerCase()))
+      .map((event) => ({
+        ...event,
+        notes: options.includeNotes ? event.notes ?? null : null,
+        url: options.includeUrls ? event.url ?? null : null,
+      }));
+    const calendars = wantedCalendars.size === 0
+      ? normalizeTextArray(parsed.calendars)
+      : normalizeTextArray(parsed.calendars).filter((name) => wantedCalendars.has(name.toLowerCase()));
+    return {
+      provider: "apple-calendar-cache",
+      authorization: "granted",
+      start: range.start.toISOString(),
+      end: range.end.toISOString(),
+      calendars,
+      events,
+      error: null,
+      generatedAt: parsed.generatedAt || null,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -55,6 +109,33 @@ async function readAppleCalendar(options = {}) {
     throw new Error(summarizeCalendarFailure(execution, parsed));
   }
   return parsed;
+}
+
+function resolveRequestedRange(options = {}) {
+  const start = parseDate(options.start) || startOfLocalDay(new Date());
+  const end = parseDate(options.end) || addDays(start, options.days || 7);
+  return { start, end };
+}
+
+function isEventInRange(event, start, end) {
+  const eventStart = parseDate(event?.start);
+  const eventEnd = parseDate(event?.end);
+  return Boolean(eventStart && eventEnd && eventStart < end && eventEnd > start);
+}
+
+function parseDate(value) {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function startOfLocalDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
 }
 
 function runCommand(command, args, { timeoutMs } = {}) {
