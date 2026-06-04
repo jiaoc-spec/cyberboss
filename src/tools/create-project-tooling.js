@@ -4,6 +4,7 @@ const { createTimelineIntegration } = require("../integrations/timeline");
 const { CalendarService } = require("../services/calendar-service");
 const { CalendarTimelineSyncService } = require("../services/calendar-timeline-sync-service");
 const { ChannelFileService } = require("../services/channel-file-service");
+const { DailyInboxService } = require("../services/daily-inbox-service");
 const { DiaryService } = require("../services/diary-service");
 const { HealthService } = require("../services/health-service");
 const { ReminderService } = require("../services/reminder-service");
@@ -26,12 +27,14 @@ function createProjectTooling(config, options = {}) {
     filePath: config.projectToolContextFile,
   });
   const channelFile = new ChannelFileService({ config, channelAdapter, sessionStore });
+  const dailyInbox = new DailyInboxService({ config });
   const diary = new DiaryService({ config });
   const timeline = new TimelineService({ config, channelAdapter, timelineIntegration, sessionStore });
   const calendar = new CalendarService({ config });
   const services = {
     calendar,
     calendarTimelineSync: new CalendarTimelineSyncService({ config, calendar, timeline }),
+    dailyInbox,
     diary,
     health: new HealthService({ config, diary }),
     reminder: new ReminderService({ config, channelAdapter, sessionStore }),

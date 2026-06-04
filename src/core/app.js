@@ -425,7 +425,7 @@ class CyberbossApp {
   }
 
   async autoCaptureIncomingDiary(normalized) {
-    if (!this.config.diaryAutoCapture || !this.projectServices?.diary) {
+    if (!this.config.diaryAutoCapture) {
       return;
     }
     const text = normalizeCommandArgument(normalized?.text);
@@ -434,13 +434,26 @@ class CyberbossApp {
     }
     try {
       const captureTime = resolveCaptureLocalDateTime(normalized?.receivedAt, this.config);
-      await this.projectServices.diary.append({
-        title: `${this.channelAdapter.describe().id} 自动记录`,
-        text: buildAutoDiaryCaptureText(normalized, this.config),
-        date: captureTime.date,
-        time: captureTime.time,
-      });
-      console.log(`[cyberboss] diary auto-captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
+      if (this.config.diaryAutoCaptureTarget === "inbox" && this.projectServices?.dailyInbox) {
+        await this.projectServices.dailyInbox.append({
+          text,
+          date: captureTime.date,
+          time: captureTime.time,
+          provider: normalized?.provider,
+          senderId: normalized?.senderId,
+        });
+        console.log(`[cyberboss] daily inbox captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
+        return;
+      }
+      if (this.projectServices?.diary) {
+        await this.projectServices.diary.append({
+          title: `${this.channelAdapter.describe().id} 自动记录`,
+          text: buildAutoDiaryCaptureText(normalized, this.config),
+          date: captureTime.date,
+          time: captureTime.time,
+        });
+        console.log(`[cyberboss] diary auto-captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
+      }
     } catch (error) {
       console.error(`[cyberboss] diary auto-capture failed: ${formatErrorMessage(error)}`);
     }

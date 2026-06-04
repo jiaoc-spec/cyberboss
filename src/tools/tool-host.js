@@ -101,8 +101,8 @@ const PROJECT_TOOLS = [
   },
   {
     name: "cyberboss_diary_append",
-    description: "Append a diary entry into the configured diary backend. Use this for conversational daily capture; when the Obsidian backend is enabled, entries go to the user's Obsidian Daily Note.",
-    shortHint: "Append a diary entry with direct text content.",
+    description: "Append a cleaned, durable diary entry into the configured diary backend. When the Obsidian backend is enabled, use this for Growth Log summaries, important corrections, and reviews rather than raw chat capture.",
+    shortHint: "Append a cleaned Growth Log or review entry.",
     topics: ["diary"],
     inputSchema: {
       type: "object",
@@ -119,6 +119,47 @@ const PROJECT_TOOLS = [
       const result = await services.diary.append(args);
       return {
         text: `Diary appended to ${result.filePath}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_daily_inbox_read",
+    description: "Read the local raw Telegram/CyberBoss Daily Inbox for a date before producing a Daily Review. Raw inbox content is evidence, not final Obsidian knowledge.",
+    shortHint: "Read a date's raw Daily Inbox before review.",
+    topics: ["diary", "review", "inbox"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Default today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.dailyInbox.read(args);
+      return {
+        text: result.exists ? `Daily Inbox loaded: ${result.filePath}` : `Daily Inbox missing: ${result.filePath}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_daily_inbox_archive",
+    description: "Archive a local raw Daily Inbox file after the Daily Review, Timeline, statistics, and durable Obsidian output have been completed successfully. This does not delete Telegram messages.",
+    shortHint: "Archive a reviewed Daily Inbox date.",
+    topics: ["diary", "review", "inbox"],
+    inputSchema: {
+      type: "object",
+      required: ["date"],
+      properties: {
+        date: { type: "string", description: "Date in YYYY-MM-DD to archive." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.dailyInbox.archive(args);
+      return {
+        text: result.archived ? `Daily Inbox archived: ${result.archivePath}` : `Daily Inbox not found: ${result.sourcePath}`,
         data: result,
       };
     },
