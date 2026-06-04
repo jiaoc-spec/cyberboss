@@ -16,6 +16,23 @@ class UsageStore {
       return null;
     }
 
+    const turnId = normalizeText(context.turnId);
+    const turnUsage = normalizeUsageTotals(context.turnUsage || {});
+    if (turnId && hasAnyUsage(turnUsage)) {
+      const eventKey = `${runtimeId}:${threadId}:${turnId}`;
+      if (this.state.recordedTurns?.[eventKey]) {
+        return null;
+      }
+      this.state.recordedTurns[eventKey] = new Date().toISOString();
+      const dayKey = localDateKey(new Date(), this.timeZone);
+      const day = this.state.days[dayKey] || createEmptyUsageBucket();
+      this.state.days[dayKey] = addUsageTotals(day, turnUsage);
+      this.state.lastTotals[`${runtimeId}:${threadId}`] = normalizeUsageTotals(context);
+      this.pruneRecordedTurns();
+      this.write();
+      return { date: dayKey, delta: turnUsage, totals: normalizeUsageTotals(context) };
+    }
+
     const totals = normalizeUsageTotals(context);
     if (!hasAnyUsage(totals)) {
       return null;
@@ -62,6 +79,7 @@ class UsageStore {
     return {
       timeZone: this.timeZone,
       pricing: this.pricing,
+      hasRecordedUsage: Object.keys(this.state.days).length > 0,
       today,
       week,
       month,
@@ -78,19 +96,29 @@ class UsageStore {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     fs.writeFileSync(this.filePath, JSON.stringify(this.state, null, 2) + "\n", "utf8");
   }
+
+  pruneRecordedTurns() {
+    const entries = Object.entries(this.state.recordedTurns || {});
+    if (entries.length <= 2000) {
+      return;
+    }
+    entries.sort((left, right) => Date.parse(right[1]) - Date.parse(left[1]));
+    this.state.recordedTurns = Object.fromEntries(entries.slice(0, 1000));
+  }
 }
 
 function readState(filePath) {
-  const empty = { version: 1, days: {}, lastTotals: {} };
+  const empty = { version: 2, days: {}, lastTotals: {}, recordedTurns: {} };
   if (!filePath) {
     return empty;
   }
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
     return {
-      version: 1,
+      version: 2,
       days: parsed?.days && typeof parsed.days === "object" ? parsed.days : {},
       lastTotals: parsed?.lastTotals && typeof parsed.lastTotals === "object" ? parsed.lastTotals : {},
+      recordedTurns: parsed?.recordedTurns && typeof parsed.recordedTurns === "object" ? parsed.recordedTurns : {},
     };
   } catch {
     return empty;
@@ -195,15 +223,17 @@ function startOfLocalWeekKey(date, timeZone) {
 
 function estimateCostUsd(usage = {}, pricing = {}) {
   const totals = normalizeUsageTotals(usage);
-  const inputCost = totals.inputTokens * pricing.inputUsdPer1M / 1_000_000;
-  const cachedCost = totals.cachedInputTokens * pricing.cachedInputUsdPer1M / 1_000_000;
-  const outputCost = totals.outputTokens * pricing.outputUsdPer1M / 1_000_000;
-  const reasoningCost = totals.reasoningTokens * pricing.reasoningUsdPer1M / 1_000_000;
+  const rates = normalizePricing(pricing);
+  const nonCachedInputTokens = Math.max(0, totals.inputTokens - totals.cachedInputTokens);
+  const inputCost = nonCachedInputTokens * rates.inputUsdPer1M / 1_000_000;
+  const cachedCost = totals.cachedInputTokens * rates.cachedInputUsdPer1M / 1_000_000;
+  const outputCost = totals.outputTokens * rates.outputUsdPer1M / 1_000_000;
+  const reasoningCost = totals.reasoningTokens * rates.reasoningUsdPer1M / 1_000_000;
   const itemized = inputCost + cachedCost + outputCost + reasoningCost;
   if (itemized > 0) {
     return itemized;
   }
-  return totals.totalTokens * pricing.blendedUsdPer1M / 1_000_000;
+  return totals.totalTokens * rates.blendedUsdPer1M / 1_000_000;
 }
 
 function normalizePricing(pricing = {}) {

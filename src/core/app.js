@@ -1896,16 +1896,26 @@ function formatContextUsage(currentTokens, contextWindow) {
 
 function formatUsageSummary(summary = {}) {
   const pricing = summary.pricing || {};
-  return [
+  const lines = [
     "💸 Usage",
     `timezone: ${summary.timeZone || "UTC"}`,
     "",
+  ];
+  if (!summary.hasRecordedUsage) {
+    lines.push(
+      "No token usage has been recorded yet.",
+      "This does not mean the model used 0 tokens.",
+      "",
+    );
+  }
+  lines.push(
     formatUsageLine("today", summary.today, summary.todayCostUsd),
     formatUsageLine("this week", summary.week, summary.weekCostUsd),
     formatUsageLine("this month", summary.month, summary.monthCostUsd),
     "",
     `estimate: ${formatPricingSummary(pricing)}`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 function buildAutoDiaryCaptureText(normalized = {}, config = {}) {

@@ -29,6 +29,13 @@ function mapCodexMessageToRuntimeEvent(message) {
     return null;
   }
 
+  if (method === "thread/tokenUsage/updated") {
+    return {
+      type: "runtime.context.updated",
+      payload: normalizeTokenUsagePayload(params),
+    };
+  }
+
   if (method === "turn/started" || method === "turn/start") {
     return {
       type: "runtime.turn.started",
@@ -112,6 +119,30 @@ function mapCodexMessageToRuntimeEvent(message) {
   }
 
   return null;
+}
+
+function normalizeTokenUsagePayload(params = {}) {
+  const usage = params?.tokenUsage || {};
+  const total = usage?.total || {};
+  const last = usage?.last || {};
+  return {
+    runtimeId: "codex",
+    threadId: normalizeString(params?.threadId),
+    turnId: normalizeString(params?.turnId),
+    inputTokens: numberOrZero(total.inputTokens),
+    cachedInputTokens: numberOrZero(total.cachedInputTokens),
+    outputTokens: numberOrZero(total.outputTokens),
+    reasoningTokens: numberOrZero(total.reasoningOutputTokens),
+    currentTokens: numberOrZero(total.totalTokens),
+    contextWindow: numberOrZero(usage?.modelContextWindow),
+    turnUsage: {
+      inputTokens: numberOrZero(last.inputTokens),
+      cachedInputTokens: numberOrZero(last.cachedInputTokens),
+      outputTokens: numberOrZero(last.outputTokens),
+      reasoningTokens: numberOrZero(last.reasoningOutputTokens),
+      totalTokens: numberOrZero(last.totalTokens),
+    },
+  };
 }
 
 function normalizeContextPayload(message) {
