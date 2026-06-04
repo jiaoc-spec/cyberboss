@@ -166,6 +166,9 @@ class CyberbossApp {
     console.log(`[cyberboss] syncBuffer=${syncBuffer ? "ready" : "empty"}`);
     console.log(`[cyberboss] runtimeEndpoint=${runtimeState.endpoint || runtimeState.command || "(spawn)"}`);
     console.log(`[cyberboss] runtimeModels=${runtimeState.models?.length || 0}`);
+    console.log(
+      `[cyberboss] deepseekFallback=${this.deepseekFallback.isEnabled() ? "enabled" : "disabled"} model=${this.config.deepseekModel || ""}`
+    );
     if (this.config.startWithLocationServer) {
       await this.ensureLocationServerStarted();
     }
