@@ -158,6 +158,20 @@ function normalizeContextPayload(message) {
     reasoningTokens: numberOrZero(total.reasoning_output_tokens),
     currentTokens: numberOrZero(total.total_tokens),
     contextWindow: numberOrZero(info?.model_context_window),
+    rateLimits: normalizeRateLimits(payload?.rate_limits),
+  };
+}
+
+function normalizeRateLimits(value = {}) {
+  const primary = value?.primary || {};
+  const secondary = value?.secondary || {};
+  return {
+    limitId: normalizeString(value?.limit_id),
+    reachedType: normalizeString(value?.rate_limit_reached_type),
+    primaryUsedPercent: numberOrZero(primary?.used_percent),
+    primaryResetsAt: numberOrZero(primary?.resets_at),
+    secondaryUsedPercent: numberOrZero(secondary?.used_percent),
+    secondaryResetsAt: numberOrZero(secondary?.resets_at),
   };
 }
 

@@ -49,6 +49,37 @@ test("Codex thread token usage notifications map to runtime context events", () 
   assert.equal(event.payload.turnUsage.cachedInputTokens, 26496);
 });
 
+test("Codex token count events preserve rate limit saturation details", () => {
+  const event = mapCodexMessageToRuntimeEvent({
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      thread_id: "thread-1",
+      info: {
+        total_token_usage: {
+          total_tokens: 100,
+        },
+        model_context_window: 258400,
+      },
+      rate_limits: {
+        limit_id: "codex",
+        primary: {
+          used_percent: 100,
+          resets_at: 1780571030,
+        },
+        secondary: {
+          used_percent: 16,
+          resets_at: 1781138659,
+        },
+      },
+    },
+  });
+
+  assert.equal(event.payload.rateLimits.limitId, "codex");
+  assert.equal(event.payload.rateLimits.primaryUsedPercent, 100);
+  assert.equal(event.payload.rateLimits.secondaryUsedPercent, 16);
+});
+
 test("UsageStore records per-turn usage once", () => {
   const store = createStore();
   const context = {

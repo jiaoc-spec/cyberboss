@@ -1,6 +1,7 @@
 const { sanitizeProtocolLeakText } = require("../adapters/runtime/codex/protocol-leak-monitor");
 
 const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
+const EMPTY_MODEL_REPLY_FALLBACK = "你的消息已经收到并记录了，但当前模型没有生成回复。你可以继续发消息，我仍然会保存你的记录。";
 
 class StreamDelivery {
   constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs }) {
@@ -139,6 +140,7 @@ class StreamDelivery {
         const state = this.ensureRunState(threadId, turnId);
         state.turnId = turnId || state.turnId;
         this.captureTurnCompletionText(state, event.payload.text);
+        await this.sendEmptyReplyFallbackIfNeeded(state);
         await this.flush(state, { force: true });
         this.disposeRunState(state.runKey);
         return;
@@ -219,6 +221,20 @@ class StreamDelivery {
       text: normalized,
       completed: true,
     });
+  }
+
+  async sendEmptyReplyFallbackIfNeeded(state) {
+    if (!state.replyTarget || state.replyTarget.provider === "system" || state.itemOrder.length > 0) {
+      return;
+    }
+    console.warn(
+      `[cyberboss] empty model reply fallback thread=${state.threadId} turn=${state.turnId} provider=${state.replyTarget.provider || ""}`
+    );
+    await this.sendTextWithRetry(state, {
+      userId: state.replyTarget.userId,
+      text: EMPTY_MODEL_REPLY_FALLBACK,
+      contextToken: state.replyTarget.contextToken,
+    }, { kind: "plain_reply" });
   }
 
   upsertItem(state, { itemId, text, completed }) {

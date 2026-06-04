@@ -1630,6 +1630,12 @@ class CyberbossApp {
   async handleRuntimeEvent(event) {
     if (event?.type === "runtime.context.updated") {
       this.usageStore.recordRuntimeContext(event.payload);
+      const primaryUsedPercent = Number(event?.payload?.rateLimits?.primaryUsedPercent || 0);
+      if (primaryUsedPercent >= 100) {
+        console.warn(
+          `[cyberboss] runtime rate limit saturated runtime=${event?.payload?.runtimeId || ""} thread=${event?.payload?.threadId || ""} primaryUsedPercent=${primaryUsedPercent}`
+        );
+      }
     }
     const failureReplyTarget = event?.type === "runtime.turn.failed"
       ? this.streamDelivery.resolveReplyTargetForRun({
@@ -1642,6 +1648,11 @@ class CyberbossApp {
       return;
     }
     if (event.type === "runtime.turn.completed" || event.type === "runtime.turn.failed") {
+      if (event.type === "runtime.turn.failed") {
+        console.error(
+          `[cyberboss] runtime turn failed thread=${event?.payload?.threadId || ""} turn=${event?.payload?.turnId || ""} error=${event?.payload?.text || "unknown"}`
+        );
+      }
       const completedRunKey = buildRunKey(event.payload.threadId, event.payload.turnId);
       const pendingOperations = this.pendingOperationByRunKey;
       const pendingOperation = pendingOperations?.get?.(completedRunKey) || null;
