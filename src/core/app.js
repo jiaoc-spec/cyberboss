@@ -1935,6 +1935,12 @@ class CyberbossApp {
       if (!result.used || !result.text) {
         return false;
       }
+      this.usageStore.recordRuntimeContext({
+        runtimeId: "deepseek",
+        threadId: `fallback:${target.userId}`,
+        turnId: crypto.randomUUID(),
+        turnUsage: result.usage,
+      });
       if (provider === "system") {
         const action = parseFallbackSystemAction(result.text);
         if (action.action === "silent") {
