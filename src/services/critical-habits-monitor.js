@@ -5,9 +5,9 @@ const path = require("path");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 
 const DEFAULT_LEVEL_A = [
-  habit("sport", "Sport", ["sport", "运动", "workout", "training", "健身", "跑步", "瑜伽", "拉伸", "锻炼"], ["exercise.workout", "exercise.sport"]),
-  habit("english", "Englisch", ["englisch", "english", "英语"], []),
-  habit("german", "Deutsch", ["deutsch", "german", "德语"], []),
+  habit("sport", "Sport", ["sport", "运动", "workout", "training", "健身", "跑步", "瑜伽", "拉伸", "锻炼"], ["exercise.workout", "exercise.sport"], "未来的健康、能量、身体自主性和独立生活能力"),
+  habit("english", "Englisch", ["englisch", "english", "英语"], [], "未来学习、国际文献阅读和更广阔的知识世界"),
+  habit("german", "Deutsch", ["deutsch", "german", "德语"], [], "专业沟通、教学、护理文书、职业发展和未来学术工作"),
 ];
 
 const DEFAULT_LEVEL_B = [
@@ -120,7 +120,7 @@ class CriticalHabitsMonitor {
 
   enqueueHabitMessage({ account, target, level, item, key, now }) {
     const text = level === "A"
-      ? `Critical Habits Monitor: 今天还没有记录 ${item.label}。请温和提醒 ${this.config.userName}，重点是防止遗忘，不要责备。明确给出三个选择：现在做一个最小版本、延期、或今天放弃。`
+      ? `Critical Habits Monitor: 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以 Long-Term Values Guardian 的方式温和提醒：先连接意义和她正在成为的自己，再提供一个很小的版本。不要责备或施压。明确给出三个选择：现在做一个最小版本、延期、或今天放弃。`
       : `Critical Habits Monitor: 过去 7 天还没有记录 ${item.label} 的进展。请温和提醒 ${this.config.userName}，重点是防止长期目标被遗忘，不要责备。可以建议一个很小的下一步，也允许延期或放弃本周。`;
     const message = this.systemMessageQueue.enqueue({
       id: `critical-habit:${key}:${crypto.randomUUID()}`,
@@ -149,8 +149,8 @@ class CriticalHabitsMonitor {
   }
 }
 
-function habit(id, label, keywords, categoryPrefixes) {
-  return { id, label, keywords, categoryPrefixes };
+function habit(id, label, keywords, categoryPrefixes, meaning = "") {
+  return { id, label, keywords, categoryPrefixes, meaning };
 }
 
 function matchesHabit(event, item) {
