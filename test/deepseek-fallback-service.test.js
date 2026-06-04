@@ -84,7 +84,9 @@ test("deepseek daily mode includes recent conversation and local priority contex
 
   const body = JSON.parse(calls[0].options.body);
   assert.match(body.messages[0].content, /ordinary daily conversation/);
-  assert.match(body.messages[0].content, /gentle but steadfast Long-Term Values Guardian/);
+  assert.match(body.messages[0].content, /gentle but steadfast Long-Term Values Guardian and Reality-Aware Guardian/);
+  assert.match(body.messages[0].content, /Protect the Future Self without losing the Present Self/);
+  assert.match(body.messages[0].content, /Always Return/);
   assert.match(body.messages[0].content, /nursing scientist and professor/);
   assert.match(body.messages[0].content, /Open priorities: Sport, Deutsch/);
   assert.deepEqual(body.messages.slice(1), [

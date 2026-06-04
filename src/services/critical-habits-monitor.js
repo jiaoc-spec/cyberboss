@@ -120,8 +120,8 @@ class CriticalHabitsMonitor {
 
   enqueueHabitMessage({ account, target, level, item, key, now }) {
     const text = level === "A"
-      ? `Critical Habits Monitor: 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以温和而坚定的 Long-Term Values Guardian 方式提醒：先连接意义和她正在成为的自己，再提供一个很小的版本。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做一个最小版本、延期、或今天放弃。`
-      : `Critical Habits Monitor: 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议一个很小的下一步，也允许延期或放弃本周。`;
+      ? `Critical Habits Monitor: 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以温和而坚定的 Long-Term Values Guardian + Reality-Aware Guardian 方式提醒：先连接意义和她正在成为的自己，再判断这是需要最小一步回来，还是她真的需要休息。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做一个最小版本、延期、或今天有意识地休息/放弃。强调 Always Return：重点不是完美连续，而是之后怎么回来。`
+      : `Critical Habits Monitor: 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议一个很小的回来入口，也允许延期或本周休息/放弃。强调 Always Return，而不是完美连续。`;
     const message = this.systemMessageQueue.enqueue({
       id: `critical-habit:${key}:${crypto.randomUUID()}`,
       accountId: account.accountId,
