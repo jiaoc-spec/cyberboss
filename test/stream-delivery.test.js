@@ -8,7 +8,7 @@ const DEFERRED_PLAIN_REPLY_HEADER = "===== 上轮对话遗留内容 =====";
 const DEFERRED_SYSTEM_REPLY_HEADER = "===== 期间模型主动联系 =====";
 const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
 
-function createHarness({ sendText, getKnownContextTokens, runtimeId = "" } = {}) {
+function createHarness({ sendText, getKnownContextTokens, runtimeId = "", onEmptyReply } = {}) {
   const sent = [];
   const channelAdapter = {
     async sendText(payload) {
@@ -33,7 +33,7 @@ function createHarness({ sendText, getKnownContextTokens, runtimeId = "" } = {})
     },
   };
 
-  const streamDelivery = new StreamDelivery({ channelAdapter, sessionStore, runtimeId });
+  const streamDelivery = new StreamDelivery({ channelAdapter, sessionStore, runtimeId, onEmptyReply });
   return { sent, streamDelivery, bindingByThreadId };
 }
 
@@ -103,6 +103,33 @@ test("empty normal model replies receive a local fallback", async () => {
     text: "你的消息已经收到并记录了，但当前模型没有生成回复。你可以继续发消息，我仍然会保存你的记录。",
     contextToken: "ctx-empty",
   }]);
+});
+
+test("empty normal model replies skip the local fallback when an external fallback handles them", async () => {
+  const handled = [];
+  const { sent, streamDelivery } = createHarness({
+    async onEmptyReply(payload) {
+      handled.push(payload);
+      return true;
+    },
+  });
+  streamDelivery.queueReplyTargetForThread("thread-deepseek", {
+    userId: "user-deepseek",
+    contextToken: "ctx-deepseek",
+    provider: "telegram",
+  });
+
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.started",
+    payload: { threadId: "thread-deepseek", turnId: "turn-deepseek" },
+  });
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.completed",
+    payload: { threadId: "thread-deepseek", turnId: "turn-deepseek" },
+  });
+
+  assert.equal(handled.length, 1);
+  assert.deepEqual(sent, []);
 });
 
 test("empty system model replies remain silent", async () => {

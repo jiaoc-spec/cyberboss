@@ -4,12 +4,13 @@ const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
 const EMPTY_MODEL_REPLY_FALLBACK = "你的消息已经收到并记录了，但当前模型没有生成回复。你可以继续发消息，我仍然会保存你的记录。";
 
 class StreamDelivery {
-  constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs }) {
+  constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, onEmptyReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs }) {
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.runtimeId = normalizeRuntimeId(runtimeId);
     this.systemReplyPolicy = createSystemReplyPolicy(this.runtimeId);
     this.onDeferredSystemReply = typeof onDeferredSystemReply === "function" ? onDeferredSystemReply : null;
+    this.onEmptyReply = typeof onEmptyReply === "function" ? onEmptyReply : null;
     this.systemReplyRetryScheduleMs = Array.isArray(systemReplyRetryScheduleMs) && systemReplyRetryScheduleMs.length
       ? systemReplyRetryScheduleMs.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0)
       : [1_500, 2_500, 4_000, 6_000];
@@ -224,7 +225,20 @@ class StreamDelivery {
   }
 
   async sendEmptyReplyFallbackIfNeeded(state) {
-    if (!state.replyTarget || state.replyTarget.provider === "system" || state.itemOrder.length > 0) {
+    if (!state.replyTarget || state.itemOrder.length > 0) {
+      return;
+    }
+    if (this.onEmptyReply) {
+      const handled = await this.onEmptyReply({
+        threadId: state.threadId,
+        turnId: state.turnId,
+        replyTarget: normalizeReplyTarget(state.replyTarget),
+      }).catch(() => false);
+      if (handled) {
+        return;
+      }
+    }
+    if (state.replyTarget.provider === "system") {
       return;
     }
     console.warn(

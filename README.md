@@ -152,6 +152,13 @@ CYBERBOSS_CODEX_ENDPOINT=ws://127.0.0.1:8765
 CYBERBOSS_CODEX_COMMAND=
 CYBERBOSS_CODEX_MODEL=
 CYBERBOSS_CODEX_MODEL_PROVIDER=
+DEEPSEEK_API_KEY=
+CYBERBOSS_DEEPSEEK_FALLBACK_ENABLED=false
+CYBERBOSS_DEEPSEEK_MODEL=deepseek-v4-flash
+CYBERBOSS_DEEPSEEK_API_BASE_URL=https://api.deepseek.com
+CYBERBOSS_DEEPSEEK_TIMEOUT_MS=30000
+CYBERBOSS_DEEPSEEK_MAX_OUTPUT_TOKENS=1200
+CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS=90000
 CYBERBOSS_DAILY_THREAD_ROLLOVER=false
 CYBERBOSS_PRIORITY_AWARENESS_ENABLED=true
 CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS=300000
@@ -230,6 +237,10 @@ What these do:
   Override the Codex launcher when `codex` is not directly on your `PATH`.
 - `CYBERBOSS_CODEX_MODEL`
   Force Codex turns to use a specific model. Leave empty to use Codex's default model selection.
+- `CYBERBOSS_DEEPSEEK_FALLBACK_ENABLED`
+  Default `false`. When enabled with `DEEPSEEK_API_KEY`, Cyberboss uses DeepSeek as an independent text fallback when the primary runtime fails synchronously or completes a normal user turn without a usable reply. DeepSeek does not execute local Cyberboss tools, so tool-heavy requests may still need to be retried when the primary runtime is available.
+- `CYBERBOSS_DEEPSEEK_MODEL`, `CYBERBOSS_DEEPSEEK_API_BASE_URL`, `CYBERBOSS_DEEPSEEK_TIMEOUT_MS`, `CYBERBOSS_DEEPSEEK_MAX_OUTPUT_TOKENS`, `CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS`
+  Configure the DeepSeek fallback model and request limits. The recommended model is `deepseek-v4-flash`. When Codex has not begun producing a reply before `CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS`, Cyberboss sends the text fallback and cancels the stalled primary turn.
 - `CYBERBOSS_CODEX_MODEL_PROVIDER`
   Force Codex turns to use a specific provider, such as `ollama` for local models. Leave empty for the default cloud provider.
 - `CYBERBOSS_DAILY_THREAD_ROLLOVER`

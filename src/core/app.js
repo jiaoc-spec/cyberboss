@@ -34,6 +34,7 @@ const { TimelineScreenshotQueueStore } = require("./timeline-screenshot-queue-st
 const { TurnGateStore } = require("./turn-gate-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
+const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
 const {
   matchesCommandPrefix,
   canonicalizeCommandTokens,
@@ -96,6 +97,8 @@ class CyberbossApp {
       systemMessageQueue: this.systemMessageQueue,
     });
     this.turnGateStore = new TurnGateStore();
+    this.deepseekFallback = new DeepSeekFallbackService({ config });
+    this.fallbackContextByRunKey = new Map();
     this.pendingInboundByScope = new Map();
     this.pendingImageInboundByScope = new Map();
     this.turnBoundaryScopeKeys = new Set();
@@ -105,6 +108,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       runtimeId: this.runtimeAdapter.describe().id,
       onDeferredSystemReply: (payload) => this.deferSystemReply(payload),
+      onEmptyReply: (payload) => this.handleEmptyModelReply(payload),
     });
     this.pendingOperationByRunKey = new Map();
     this.runtimeEventChain = Promise.resolve();
@@ -549,6 +553,7 @@ class CyberbossApp {
 
   async dispatchPreparedTurn({ bindingKey, workspaceRoot, prepared }) {
     const pendingScopeKey = this.turnGateStore.begin(bindingKey, workspaceRoot);
+    let runtimeTurn = null;
     await this.channelAdapter.sendTyping({
       userId: prepared.senderId,
       status: 1,
@@ -557,7 +562,7 @@ class CyberbossApp {
 
     try {
       const model = this.runtimeAdapter.getSessionStore().getRuntimeParamsForWorkspace(bindingKey, workspaceRoot).model;
-      const runtimeTurn = await this.buildRuntimeTurn({ prepared, model });
+      runtimeTurn = await this.buildRuntimeTurn({ prepared, model });
       const sendTurn = typeof this.runtimeAdapter.sendTurn === "function"
         ? this.runtimeAdapter.sendTurn.bind(this.runtimeAdapter)
         : this.runtimeAdapter.sendTextTurn.bind(this.runtimeAdapter);
@@ -596,15 +601,34 @@ class CyberbossApp {
       } else {
         this.streamDelivery.queueReplyTargetForThread(turn.threadId, replyTarget);
       }
+      this.rememberFallbackContext({
+        threadId: turn.threadId,
+        turnId: turn.turnId,
+        text: prepared.text,
+        provider: prepared.provider,
+        replyTarget,
+      });
       return true;
     } catch (error) {
       this.turnGateStore.releaseScope(bindingKey, workspaceRoot);
       const messageText = error instanceof Error ? error.message : String(error || "unknown error");
-      await this.channelAdapter.sendText({
-        userId: prepared.senderId,
-        text: `❌ Request failed\n${messageText}`,
-        contextToken: prepared.contextToken,
-      }).catch(() => {});
+      const fallbackSent = await this.sendDeepSeekFallback({
+        text: prepared.text || runtimeTurn?.text,
+        reason: messageText,
+        provider: prepared.provider,
+        replyTarget: {
+          userId: prepared.senderId,
+          contextToken: prepared.contextToken,
+          provider: prepared.provider,
+        },
+      });
+      if (!fallbackSent) {
+        await this.channelAdapter.sendText({
+          userId: prepared.senderId,
+          text: `❌ Request failed\n${messageText}`,
+          contextToken: prepared.contextToken,
+        }).catch(() => {});
+      }
       return false;
     }
   }
@@ -1681,7 +1705,18 @@ class CyberbossApp {
           turnId: event?.payload?.turnId,
         })
       : null;
-    await this.streamDelivery.handleRuntimeEvent(event);
+    const fallbackContext = event?.type === "runtime.turn.failed"
+      ? this.getFallbackContext(event?.payload?.threadId, event?.payload?.turnId)
+      : null;
+    const activeFallbackContext = this.getFallbackContext(event?.payload?.threadId, event?.payload?.turnId);
+    if (event?.type === "runtime.reply.delta" || event?.type === "runtime.reply.completed") {
+      this.markFallbackResponseStarted(activeFallbackContext);
+    }
+    const suppressLateReply = activeFallbackContext?.fallbackSent
+      && (event?.type === "runtime.reply.delta" || event?.type === "runtime.reply.completed");
+    if (!suppressLateReply) {
+      await this.streamDelivery.handleRuntimeEvent(event);
+    }
     if (!event) {
       return;
     }
@@ -1709,11 +1744,18 @@ class CyberbossApp {
       try {
         this.turnGateStore.releaseThread(event.payload.threadId);
         if (event.type === "runtime.turn.failed") {
-          await this.sendFailureToThread(
-            event.payload.threadId,
-            event.payload.text || "❌ Execution failed",
-            failureReplyTarget,
-          );
+          const fallbackSent = await this.sendDeepSeekFallback({
+            ...fallbackContext,
+            reason: event.payload.text || "Runtime turn failed",
+            replyTarget: failureReplyTarget || fallbackContext?.replyTarget,
+          });
+          if (!fallbackSent) {
+            await this.sendFailureToThread(
+              event.payload.threadId,
+              event.payload.text || "❌ Execution failed",
+              failureReplyTarget,
+            );
+          }
         }
         if (linked?.bindingKey && linked?.workspaceRoot) {
           await this.flushPendingInboundMessages({
@@ -1742,6 +1784,7 @@ class CyberbossApp {
           await this.stopTypingForThread(event.payload.threadId);
         }
       } finally {
+        this.forgetFallbackContext(event.payload.threadId, event.payload.turnId);
         if (scopeKey) {
           this.turnBoundaryScopeKeys.delete(scopeKey);
         }
@@ -1818,6 +1861,135 @@ class CyberbossApp {
       userId: target.userId,
       text: normalizeText(text) || "❌ Execution failed",
       contextToken: target.contextToken,
+    }).catch(() => {});
+  }
+
+  rememberFallbackContext({ threadId = "", turnId = "", text = "", provider = "", replyTarget = null } = {}) {
+    const runKey = buildRunKey(threadId, turnId);
+    if (!threadId || !runKey) {
+      return;
+    }
+    const context = {
+      threadId,
+      turnId,
+      text: normalizeText(text),
+      provider: normalizeText(provider),
+      replyTarget: normalizeReplyTarget(replyTarget),
+      fallbackSent: false,
+      responseStarted: false,
+      timer: null,
+    };
+    const fallbackAfterMs = Number(this.config.deepseekFallbackAfterMs) || 0;
+    if (fallbackAfterMs > 0 && this.deepseekFallback?.isEnabled()) {
+      context.timer = setTimeout(() => {
+        void this.handleFallbackTimeout(context);
+      }, fallbackAfterMs);
+      context.timer.unref?.();
+    }
+    this.fallbackContextByRunKey.set(runKey, context);
+  }
+
+  getFallbackContext(threadId = "", turnId = "") {
+    return this.fallbackContextByRunKey.get(buildRunKey(threadId, turnId)) || null;
+  }
+
+  forgetFallbackContext(threadId = "", turnId = "") {
+    const runKey = buildRunKey(threadId, turnId);
+    const context = this.fallbackContextByRunKey.get(runKey);
+    if (context?.timer) {
+      clearTimeout(context.timer);
+    }
+    this.fallbackContextByRunKey.delete(runKey);
+  }
+
+  async handleEmptyModelReply({ threadId = "", turnId = "", replyTarget = null } = {}) {
+    const context = this.getFallbackContext(threadId, turnId);
+    if (context?.fallbackSent) {
+      return true;
+    }
+    return this.sendDeepSeekFallback({
+      ...context,
+      reason: "Codex completed without a usable reply",
+      replyTarget: replyTarget || context?.replyTarget,
+    });
+  }
+
+  async sendDeepSeekFallback({ text = "", reason = "", provider = "", replyTarget = null, fallbackSent = false } = {}) {
+    if (fallbackSent) {
+      return true;
+    }
+    const target = normalizeReplyTarget(replyTarget);
+    if (!target || !this.deepseekFallback?.isEnabled()) {
+      return false;
+    }
+    try {
+      const result = await this.deepseekFallback.generate({
+        userText: text,
+        reason,
+        provider,
+        systemMessage: provider === "system",
+      });
+      if (!result.used || !result.text) {
+        return false;
+      }
+      if (provider === "system") {
+        const action = parseFallbackSystemAction(result.text);
+        if (action.action === "silent") {
+          console.log(`[cyberboss] deepseek fallback silent model=${result.model || ""}`);
+          return true;
+        }
+        if (action.action !== "send_message" || !action.message) {
+          return false;
+        }
+        await this.channelAdapter.sendText({
+          userId: target.userId,
+          text: action.message,
+          contextToken: target.contextToken,
+        });
+      } else {
+        await this.channelAdapter.sendText({
+          userId: target.userId,
+          text: result.text,
+          contextToken: target.contextToken,
+        });
+      }
+      console.warn(
+        `[cyberboss] deepseek fallback sent model=${result.model || ""} reason=${normalizeText(reason).slice(0, 120)}`
+      );
+      return true;
+    } catch (error) {
+      console.error(`[cyberboss] deepseek fallback failed: ${formatErrorMessage(error)}`);
+      return false;
+    }
+  }
+
+  markFallbackResponseStarted(context) {
+    if (!context) {
+      return;
+    }
+    context.responseStarted = true;
+    if (context.timer) {
+      clearTimeout(context.timer);
+      context.timer = null;
+    }
+  }
+
+  async handleFallbackTimeout(context) {
+    if (!context || context.responseStarted || context.fallbackSent) {
+      return;
+    }
+    const sent = await this.sendDeepSeekFallback({
+      ...context,
+      reason: "Codex did not begin a reply before the fallback timeout",
+    });
+    if (!sent) {
+      return;
+    }
+    context.fallbackSent = true;
+    console.warn(`[cyberboss] deepseek fallback timeout thread=${context.threadId} turn=${context.turnId}`);
+    await this.runtimeAdapter.cancelTurn({
+      threadId: context.threadId,
+      turnId: context.turnId,
     }).catch(() => {});
   }
 
@@ -2671,4 +2843,17 @@ function stringifyRpcId(value) {
 
 function hasRpcId(value) {
   return stringifyRpcId(value) !== "";
+}
+
+function parseFallbackSystemAction(text) {
+  const normalized = normalizeText(text).replace(/^```json\s*/i, "").replace(/\s*```$/i, "");
+  try {
+    const parsed = JSON.parse(normalized);
+    return {
+      action: normalizeText(parsed?.action),
+      message: normalizeText(parsed?.message),
+    };
+  } catch {
+    return { action: "", message: "" };
+  }
 }
