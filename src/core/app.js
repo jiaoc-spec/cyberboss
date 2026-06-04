@@ -406,6 +406,7 @@ class CyberbossApp {
     await this.autoCaptureIncomingTimeline(normalized);
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
+    await this.rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized });
     const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
     if (!prepared) {
       return;
@@ -432,6 +433,29 @@ class CyberbossApp {
     }
 
     await this.routePreparedInbound({ bindingKey, workspaceRoot, prepared });
+  }
+
+  async rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized }) {
+    if (!this.config.dailyThreadRollover || normalized?.provider === "system") {
+      return false;
+    }
+    const sessionStore = this.runtimeAdapter.getSessionStore();
+    const localDate = resolveCaptureLocalDateTime(normalized?.receivedAt, this.config).date;
+    const previousDate = sessionStore.getThreadActivityDateForWorkspace(bindingKey, workspaceRoot);
+    const threadId = sessionStore.getThreadIdForWorkspace(bindingKey, workspaceRoot);
+
+    if (previousDate && previousDate !== localDate && threadId) {
+      if (typeof this.runtimeAdapter.startFreshThreadDraft === "function") {
+        await this.runtimeAdapter.startFreshThreadDraft({ bindingKey, workspaceRoot });
+      }
+      sessionStore.clearThreadIdForWorkspace(bindingKey, workspaceRoot);
+      console.log(
+        `[cyberboss] daily thread rollover workspace=${workspaceRoot} previousDate=${previousDate} localDate=${localDate}`
+      );
+    }
+
+    sessionStore.setThreadActivityDateForWorkspace(bindingKey, workspaceRoot, localDate);
+    return Boolean(previousDate && previousDate !== localDate && threadId);
   }
 
   async autoCaptureIncomingDiary(normalized) {

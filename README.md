@@ -152,6 +152,7 @@ CYBERBOSS_CODEX_ENDPOINT=ws://127.0.0.1:8765
 CYBERBOSS_CODEX_COMMAND=
 CYBERBOSS_CODEX_MODEL=
 CYBERBOSS_CODEX_MODEL_PROVIDER=
+CYBERBOSS_DAILY_THREAD_ROLLOVER=false
 CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT=
 CYBERBOSS_APPLE_CALENDAR_SCRIPT_FILE=
 CYBERBOSS_HEALTH_INBOX_DIR=
@@ -225,6 +226,8 @@ What these do:
   Force Codex turns to use a specific model. Leave empty to use Codex's default model selection.
 - `CYBERBOSS_CODEX_MODEL_PROVIDER`
   Force Codex turns to use a specific provider, such as `ollama` for local models. Leave empty for the default cloud provider.
+- `CYBERBOSS_DAILY_THREAD_ROLLOVER`
+  Default `false`. When enabled, the first normal channel message on a new local day starts a fresh runtime thread. Daily Inbox and Obsidian records remain available, while old chat context no longer grows without limit.
 - `CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT`
   Optional override for direct image input through the Codex app-server path. Leave empty to infer from model metadata; set `true` to test a local multimodal model directly, or `false` to force caption fallback.
 - `CYBERBOSS_CLAUDE_COMMAND`

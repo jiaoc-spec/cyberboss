@@ -56,6 +56,7 @@ function readConfig() {
       reasoningUsdPer1M: readFloatEnv("CYBERBOSS_USAGE_REASONING_USD_PER_1M"),
       blendedUsdPer1M: readFloatEnv("CYBERBOSS_USAGE_BLENDED_USD_PER_1M") || 2,
     },
+    dailyThreadRollover: readOptionalBoolEnv("CYBERBOSS_DAILY_THREAD_ROLLOVER") === true,
     projectToolContextFile: path.join(stateDir, "project-tool-runtime-context.json"),
     weixinInstructionsFile: path.join(stateDir, "weixin-instructions.md"),
     weixinOperationsFile: path.resolve(__dirname, "..", "..", "templates", "weixin-operations.md"),
