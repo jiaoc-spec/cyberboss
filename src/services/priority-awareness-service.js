@@ -179,7 +179,16 @@ class PriorityAwarenessService {
       return { queued: [] };
     }
 
-    const checkpoint = dueCheckpoint(day, now, this.config.priorityAwarenessCheckpointMinutes);
+    const feasibility = buildFeasibilityState({
+      day,
+      pending,
+      now,
+      bufferMinutes: this.config.priorityAwarenessBoundaryBufferMinutes,
+      checkIntervalMs: this.config.priorityAwarenessCheckIntervalMs,
+      timeZone: this.timeZone(),
+    });
+    const checkpoint = dueFeasibilityCheckpoint(day, now, feasibility)
+      || dueCheckpoint(day, now, this.config.priorityAwarenessCheckpointMinutes);
     const reevaluationMs = Date.parse(awareness.needsReevaluationAt || "");
     const hasFreshReevaluation = Number.isFinite(reevaluationMs)
       && (!Number.isFinite(lastPromptMs) || reevaluationMs > lastPromptMs);
@@ -188,7 +197,7 @@ class PriorityAwarenessService {
       return { queued: [] };
     }
 
-    const message = this.enqueueAwarenessMessage({ account, target, day, pending, remainingMs, now });
+    const message = this.enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now });
     awareness.lastPromptAt = now.toISOString();
     awareness.needsReevaluationAt = "";
     awareness.promptedCheckpoints = awareness.promptedCheckpoints || {};
@@ -243,7 +252,7 @@ class PriorityAwarenessService {
     return { updated, day };
   }
 
-  enqueueAwarenessMessage({ account, target, day, pending, remainingMs, now }) {
+  enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now }) {
     const completed = day.priorities.filter((item) => item.status === "completed");
     const closed = day.priorities.filter((item) => CLOSED_STATUSES.has(item.status) && item.status !== "completed");
     const text = [
@@ -253,6 +262,14 @@ class PriorityAwarenessService {
       `Still open: ${pending.map((item) => item.label).join(", ")}.`,
       closed.length ? `Consciously closed or postponed: ${closed.map((item) => `${item.label} (${item.status})`).join(", ")}.` : "",
       `Time remaining until the boundary: ${formatRemaining(remainingMs)}.`,
+      `Estimated full-version time for open priorities: ${formatRemaining(feasibility.activityMinutes * 60_000)} (${pending.map((item) => `${item.label} ${estimatePriorityMinutes(item)}m`).join(", ")}).`,
+      `Reserved boundary preparation buffer: ${feasibility.bufferMinutes} minutes.`,
+      `Latest practical start time for the full versions: ${feasibility.latestStartLabel}.`,
+      feasibility.isFeasible
+        ? "There is still enough estimated time for the full versions if she chooses to begin now."
+        : feasibility.isAtEdge
+          ? "The latest practical start window is at its edge now. Restore awareness immediately without claiming that there is plenty of time."
+        : "There is no longer enough estimated time for all full versions before the boundary. Do not imply that full completion is still realistic; offer a conscious choice between a minimum version, postponing, skipping, or revising the plan.",
       "Send one short, gentle but steadfast priority-awareness message only if it is useful now. Reconnect her with what she already chose, summarize completed and open items, and offer a choice about which one to advance. Emotional support is welcome, but do not comfort her in a way that makes the chosen priorities disappear. Do not command, supervise, shame, or invent an execution order. A list is unordered unless she explicitly specified an order.",
     ].filter(Boolean).join("\n");
     const message = this.systemMessageQueue.enqueue({
@@ -326,6 +343,7 @@ function normalizePriority(value) {
       ? normalizeStringArray(input.categoryPrefixes)
       : known?.categoryPrefixes || [],
     meaning: normalizeText(input.meaning) || known?.meaning || "",
+    estimatedMinutes: normalizePositiveInteger(input.estimatedMinutes) || known?.estimatedMinutes || 30,
   };
 }
 
@@ -376,6 +394,43 @@ function dueCheckpoint(day, now, configuredMinutes) {
     }
   }
   return "";
+}
+
+function buildFeasibilityState({ day, pending, now, bufferMinutes, checkIntervalMs, timeZone }) {
+  const deadlineMs = Date.parse(day.deadlineAt);
+  const activityMinutes = pending.reduce((total, item) => total + estimatePriorityMinutes(item), 0);
+  const normalizedBufferMinutes = Number.isInteger(bufferMinutes) && bufferMinutes >= 0 ? bufferMinutes : 30;
+  const requiredMinutes = activityMinutes + normalizedBufferMinutes;
+  const latestStartMs = deadlineMs - requiredMinutes * 60_000;
+  const graceMs = Math.max(60_000, Number(checkIntervalMs) || 300_000);
+  return {
+    activityMinutes,
+    bufferMinutes: normalizedBufferMinutes,
+    requiredMinutes,
+    latestStartMs,
+    latestStartLabel: formatLocalTime(latestStartMs, timeZone),
+    isFeasible: now.getTime() <= latestStartMs,
+    isAtEdge: now.getTime() > latestStartMs && now.getTime() <= latestStartMs + graceMs,
+  };
+}
+
+function estimatePriorityMinutes(priority) {
+  return normalizePositiveInteger(priority?.estimatedMinutes)
+    || findKnownHabit(normalizeText(priority?.label))?.estimatedMinutes
+    || 30;
+}
+
+function dueFeasibilityCheckpoint(day, now, feasibility) {
+  if (!Number.isFinite(feasibility?.latestStartMs) || now.getTime() < feasibility.latestStartMs) {
+    return "";
+  }
+  const pendingIds = (day.priorities || [])
+    .filter((item) => ACTIVE_STATUSES.has(item.status))
+    .map((item) => item.id)
+    .sort()
+    .join(",");
+  const key = `feasibility:${pendingIds}:${feasibility.requiredMinutes}`;
+  return day.awareness?.promptedCheckpoints?.[key] ? "" : key;
 }
 
 function formatRemaining(ms) {
@@ -435,6 +490,23 @@ function normalizeLevel(value) {
 
 function normalizeStringArray(value) {
   return Array.isArray(value) ? value.map(normalizeText).filter(Boolean) : [];
+}
+
+function normalizePositiveInteger(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : 0;
+}
+
+function formatLocalTime(timestamp, timeZone) {
+  if (!Number.isFinite(timestamp)) {
+    return "unknown";
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(timestamp));
 }
 
 function pruneState(state) {

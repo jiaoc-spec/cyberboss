@@ -5,22 +5,22 @@ const path = require("path");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 
 const DEFAULT_LEVEL_A = [
-  habit("sport", "Sport", ["sport", "运动", "workout", "training", "健身", "跑步", "瑜伽", "拉伸", "锻炼"], ["exercise.workout", "exercise.sport"], "未来的健康、能量、身体自主性和独立生活能力"),
-  habit("english", "Englisch", ["englisch", "english", "英语"], [], "未来学习、国际文献阅读和更广阔的知识世界"),
-  habit("german", "Deutsch", ["deutsch", "german", "德语"], [], "专业沟通、教学、护理文书、职业发展和未来学术工作"),
+  habit("sport", "Sport", ["sport", "运动", "workout", "training", "健身", "跑步", "瑜伽", "拉伸", "锻炼"], ["exercise.workout", "exercise.sport"], "未来的健康、能量、身体自主性和独立生活能力", 60),
+  habit("english", "Englisch", ["englisch", "english", "英语"], [], "未来学习、国际文献阅读和更广阔的知识世界", 25),
+  habit("german", "Deutsch", ["deutsch", "german", "德语"], [], "专业沟通、教学、护理文书、职业发展和未来学术工作", 30),
 ];
 
 const DEFAULT_LEVEL_B = [
-  habit("praxisanleitung", "Praxisanleitung", ["praxisanleitung", "praxisleiter"], [], "专业教学能力、护理实践成长和未来教育者身份"),
-  habit("wundmanagement", "Wundmanagement", ["wundmanagement", "伤口管理"], [], "临床专业能力和护理职业发展"),
-  habit("python", "Python", ["python"], [], "研究能力、数据思维和未来护理科学工作"),
+  habit("praxisanleitung", "Praxisanleitung", ["praxisanleitung", "praxisleiter"], [], "专业教学能力、护理实践成长和未来教育者身份", 30),
+  habit("wundmanagement", "Wundmanagement", ["wundmanagement", "伤口管理"], [], "临床专业能力和护理职业发展", 30),
+  habit("python", "Python", ["python"], [], "研究能力、数据思维和未来护理科学工作", 30),
 ];
 
 const DEFAULT_LEVEL_C = [
-  habit("pflegewissenschaft", "Pflegewissenschaft", ["pflegewissenschaft", "护理科学"], [], "成为护理科学家并持续建立学术基础"),
-  habit("literature-reading", "Literature Reading", ["literature reading", "文献阅读", "论文阅读"], [], "终身学习、国际视野和研究能力"),
-  habit("nursing-digest", "Nursing Digest", ["nursing digest"], [], "持续积累护理知识和长期专业判断"),
-  habit("forschung", "Forschung", ["forschung", "research", "研究"], [], "未来研究者、护理科学家和教授身份"),
+  habit("pflegewissenschaft", "Pflegewissenschaft", ["pflegewissenschaft", "护理科学"], [], "成为护理科学家并持续建立学术基础", 30),
+  habit("literature-reading", "Literature Reading", ["literature reading", "文献阅读", "论文阅读"], [], "终身学习、国际视野和研究能力", 30),
+  habit("nursing-digest", "Nursing Digest", ["nursing digest"], [], "持续积累护理知识和长期专业判断", 30),
+  habit("forschung", "Forschung", ["forschung", "research", "研究"], [], "未来研究者、护理科学家和教授身份", 30),
 ];
 
 class CriticalHabitsMonitor {
@@ -149,8 +149,8 @@ class CriticalHabitsMonitor {
   }
 }
 
-function habit(id, label, keywords, categoryPrefixes, meaning = "") {
-  return { id, label, keywords, categoryPrefixes, meaning };
+function habit(id, label, keywords, categoryPrefixes, meaning = "", estimatedMinutes = 30) {
+  return { id, label, keywords, categoryPrefixes, meaning, estimatedMinutes };
 }
 
 function matchesHabit(event, item) {

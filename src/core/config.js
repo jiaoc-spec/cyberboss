@@ -51,6 +51,7 @@ function readConfig() {
     priorityAwarenessCheckIntervalMs: readIntEnv("CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS") || 300_000,
     priorityAwarenessCooldownMs: readIntEnv("CYBERBOSS_PRIORITY_AWARENESS_COOLDOWN_MS") || 3_600_000,
     priorityAwarenessCheckpointMinutes: readIntegerListEnv("CYBERBOSS_PRIORITY_AWARENESS_CHECKPOINT_MINUTES", [120, 45]),
+    priorityAwarenessBoundaryBufferMinutes: readIntEnv("CYBERBOSS_PRIORITY_AWARENESS_BOUNDARY_BUFFER_MINUTES") ?? 30,
     timelineScreenshotQueueFile: path.join(stateDir, "timeline-screenshot-queue.json"),
     usageFile: path.join(stateDir, "usage.json"),
     usageTimeZone: readTextEnv("CYBERBOSS_USAGE_TIME_ZONE") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",

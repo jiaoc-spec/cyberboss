@@ -166,6 +166,7 @@ CYBERBOSS_PRIORITY_AWARENESS_ENABLED=true
 CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS=300000
 CYBERBOSS_PRIORITY_AWARENESS_COOLDOWN_MS=3600000
 CYBERBOSS_PRIORITY_AWARENESS_CHECKPOINT_MINUTES=120,45
+CYBERBOSS_PRIORITY_AWARENESS_BOUNDARY_BUFFER_MINUTES=30
 CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT=
 CYBERBOSS_APPLE_CALENDAR_SCRIPT_FILE=
 CYBERBOSS_HEALTH_INBOX_DIR=
@@ -216,7 +217,7 @@ What these do:
 - `CYBERBOSS_ASK_WHEN_UNCERTAIN`
   Default `true`. When diary, timeline, study stats, workout stats, mood/energy inference, or weekly review data is unclear, Cyberboss asks one concise follow-up question instead of inventing missing details. Set `false` to mark unclear fields as unknown without asking.
 - `CYBERBOSS_PRIORITY_AWARENESS_*`
-  Enables deadline-aware, unordered daily priority tracking. Cyberboss combines explicit priorities with Timeline completion evidence and Future Events so it can gently restore awareness while time remains. See `docs/priority-awareness.md`.
+  Enables deadline-aware, unordered daily priority tracking. Cyberboss combines explicit priorities, realistic duration estimates, a preparation buffer, Timeline completion evidence, and Future Events so it can gently restore awareness while the full plan is still feasible. See `docs/priority-awareness.md`.
 - `CYBERBOSS_DIARY_BACKEND`
   Choose `local` or `obsidian`. `local` writes to `~/.cyberboss/diary`; `obsidian` writes diary entries into the configured Obsidian Daily Note.
 - `CYBERBOSS_DIARY_AUTO_CAPTURE`

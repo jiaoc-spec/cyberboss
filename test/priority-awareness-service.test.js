@@ -20,6 +20,7 @@ function createService(overrides = {}) {
       priorityAwarenessCheckIntervalMs: 1,
       priorityAwarenessCooldownMs: 1,
       priorityAwarenessCheckpointMinutes: [120, 45],
+      priorityAwarenessBoundaryBufferMinutes: 30,
       ...overrides.config,
     },
     timeline: overrides.timeline || null,
@@ -57,6 +58,7 @@ test("priority awareness keeps a declared list unordered and recognizes known ha
 
   assert.deepEqual(day.priorities.map((item) => item.id), ["sport", "german", "english"]);
   assert.deepEqual(day.priorities.map((item) => item.status), ["pending", "pending", "pending"]);
+  assert.deepEqual(day.priorities.map((item) => item.estimatedMinutes), [60, 30, 25]);
   assert.equal(day.deadlineLabel, "补觉");
 });
 
@@ -116,7 +118,49 @@ test("monitor queues a gentle dynamic checkpoint while time remains", async () =
   assert.equal(queued.length, 1);
   assert.match(queued[0].text, /Completed: Englisch/);
   assert.match(queued[0].text, /Still open: Sport, Deutsch/);
+  assert.match(queued[0].text, /Latest practical start time for the full versions: 14:00/);
   assert.match(queued[0].text, /unordered/);
+});
+
+test("completion reevaluation reports the latest practical start before sleep", async () => {
+  const { service, queued } = createService();
+  service.set({
+    date: "2026-06-04",
+    deadlineAt: "2026-06-04T15:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }, { label: "Englisch" }],
+  });
+  service.observeMessage({
+    text: "英语已经学完了",
+    receivedAt: "2026-06-04T12:00:00+02:00",
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-04T12:01:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.match(queued[0].text, /Estimated full-version time for open priorities: 1 hours 30 minutes/);
+  assert.match(queued[0].text, /Reserved boundary preparation buffer: 30 minutes/);
+  assert.match(queued[0].text, /Latest practical start time for the full versions: 13:00/);
+  assert.match(queued[0].text, /still enough estimated time/);
+});
+
+test("feasibility checkpoint fires when the latest practical start window arrives", async () => {
+  const { service, queued } = createService();
+  service.set({
+    date: "2026-06-04",
+    deadlineAt: "2026-06-04T15:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  await service.check({ accountId: "account-1" }, new Date("2026-06-04T12:59:00+02:00"));
+  assert.equal(queued.length, 0);
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-04T13:01:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.match(queued[0].text, /Latest practical start time for the full versions: 13:00/);
+  assert.match(queued[0].text, /latest practical start window is at its edge/);
 });
 
 test("monitor stays silent after the deadline or when everything is closed", async () => {

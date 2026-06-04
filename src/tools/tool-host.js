@@ -186,8 +186,8 @@ const PROJECT_TOOLS = [
   },
   {
     name: "cyberboss_priority_set",
-    description: "Set today's explicit priority-awareness commitments and their shared time boundary. Use this when the user says several things are important before sleep, leaving, work, or another deadline. A list is unordered unless the user explicitly specifies an order.",
-    shortHint: "Set an unordered priority set with a timezone-aware deadline.",
+    description: "Set today's explicit priority-awareness commitments and their shared time boundary. Use this when the user says several things are important before sleep, leaving, work, or another deadline. Include realistic estimatedMinutes when the user gives a duration or when the default would be misleading. A list is unordered unless the user explicitly specifies an order.",
+    shortHint: "Set an unordered priority set with a timezone-aware deadline and realistic duration estimates.",
     topics: ["priority", "reminder", "timeline"],
     inputSchema: {
       type: "object",
@@ -207,6 +207,7 @@ const PROJECT_TOOLS = [
               label: { type: "string" },
               level: { type: "string", description: "A, B, or C." },
               meaning: { type: "string" },
+              estimatedMinutes: { type: "integer", description: "Expected minutes for the full intended version of this priority." },
               keywords: { type: "array", items: { type: "string" } },
               categoryPrefixes: { type: "array", items: { type: "string" } },
             },
