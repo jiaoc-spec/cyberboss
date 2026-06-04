@@ -11,16 +11,16 @@ const DEFAULT_LEVEL_A = [
 ];
 
 const DEFAULT_LEVEL_B = [
-  habit("praxisanleitung", "Praxisanleitung", ["praxisanleitung", "praxisleiter"], []),
-  habit("wundmanagement", "Wundmanagement", ["wundmanagement", "伤口管理"], []),
-  habit("python", "Python", ["python"], []),
+  habit("praxisanleitung", "Praxisanleitung", ["praxisanleitung", "praxisleiter"], [], "专业教学能力、护理实践成长和未来教育者身份"),
+  habit("wundmanagement", "Wundmanagement", ["wundmanagement", "伤口管理"], [], "临床专业能力和护理职业发展"),
+  habit("python", "Python", ["python"], [], "研究能力、数据思维和未来护理科学工作"),
 ];
 
 const DEFAULT_LEVEL_C = [
-  habit("pflegewissenschaft", "Pflegewissenschaft", ["pflegewissenschaft", "护理科学"], []),
-  habit("literature-reading", "Literature Reading", ["literature reading", "文献阅读", "论文阅读"], []),
-  habit("nursing-digest", "Nursing Digest", ["nursing digest"], []),
-  habit("forschung", "Forschung", ["forschung", "research", "研究"], []),
+  habit("pflegewissenschaft", "Pflegewissenschaft", ["pflegewissenschaft", "护理科学"], [], "成为护理科学家并持续建立学术基础"),
+  habit("literature-reading", "Literature Reading", ["literature reading", "文献阅读", "论文阅读"], [], "终身学习、国际视野和研究能力"),
+  habit("nursing-digest", "Nursing Digest", ["nursing digest"], [], "持续积累护理知识和长期专业判断"),
+  habit("forschung", "Forschung", ["forschung", "research", "研究"], [], "未来研究者、护理科学家和教授身份"),
 ];
 
 class CriticalHabitsMonitor {
@@ -120,8 +120,8 @@ class CriticalHabitsMonitor {
 
   enqueueHabitMessage({ account, target, level, item, key, now }) {
     const text = level === "A"
-      ? `Critical Habits Monitor: 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以 Long-Term Values Guardian 的方式温和提醒：先连接意义和她正在成为的自己，再提供一个很小的版本。不要责备或施压。明确给出三个选择：现在做一个最小版本、延期、或今天放弃。`
-      : `Critical Habits Monitor: 过去 7 天还没有记录 ${item.label} 的进展。请温和提醒 ${this.config.userName}，重点是防止长期目标被遗忘，不要责备。可以建议一个很小的下一步，也允许延期或放弃本周。`;
+      ? `Critical Habits Monitor: 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以温和而坚定的 Long-Term Values Guardian 方式提醒：先连接意义和她正在成为的自己，再提供一个很小的版本。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做一个最小版本、延期、或今天放弃。`
+      : `Critical Habits Monitor: 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议一个很小的下一步，也允许延期或放弃本周。`;
     const message = this.systemMessageQueue.enqueue({
       id: `critical-habit:${key}:${crypto.randomUUID()}`,
       accountId: account.accountId,

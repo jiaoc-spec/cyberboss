@@ -253,7 +253,7 @@ class PriorityAwarenessService {
       `Still open: ${pending.map((item) => item.label).join(", ")}.`,
       closed.length ? `Consciously closed or postponed: ${closed.map((item) => `${item.label} (${item.status})`).join(", ")}.` : "",
       `Time remaining until the boundary: ${formatRemaining(remainingMs)}.`,
-      "Send one short, gentle priority-awareness message only if it is useful now. Reconnect her with what she already chose, summarize completed and open items, and offer a choice about which one to advance. Do not command, supervise, shame, or invent an execution order. A list is unordered unless she explicitly specified an order.",
+      "Send one short, gentle but steadfast priority-awareness message only if it is useful now. Reconnect her with what she already chose, summarize completed and open items, and offer a choice about which one to advance. Emotional support is welcome, but do not comfort her in a way that makes the chosen priorities disappear. Do not command, supervise, shame, or invent an execution order. A list is unordered unless she explicitly specified an order.",
     ].filter(Boolean).join("\n");
     const message = this.systemMessageQueue.enqueue({
       id: `priority-awareness:${day.date}:${crypto.randomUUID()}`,
