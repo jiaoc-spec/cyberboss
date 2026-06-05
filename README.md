@@ -218,6 +218,12 @@ What these do:
   Default `true`. When diary, timeline, study stats, workout stats, mood/energy inference, or weekly review data is unclear, Cyberboss asks one concise follow-up question instead of inventing missing details. Set `false` to mark unclear fields as unknown without asking.
 - `CYBERBOSS_PRIORITY_AWARENESS_*`
   Enables deadline-aware, unordered daily priority tracking. Cyberboss combines explicit priorities, realistic duration estimates, a preparation buffer, Timeline completion evidence, and Future Events so it can gently restore awareness while the full plan is still feasible. See `docs/priority-awareness.md`.
+- `CYBERBOSS_CRITICAL_HABITS_*`
+  Enables Level A/B/C long-term value protection. Level A can now use the Daily State Engine to remind earlier on night-shift or recovery days instead of waiting for a fixed evening check. Defaults include a 180-minute night-shift lead time and a 15:00 recovery-day check.
+- `CYBERBOSS_FAILURE_WATCHDOG_*`
+  Checks after midnight whether the previous day's Daily Review, Daily Inbox archive, and Obsidian note look complete. If the automation appears stuck, Cyberboss notifies Jane in Telegram.
+- `docs/second-brain-operations.md`
+  Describes the current Second Brain workflow: Telegram as inbox, timeline as structured evidence, Obsidian as output, and reviews focused on growth rather than backend noise.
 - `CYBERBOSS_DIARY_BACKEND`
   Choose `local` or `obsidian`. `local` writes to `~/.cyberboss/diary`; `obsidian` writes diary entries into the configured Obsidian Daily Note.
 - `CYBERBOSS_DIARY_AUTO_CAPTURE`

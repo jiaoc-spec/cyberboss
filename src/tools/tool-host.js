@@ -185,6 +185,27 @@ const PROJECT_TOOLS = [
     },
   },
   {
+    name: "cyberboss_daily_state_read",
+    description: "Read the synthesized Daily State for a date. Use before context-sensitive replies about what Jane is likely doing, what Level A habits are done or missing, night-shift recovery, calendar boundaries, energy/body signals, career growth signals, and whether to offer a minimum-version priority reminder.",
+    shortHint: "Read today's synthesized life context.",
+    topics: ["daily-state", "priority", "calendar", "timeline", "health"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Default today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.dailyState.analyze(args);
+      const missing = result.levelA.filter((item) => !item.completed).map((item) => item.label);
+      return {
+        text: `Daily State loaded for ${result.date}. Missing Level A: ${missing.join(", ") || "none"}. Mode: ${result.recommendedMode}.`,
+        data: result,
+      };
+    },
+  },
+  {
     name: "cyberboss_priority_set",
     description: "Set today's explicit priority-awareness commitments and their shared time boundary. Use this when the user says several things are important before sleep, leaving, work, or another deadline. Include realistic estimatedMinutes when the user gives a duration or when the default would be misleading. A list is unordered unless the user explicitly specifies an order.",
     shortHint: "Set an unordered priority set with a timezone-aware deadline and realistic duration estimates.",

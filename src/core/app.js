@@ -35,6 +35,7 @@ const { TurnGateStore } = require("./turn-gate-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
+const { FailureWatchdogService } = require("../services/failure-watchdog-service");
 const { ModelRouterService } = require("../services/model-router-service");
 const { isWakeUpMessage } = require("../services/timeline-auto-capture-service");
 const {
@@ -97,6 +98,13 @@ class CyberbossApp {
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
+      dailyState: this.projectServices.dailyState,
+    });
+    this.failureWatchdog = new FailureWatchdogService({
+      config,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      dailyInbox: this.projectServices.dailyInbox,
     });
     this.turnGateStore = new TurnGateStore();
     this.deepseekFallback = new DeepSeekFallbackService({ config });
@@ -206,6 +214,7 @@ class CyberbossApp {
             this.flushPendingHealthImports(),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
+            this.flushFailureWatchdog(account),
           ]);
           const response = await this.channelAdapter.getUpdates({
             syncBuffer: this.channelAdapter.loadSyncBuffer(),
@@ -229,6 +238,7 @@ class CyberbossApp {
             this.flushPendingHealthImports(),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
+            this.flushFailureWatchdog(account),
           ]);
         } catch (error) {
           if (shutdown.stopped) {
@@ -1153,6 +1163,14 @@ class CyberbossApp {
       await this.projectServices?.priorityAwareness?.check(account);
     } catch (error) {
       console.error(`[cyberboss] priority awareness monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushFailureWatchdog(account) {
+    try {
+      await this.failureWatchdog?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] failure watchdog failed: ${formatErrorMessage(error)}`);
     }
   }
 

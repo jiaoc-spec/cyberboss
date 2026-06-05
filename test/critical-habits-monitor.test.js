@@ -56,6 +56,7 @@ function createMonitor(overrides = {}) {
         return message;
       },
     },
+    dailyState: overrides.dailyState,
   });
   return { monitor, queued, sent };
 }
@@ -70,4 +71,39 @@ test("level A missing habits are combined into one direct guardian reminder", as
   assert.equal(sent.length, 1);
   assert.match(sent[0].text, /Sport、Englisch、Deutsch/);
   assert.match(sent[0].text, /重点不是完美，是回来/);
+});
+
+test("level A reminder can trigger before fixed hour on night shift days", async () => {
+  const { monitor, sent } = createMonitor({
+    config: {
+      criticalHabitsLevelAHour: 20,
+      criticalHabitsNightShiftLeadMinutes: 180,
+    },
+    dailyState: {
+      async analyze() {
+        return {
+          recommendedMode: "minimum",
+          priorityTiming: {
+            isDue: true,
+            reason: "night_shift_boundary",
+            boundaryLabel: "夜班前",
+          },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: true },
+            { id: "german", label: "Deutsch", completed: false },
+          ],
+        };
+      },
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T18:35:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /已经完成：Englisch/);
+  assert.match(sent[0].text, /夜班前/);
+  assert.match(sent[0].text, /Sport、Deutsch/);
+  assert.doesNotMatch(sent[0].text, /Englisch 的记录/);
 });

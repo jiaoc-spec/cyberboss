@@ -24,12 +24,13 @@ const DEFAULT_LEVEL_C = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
+    this.dailyState = dailyState;
     this.stateFile = this.config.criticalHabitsStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -54,17 +55,23 @@ class CriticalHabitsMonitor {
     const state = this.loadState();
     const queued = [];
 
-    if (local.hour >= this.config.criticalHabitsLevelAHour) {
+    const todayState = await this.analyzeToday({ date: local.date, now });
+    const levelADue = local.hour >= this.config.criticalHabitsLevelAHour
+      || todayState?.priorityTiming?.isDue === true;
+
+    if (levelADue) {
       const events = await this.readEventsForDates([local.date]);
       const missing = [];
       for (const item of this.config.criticalHabitsLevelA) {
         const key = `A:${local.date}:${item.id}`;
-        if (!state.sent[key] && !events.some((event) => matchesHabit(event, item))) {
+        const dailyStateHabit = todayState?.levelA?.find((habitState) => habitState.id === item.id);
+        const completed = dailyStateHabit?.completed || events.some((event) => matchesHabit(event, item));
+        if (!state.sent[key] && !completed) {
           missing.push({ item, key });
         }
       }
       if (missing.length) {
-        queued.push(await this.deliverLevelAMessage({ account, target, missing, now }));
+        queued.push(await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState }));
         for (const { key } of missing) {
           state.sent[key] = now.toISOString();
         }
@@ -123,6 +130,18 @@ class CriticalHabitsMonitor {
     return events;
   }
 
+  async analyzeToday({ date, now }) {
+    if (!this.dailyState || typeof this.dailyState.analyze !== "function") {
+      return null;
+    }
+    try {
+      return await this.dailyState.analyze({ date, now });
+    } catch (error) {
+      console.error(`[cyberboss] critical habits daily state failed date=${date}: ${error.message}`);
+      return null;
+    }
+  }
+
   enqueueHabitMessage({ account, target, level, item, key, now }) {
     const text = level === "A"
       ? `Critical Habits Monitor: DELIVERY REQUIRED. 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以温和而坚定的 Long-Term Values Guardian + Reality-Aware Guardian 方式提醒：先连接意义和她正在成为的自己，再判断这是需要最小一步回来，还是她真的需要休息。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做一个最小版本、延期、或今天有意识地休息/放弃。强调 Always Return：重点不是完美连续，而是之后怎么回来。Return send_message, not silent.`
@@ -139,9 +158,9 @@ class CriticalHabitsMonitor {
     return message;
   }
 
-  async deliverLevelAMessage({ account, target, missing, now }) {
+  async deliverLevelAMessage({ account, target, missing, now, dailyState }) {
     const items = missing.map(({ item }) => item);
-    const text = buildLevelADirectMessage(items);
+    const text = buildLevelADirectMessage(items, dailyState);
     if (typeof this.channelAdapter?.sendText === "function") {
       try {
         await this.channelAdapter.sendText({
@@ -210,18 +229,46 @@ function habit(id, label, keywords, categoryPrefixes, meaning = "", estimatedMin
   return { id, label, keywords, categoryPrefixes, meaning, estimatedMinutes };
 }
 
-function buildLevelADirectMessage(items) {
+function buildLevelADirectMessage(items, dailyState = null) {
   const labels = items.map((item) => item.label).join("、");
   const meanings = items
     .map((item) => item.meaning)
     .filter(Boolean)
     .join("；");
+  const completed = (dailyState?.levelA || [])
+    .filter((item) => item.completed)
+    .map((item) => item.label);
+  const mode = dailyState?.recommendedMode === "minimum" ? "minimum" : "standard";
+  const timingReason = dailyState?.priorityTiming?.reason || "";
+  const boundaryLabel = dailyState?.priorityTiming?.boundaryLabel || "";
+  const intro = buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel });
   return [
-    `Jane，我轻轻提醒一下：今天还没有看到 ${labels} 的记录。`,
+    intro,
     meanings ? `它们不是打卡，是你给未来自己的地基：${meanings}。` : "它们不是打卡，是你给未来自己的地基。",
-    "如果现在还来得及，挑一个最小版本碰一下就好；如果今天真的不合适，也可以明确延期或休息。",
+    mode === "minimum"
+      ? "今天如果身体和脑子都在省电，就做最小版本：运动 10 分钟、英语 5 分钟、德语 5 到 10 分钟，挑一个碰一下也算回来。"
+      : "如果现在还来得及，挑一个最小版本碰一下就好；如果今天真的不合适，也可以明确延期或休息。",
     "重点不是完美，是回来。",
   ].join("\n\n");
+}
+
+function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel }) {
+  const doneText = completed.length ? `已经完成：${completed.join("、")}。` : "";
+  const timingText = timingReason && timingReason !== "fixed_daily_guardian_time"
+    ? `${boundaryLabel || "今天的时间边界"}已经靠近了，`
+    : "";
+  if (mode === "minimum") {
+    return [
+      "Jane，我轻轻把你的重点拉回眼前一下。",
+      doneText,
+      `${timingText}今天还没有看到 ${labels} 的记录。`,
+    ].filter(Boolean).join("\n");
+  }
+  return [
+    "Jane，我提醒你一下今天最重要的地基。",
+    doneText,
+    `${timingText}目前还没有看到 ${labels} 的记录。`,
+  ].filter(Boolean).join("\n");
 }
 
 function matchesHabit(event, item) {
@@ -298,4 +345,5 @@ module.exports = {
   DEFAULT_LEVEL_B,
   DEFAULT_LEVEL_C,
   matchesHabit,
+  buildLevelADirectMessage,
 };
