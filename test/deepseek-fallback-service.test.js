@@ -89,6 +89,7 @@ test("deepseek daily mode includes recent conversation and local priority contex
   assert.match(body.messages[0].content, /Always Return/);
   assert.match(body.messages[0].content, /nursing scientist and professor/);
   assert.match(body.messages[0].content, /close old friend/);
+  assert.match(body.messages[0].content, /slightly flirt-adjacent/);
   assert.match(body.messages[0].content, /Do not end every reply with a question/);
   assert.match(body.messages[0].content, /warm but firm/);
   assert.match(body.messages[0].content, /Open priorities: Sport, Deutsch/);
