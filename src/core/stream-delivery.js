@@ -762,7 +762,10 @@ function sanitizeOperationalLeakText(text) {
     if (isOperationalLeakLine(line)) {
       continue;
     }
-    kept.push(line);
+    const cleaned = stripFictionalToneLeak(line);
+    if (cleaned.trim()) {
+      kept.push(cleaned);
+    }
   }
   return trimOuterBlankLines(kept.join("\n").replace(/\n{3,}/g, "\n\n"));
 }
@@ -782,6 +785,19 @@ const OPERATIONAL_LEAK_PATTERNS = [
   /^先(?:把|看|查|处理|整理|更新).*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表)/i,
   /(?:后台|内部|tool|pipeline|数据层|记录层|工具调用|工具结果).*(?:处理|记录|分类|更新|同步|写入|执行)/i,
 ];
+
+function stripFictionalToneLeak(line) {
+  let cleaned = String(line || "");
+  cleaned = cleaned.replace(/^\s*[（(][^）)]*(?:轻轻一笑|笑了笑|声音放轻|语气温柔|带着暖意|宠溺|低语|哄人入睡|揉揉头|摸摸头|看着你)[^）)]*[）)]\s*/g, "");
+  cleaned = cleaned.replace(/[（(][^）)]*(?:轻轻一笑|笑了笑|声音放轻|语气温柔|带着暖意|宠溺|低语|哄人入睡|揉揉头|摸摸头|看着你)[^）)]*[）)]/g, "");
+  cleaned = cleaned.replace(/^\s*(?:语气|声音|神情|眼神)[^，。！？\n]*(?:温柔|放轻|宠溺|低语|暖意|哄人入睡)[^，。！？\n]*[，。！？]?\s*/g, "");
+  cleaned = cleaned.replace(/(?:我看着你慢慢合上眼|眼睛就开始打架了|毛孩子们在旁边守着，我也在。?)/g, "");
+  cleaned = cleaned.replace(/(?:小傻瓜|乖乖睡|乖乖休息|乖，)/g, "");
+  cleaned = cleaned.replace(/^[，,]\s*/g, "");
+  cleaned = cleaned.replace(/，\s*([。！？])/g, "$1");
+  cleaned = cleaned.replace(/你，/g, "你");
+  return cleaned;
+}
 
 function resolveSystemReplyDelivery(replyText, policy = createSystemReplyPolicy("")) {
   const normalized = normalizeLineEndings(String(replyText || "")).trim();

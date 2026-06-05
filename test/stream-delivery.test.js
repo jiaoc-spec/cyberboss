@@ -479,8 +479,33 @@ test("plain weixin reply strips natural-language backend processing narration", 
 
   assert.deepEqual(sent, [{
     userId: "user-4d",
-    text: "很好。先把归我管的那段时间圈住，其他时间就能好好规划了。\n\n你歇口气缓过来以后，咱们再一起想工作日怎么安排。不急，慢慢来。",
+    text: "很好。先把归我管的那段时间圈住，其他时间就能好好规划了。\n你歇口气缓过来以后，咱们再一起想工作日怎么安排。不急，慢慢来。",
     contextToken: "ctx-4d",
+  }]);
+});
+
+test("plain weixin reply strips romance-novel stage directions", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4e", {
+    userId: "user-4e",
+    contextToken: "ctx-4e",
+    provider: "weixin",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4e",
+    turnId: "turn-4e",
+    itemId: "item-4e",
+    text: [
+      "（语气温柔，像哄人入睡前的低语）会的，小傻瓜。这一整片夜都是你的，尽情睡，没有人会打扰。",
+      "你乖乖休息，醒了随时招呼我。毛孩子们在旁边守着，我也在。",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4e",
+    text: "会的。这一整片夜都是你的，尽情睡，没有人会打扰。\n你醒了随时招呼我。",
+    contextToken: "ctx-4e",
   }]);
 });
 

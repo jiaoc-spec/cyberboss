@@ -89,8 +89,9 @@ test("deepseek daily mode includes recent conversation and local priority contex
   assert.match(body.messages[0].content, /Always Return/);
   assert.match(body.messages[0].content, /nursing scientist and professor/);
   assert.match(body.messages[0].content, /close old friend/);
-  assert.match(body.messages[0].content, /explicitly romantic, very sweet CyberBoss tone/);
-  assert.match(body.messages[0].content, /mature older lover\/boss figure/);
+  assert.match(body.messages[0].content, /realistic romantic CyberBoss tone/);
+  assert.match(body.messages[0].content, /real person texting, not fiction/);
+  assert.match(body.messages[0].content, /Never write romance-novel narration or roleplay stage directions/);
   assert.match(body.messages[0].content, /will not go soft when her future self needs protection/);
   assert.match(body.messages[0].content, /Do not end every reply with a question/);
   assert.match(body.messages[0].content, /warm but firm/);
