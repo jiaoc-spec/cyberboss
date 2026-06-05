@@ -95,3 +95,34 @@ test("deepseek daily mode includes recent conversation and local priority contex
     { role: "user", content: "英语已经学完了" },
   ]);
 });
+
+test("deepseek daily mode discourages logging-receipt replies", async () => {
+  let body;
+  const service = new DeepSeekFallbackService({
+    config: {
+      deepseekFallbackEnabled: true,
+      deepseekApiKey: "secret-key",
+      deepseekModel: "deepseek-v4-flash",
+    },
+    async fetchImpl(_url, options) {
+      body = JSON.parse(options.body);
+      return {
+        ok: true,
+        async json() {
+          return {
+            model: "deepseek-v4-flash",
+            choices: [{ message: { content: "夜班安静下来以后，身体信号会变得特别明显，饿也会被放大一点。" } }],
+          };
+        },
+      };
+    },
+  });
+
+  await service.generate({
+    mode: "daily",
+    userText: "夜班感觉更容易饿，可能是因为很安静的关系",
+  });
+
+  assert.match(body.messages[0].content, /do not reply like a logging receipt/i);
+  assert.match(body.messages[0].content, /body signal/);
+});

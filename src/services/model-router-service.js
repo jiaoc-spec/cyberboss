@@ -1,6 +1,7 @@
 const CODEX_INTENT_PATTERNS = [
   /(提醒|remind|闹钟|alarm|定时|到点)/i,
-  /(日历|calendar|预约|appointment|课程|考试|deadline|截止|班表|夜班|上班|出门前|睡觉前|补觉前)/i,
+  /(日历|calendar|预约|appointment|课程|考试|deadline|截止|班表|上班|出门前|睡觉前|补觉前)/i,
+  /(夜班|早班|晚班|nachtdienst|frühdienst|spätdienst).*(日历|calendar|班表|提醒|闹钟|几点|时间|开始|结束|出门|睡觉|补觉|安排|计划)/i,
   /(obsidian|daily note|日记|日志|周记|月记|复盘|weekly review|monthly review)/i,
   /(timeline|时间线|报表|截图|screenshot|统计|趋势|分析|analy[sz]e|insight|correlation)/i,
   /(文件|附件|图片|照片|health|健康数据|apple health|shortcut|快捷指令)/i,
@@ -21,6 +22,7 @@ const HARD_TECH_ACTION_PATTERNS = [
 
 const DAILY_SIGNAL_PATTERNS = [
   /(下班了|到家了|出发了|吃饭了|洗澡了|睡了|醒了|累|开心|难过|烦|不开心|感恩|心情|感觉)/i,
+  /(饿|困|冷|热|疼|不舒服|胃口|想吃|身体|夜班.*(感觉|容易|更))/i,
   /(完成了|做完了|学完了|练完了|运动结束|学习结束|英语|德语|sport|english|deutsch)/i,
   /(你好|在吗|早上好|晚安|谢谢|哈哈|嗯|好的|ok|聊聊)/i,
 ];

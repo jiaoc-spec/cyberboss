@@ -34,6 +34,11 @@ test("model router sends ordinary daily conversation to DeepSeek", () => {
     senderId: "jane",
     provider: "telegram",
   }).mode, "deepseek");
+  assert.equal(router.decide({
+    text: "夜班感觉更容易饿，可能是因为很安静的关系",
+    senderId: "jane",
+    provider: "telegram",
+  }).mode, "deepseek");
 });
 
 test("model router keeps tool and complex intents on Codex", () => {
@@ -45,6 +50,7 @@ test("model router keeps tool and complex intents on Codex", () => {
     "请分析我这个月的长期趋势",
     "帮我修复 CyberBoss 代码",
     "帮我检查 Codex 为什么没有联网",
+    "夜班开始前提醒我出门",
     "运动、德语、英语都必须在睡觉前完成",
   ]) {
     assert.equal(router.decide({
