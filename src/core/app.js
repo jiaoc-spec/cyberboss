@@ -558,6 +558,13 @@ class CyberbossApp {
       } else if (result.pending) {
         console.log(`[cyberboss] timeline auto-capture pending sender=${normalized.senderId || ""}`);
       }
+      if (result.wokeUp) {
+        this.projectServices.priorityAwareness?.queueWakeReentry({
+          accountId: normalized?.accountId || this.activeAccountId || this.channelAdapter.resolveAccount().accountId,
+        }, {
+          receivedAt: normalized?.receivedAt,
+        });
+      }
     } catch (error) {
       console.error(`[cyberboss] timeline auto-capture failed: ${formatErrorMessage(error)}`);
     }

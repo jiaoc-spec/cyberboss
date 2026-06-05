@@ -59,3 +59,41 @@ test("timeline auto capture opens sleep pending for immediate sleep messages", a
   assert.equal(result.pending.classification.subcategoryId, "rest.nap");
   assert.deepEqual(writes, []);
 });
+
+test("timeline auto capture closes sleep pending on wake-up messages", async () => {
+  const writes = [];
+  const stateFile = "/tmp/cyberboss-timeline-auto-wake-test.json";
+  try {
+    fs.unlinkSync(stateFile);
+  } catch {}
+  const service = new TimelineAutoCaptureService({
+    config: {
+      diaryTimeZone: "Europe/Berlin",
+      timelineAutoCaptureStateFile: stateFile,
+    },
+    timeline: {
+      async write(payload) {
+        writes.push(payload);
+      },
+    },
+  });
+
+  await service.captureMessage({
+    text: "我现在准备睡觉了",
+    receivedAt: "2026-06-05T08:47:00+02:00",
+    senderId: "jane",
+    provider: "telegram",
+  });
+  const result = await service.captureMessage({
+    text: "我已经醒了",
+    receivedAt: "2026-06-05T13:40:00+02:00",
+    senderId: "jane",
+    provider: "telegram",
+  });
+
+  assert.equal(result.wokeUp, true);
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].subcategoryId, "rest.nap");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].events[0].title, "睡眠 / 休息");
+});

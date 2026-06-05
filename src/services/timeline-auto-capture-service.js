@@ -24,14 +24,15 @@ class TimelineAutoCaptureService {
     const senderKey = normalizeText(senderId) || "default";
     const pendingKey = `${normalizeText(provider) || "channel"}:${senderKey}`;
 
+    const closed = closePendingEvents(body, {
+      pending: state.pending?.[pendingKey],
+      receivedDate,
+      timeZone,
+      localDate,
+    });
     const events = [
       ...extractExplicitRangeEvents(body, { receivedDate, timeZone, localDate }),
-      ...closePendingEvents(body, {
-        pending: state.pending?.[pendingKey],
-        receivedDate,
-        timeZone,
-        localDate,
-      }),
+      ...closed.events,
     ];
 
     const nextPending = extractPendingStart(body, { receivedDate, timeZone, localDate });
@@ -46,7 +47,7 @@ class TimelineAutoCaptureService {
     this.saveState(state);
 
     if (!events.length) {
-      return { events: [], pending: nextPending };
+      return { events: [], pending: nextPending, wokeUp: closed.wokeUp };
     }
 
     const byDate = groupBy(events, (event) => formatDate(parseDateOrNow(event.startAt), timeZone));
@@ -59,7 +60,7 @@ class TimelineAutoCaptureService {
       });
       written.push(...dateEvents);
     }
-    return { events: written, pending: nextPending };
+    return { events: written, pending: nextPending, wokeUp: closed.wokeUp };
   }
 
   loadState() {
@@ -145,26 +146,28 @@ function extractPendingStart(text, context) {
 function closePendingEvents(text, context) {
   const pending = context.pending;
   if (!pending?.startAt) {
-    return [];
+    return { events: [], wokeUp: false };
   }
   const pendingClassification = pending.classification || {};
   const closesGenericActivity = /(结束|完成|做完|学完|练完|finish|done|end)/i.test(text);
   const closesCommute = pendingClassification.subcategoryId === "travel.commute" && isCommuteArrival(text);
-  if (!closesGenericActivity && !closesCommute) {
-    return [];
+  const closesSleep = pendingClassification.subcategoryId === "rest.nap" && isWakeUpMessage(text);
+  if (!closesGenericActivity && !closesCommute && !closesSleep) {
+    return { events: [], wokeUp: false };
   }
 
   const startDate = parseDateOrNow(pending.startAt);
   const endDate = context.receivedDate;
   if (!isUsableRange(startDate, endDate)) {
-    return [];
+    return { events: [], wokeUp: closesSleep };
   }
 
   const classification = preferSpecificClassification(
-    closesCommute ? commuteClassification() : classifyActivity(`${pending.text || ""}\n${text}`),
+    closesCommute ? commuteClassification() : closesSleep ? sleepClassification() : classifyActivity(`${pending.text || ""}\n${text}`),
     pending.classification
   );
-  return [
+  return {
+    events: [
     buildEvent({
       startDate,
       endDate,
@@ -176,14 +179,17 @@ function closePendingEvents(text, context) {
       eventNodeId: classification.eventNodeId,
       tags: classification.tags,
     }),
-  ];
+    ],
+    wokeUp: closesSleep,
+  };
 }
 
 function clearClosedPending(state, pendingKey, text) {
   const pendingClassification = state.pending?.[pendingKey]?.classification || {};
   const closesGenericActivity = /(结束|完成|做完|学完|练完|finish|done|end)/i.test(text);
   const closesCommute = pendingClassification.subcategoryId === "travel.commute" && isCommuteArrival(text);
-  if ((closesGenericActivity || closesCommute) && state.pending?.[pendingKey]) {
+  const closesSleep = pendingClassification.subcategoryId === "rest.nap" && isWakeUpMessage(text);
+  if ((closesGenericActivity || closesCommute || closesSleep) && state.pending?.[pendingKey]) {
     delete state.pending[pendingKey];
   }
 }
@@ -217,7 +223,7 @@ function classifyActivity(text) {
     return classification("走路 / 散步", "exercise", "exercise.walk", "evt.walk", ["walk"]);
   }
   if (/(睡|nap|午睡|小睡|休息|躺)/i.test(normalized)) {
-    return classification("睡眠 / 休息", "rest", "rest.nap", "evt.nap", ["rest"]);
+    return sleepClassification();
   }
   if (/(刷手机|看手机|短视频|小红书|抖音|instagram|tiktok|scroll)/i.test(normalized)) {
     return classification("刷手机", "entertainment", "entertainment.social_media", "evt.phone_scroll", ["phone"]);
@@ -237,6 +243,10 @@ function classification(title, categoryId, subcategoryId, eventNodeId, tags) {
 
 function commuteClassification() {
   return classification("通勤 / 路上时间", "travel", "travel.commute", "evt.commute", ["commute", "transit"]);
+}
+
+function sleepClassification() {
+  return classification("睡眠 / 休息", "rest", "rest.nap", "evt.nap", ["rest", "sleep"]);
 }
 
 function classifyRangeActivity(rangeText, fullText) {
@@ -260,6 +270,10 @@ function isCommuteStart(text) {
 
 function isCommuteArrival(text) {
   return /(到家了?|回到家|到(护理学校|学校|车站|公司|医院|praxis|pflegeschule)了?|到了|arrived|ankommen|angekommen)/i.test(text);
+}
+
+function isWakeUpMessage(text) {
+  return /(醒了|醒来|起床了?|起来了?|睡醒|刚醒|我醒|woke up|wake up|aufgewacht|wach geworden)/i.test(text);
 }
 
 function chooseMealEventNode(text) {

@@ -209,6 +209,65 @@ class PriorityAwarenessService {
     return { queued: [message] };
   }
 
+  queueWakeReentry(account, { receivedAt = "" } = {}) {
+    if (!this.config.priorityAwarenessEnabled || !this.systemMessageQueue) {
+      return { queued: [] };
+    }
+    const now = parseDateOrNow(receivedAt);
+    const target = this.resolveTarget(account);
+    if (!target.senderId || !target.workspaceRoot) {
+      return { queued: [] };
+    }
+
+    const targetDate = localDate(now, this.timeZone());
+    const state = this.loadState();
+    const day = state.days[targetDate] || {
+      date: targetDate,
+      deadlineAt: "",
+      deadlineLabel: "",
+      priorities: [],
+      awareness: {},
+      createdAt: now.toISOString(),
+    };
+    const awareness = day.awareness || (day.awareness = {});
+    const lastWakeMs = Date.parse(awareness.lastWakeReentryAt || "");
+    const cooldownMs = this.config.priorityAwarenessWakeCooldownMs || 2 * 60 * 60_000;
+    if (Number.isFinite(lastWakeMs) && now.getTime() - lastWakeMs < cooldownMs) {
+      state.days[targetDate] = day;
+      this.saveState(state);
+      return { queued: [] };
+    }
+
+    const active = (day.priorities || []).filter((item) => ACTIVE_STATUSES.has(item.status));
+    const completed = (day.priorities || []).filter((item) => item.status === "completed");
+    const explicit = Boolean((day.priorities || []).length);
+    const text = [
+      "Wake-up reentry Priority Awareness trigger.",
+      `${this.config.userName || "Jane"} just reported that she is awake. The previous sleep/rest protection window should now be considered ended.`,
+      explicit
+        ? `Today's explicit priority boundary: ${day.deadlineLabel || "unknown"} ${day.deadlineAt || ""}`.trim()
+        : "There is no explicit priority boundary recorded today. Use Level A as the default long-term-priority set: Sport, Deutsch, Englisch.",
+      explicit ? `Completed: ${completed.length ? completed.map((item) => item.label).join(", ") : "none recorded"}.` : "",
+      explicit ? `Still open: ${active.length ? active.map((item) => item.label).join(", ") : "none"}.` : "",
+      "Send one short, natural, affectionate-but-not-novelistic message only if useful. Reconnect her to the most important priorities after waking, without pressure. If she sounds exhausted, offer one minimum version or a gentle first step. Do not ask what she is doing; she just told you she woke up.",
+    ].filter(Boolean).join("\n");
+
+    const message = this.systemMessageQueue.enqueue({
+      id: `priority-wake-reentry:${targetDate}:${crypto.randomUUID()}`,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      workspaceRoot: target.workspaceRoot,
+      text,
+      createdAt: now.toISOString(),
+    });
+    awareness.lastWakeReentryAt = now.toISOString();
+    day.updatedAt = now.toISOString();
+    state.days[targetDate] = day;
+    this.saveState(state);
+    console.log(`[cyberboss] priority wake reentry queued date=${targetDate}`);
+    return { queued: [message] };
+  }
+
   async syncTimelineEvidence(day) {
     if (!this.timeline || !day?.date) {
       return;

@@ -178,6 +178,47 @@ test("monitor stays silent after the deadline or when everything is closed", asy
   assert.equal(queued.length, 0);
 });
 
+test("wake-up reentry queues one priority awareness message and cools down", () => {
+  const { service, queued } = createService();
+  service.set({
+    date: "2026-06-05",
+    deadlineAt: "2026-06-05T23:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }, { label: "Englisch" }],
+  });
+  service.observeMessage({
+    text: "英语已经学完了",
+    receivedAt: "2026-06-05T10:00:00+02:00",
+  });
+
+  const first = service.queueWakeReentry({ accountId: "account-1" }, {
+    receivedAt: "2026-06-05T13:40:00+02:00",
+  });
+  const second = service.queueWakeReentry({ accountId: "account-1" }, {
+    receivedAt: "2026-06-05T14:00:00+02:00",
+  });
+
+  assert.equal(first.queued.length, 1);
+  assert.equal(second.queued.length, 0);
+  assert.equal(queued.length, 1);
+  assert.match(queued[0].text, /Wake-up reentry Priority Awareness trigger/);
+  assert.match(queued[0].text, /Completed: Englisch/);
+  assert.match(queued[0].text, /Still open: Sport, Deutsch/);
+  assert.match(queued[0].text, /Do not ask what she is doing/);
+});
+
+test("wake-up reentry falls back to Level A when no explicit priority is set", () => {
+  const { service, queued } = createService();
+
+  const result = service.queueWakeReentry({ accountId: "account-1" }, {
+    receivedAt: "2026-06-05T13:40:00+02:00",
+  });
+
+  assert.equal(result.queued.length, 1);
+  assert.match(queued[0].text, /Use Level A as the default/);
+  assert.match(queued[0].text, /Sport, Deutsch, Englisch/);
+});
+
 test("naive reminder times use the configured Berlin timezone", () => {
   assert.equal(
     new Date(parseAbsoluteTime("2026-06-04 19:30", "Europe/Berlin")).toISOString(),
