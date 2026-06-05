@@ -243,6 +243,7 @@ class PriorityAwarenessService {
     const explicit = Boolean((day.priorities || []).length);
     const text = [
       "Wake-up reentry Priority Awareness trigger.",
+      "DELIVERY REQUIRED. This wake-up reentry is not a random check-in; return send_message, not silent.",
       `${this.config.userName || "Jane"} just reported that she is awake. The previous sleep/rest protection window should now be considered ended.`,
       explicit
         ? `Today's explicit priority boundary: ${day.deadlineLabel || "unknown"} ${day.deadlineAt || ""}`.trim()
@@ -328,8 +329,8 @@ class PriorityAwarenessService {
         ? "There is still enough estimated time for the full versions if she chooses to begin now."
         : feasibility.isAtEdge
           ? "The latest practical start window is at its edge now. Restore awareness immediately without claiming that there is plenty of time."
-        : "There is no longer enough estimated time for all full versions before the boundary. Do not imply that full completion is still realistic; offer a conscious choice between a minimum version, postponing, skipping, or revising the plan.",
-      "Send one short, gentle but steadfast priority-awareness message only if it is useful now. Reconnect her with what she already chose, summarize completed and open items, and offer a choice about which one to advance. Be reality-aware: distinguish whether this is a smallest-return moment or a real-rest moment. Emotional support is welcome, but do not comfort her in a way that makes the chosen priorities disappear. Do not command, supervise, shame, or invent an execution order. A list is unordered unless she explicitly specified an order. Always Return matters more than perfect streaks.",
+          : "There is no longer enough estimated time for all full versions before the boundary. Do not imply that full completion is still realistic; offer a conscious choice between a minimum version, postponing, skipping, or revising the plan.",
+      "DELIVERY REQUIRED. Send one short, gentle but steadfast priority-awareness message. Return send_message, not silent. Reconnect her with what she already chose, summarize completed and open items, and offer a choice about which one to advance. Be reality-aware: distinguish whether this is a smallest-return moment or a real-rest moment. Emotional support is welcome, but do not comfort her in a way that makes the chosen priorities disappear. Do not command, supervise, shame, or invent an execution order. A list is unordered unless she explicitly specified an order. Always Return matters more than perfect streaks.",
     ].filter(Boolean).join("\n");
     const message = this.systemMessageQueue.enqueue({
       id: `priority-awareness:${day.date}:${crypto.randomUUID()}`,

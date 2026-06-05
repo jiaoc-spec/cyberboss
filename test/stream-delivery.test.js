@@ -197,6 +197,28 @@ test("system send_message JSON may be wrapped in a json fence", async () => {
   }]);
 });
 
+test("system send_message JSON may be extracted from accidental preface text", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-2p", {
+    userId: "user-2p",
+    contextToken: "ctx-2p",
+    provider: "system",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-2p",
+    turnId: "turn-2p",
+    itemId: "item-2p",
+    text: "我先看一下当前状态。\n\n{\"action\":\"send_message\",\"message\":\"今天最重要的基础还剩 Sport 和 Deutsch，先碰一个最小版本也算回来。\"}",
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-2p",
+    text: "今天最重要的基础还剩 Sport 和 Deutsch，先碰一个最小版本也算回来。",
+    contextToken: "ctx-2p",
+  }]);
+});
+
 test("codex system reply rejects plain text", async () => {
   const { sent, streamDelivery } = createHarness({ runtimeId: "codex" });
   streamDelivery.queueReplyTargetForThread("thread-2c", {

@@ -809,6 +809,10 @@ function resolveSystemReplyDelivery(replyText, policy = createSystemReplyPolicy(
   if (source.requiresStructuredAction || source.text.startsWith("{")) {
     return resolveSystemReplyAction(source.text);
   }
+  const embeddedCandidate = extractSystemActionJsonCandidate(source.text);
+  if (embeddedCandidate) {
+    return resolveSystemReplyAction(embeddedCandidate);
+  }
 
   if (!policy.allowPlainTextSendMessage) {
     return { kind: "invalid", reason: "final reply is not a JSON object" };

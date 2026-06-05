@@ -34,11 +34,10 @@ class CriticalHabitsMonitor {
     this.lastCheckAtMs = 0;
   }
 
-  async check(account) {
+  async check(account, now = new Date()) {
     if (!this.config.criticalHabitsEnabled || !this.timeline || !this.systemMessageQueue) {
       return { queued: [] };
     }
-    const now = new Date();
     const intervalMs = this.config.criticalHabitsCheckIntervalMs || 300_000;
     if (this.lastCheckAtMs && now.getTime() - this.lastCheckAtMs < intervalMs) {
       return { queued: [] };
@@ -57,10 +56,16 @@ class CriticalHabitsMonitor {
 
     if (local.hour >= this.config.criticalHabitsLevelAHour) {
       const events = await this.readEventsForDates([local.date]);
+      const missing = [];
       for (const item of this.config.criticalHabitsLevelA) {
         const key = `A:${local.date}:${item.id}`;
         if (!state.sent[key] && !events.some((event) => matchesHabit(event, item))) {
-          queued.push(this.enqueueHabitMessage({ account, target, level: "A", item, key, now }));
+          missing.push({ item, key });
+        }
+      }
+      if (missing.length) {
+        queued.push(await this.deliverLevelAMessage({ account, target, missing, now }));
+        for (const { key } of missing) {
           state.sent[key] = now.toISOString();
         }
       }
@@ -120,8 +125,8 @@ class CriticalHabitsMonitor {
 
   enqueueHabitMessage({ account, target, level, item, key, now }) {
     const text = level === "A"
-      ? `Critical Habits Monitor: 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以温和而坚定的 Long-Term Values Guardian + Reality-Aware Guardian 方式提醒：先连接意义和她正在成为的自己，再判断这是需要最小一步回来，还是她真的需要休息。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做一个最小版本、延期、或今天有意识地休息/放弃。强调 Always Return：重点不是完美连续，而是之后怎么回来。`
-      : `Critical Habits Monitor: 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议一个很小的回来入口，也允许延期或本周休息/放弃。强调 Always Return，而不是完美连续。`;
+      ? `Critical Habits Monitor: DELIVERY REQUIRED. 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以温和而坚定的 Long-Term Values Guardian + Reality-Aware Guardian 方式提醒：先连接意义和她正在成为的自己，再判断这是需要最小一步回来，还是她真的需要休息。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做一个最小版本、延期、或今天有意识地休息/放弃。强调 Always Return：重点不是完美连续，而是之后怎么回来。Return send_message, not silent.`
+      : `Critical Habits Monitor: DELIVERY REQUIRED. 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议一个很小的回来入口，也允许延期或本周休息/放弃。强调 Always Return，而不是完美连续。Return send_message, not silent.`;
     const message = this.systemMessageQueue.enqueue({
       id: `critical-habit:${key}:${crypto.randomUUID()}`,
       accountId: account.accountId,
@@ -131,6 +136,58 @@ class CriticalHabitsMonitor {
       createdAt: now.toISOString(),
     });
     console.log(`[cyberboss] critical habit queued level=${level} habit=${item.id}`);
+    return message;
+  }
+
+  async deliverLevelAMessage({ account, target, missing, now }) {
+    const items = missing.map(({ item }) => item);
+    const text = buildLevelADirectMessage(items);
+    if (typeof this.channelAdapter?.sendText === "function") {
+      try {
+        await this.channelAdapter.sendText({
+          userId: target.senderId,
+          text,
+          contextToken: this.channelAdapter.getKnownContextTokens?.()[target.senderId] || target.senderId,
+        });
+        console.log(`[cyberboss] critical habit sent level=A habits=${items.map((item) => item.id).join(",")}`);
+        return {
+          id: `critical-habit-direct:${missing.map(({ key }) => key).join("+")}`,
+          accountId: account.accountId,
+          senderId: target.senderId,
+          workspaceRoot: target.workspaceRoot,
+          text,
+          createdAt: now.toISOString(),
+          direct: true,
+        };
+      } catch (error) {
+        console.error(`[cyberboss] critical habit direct send failed: ${error.message}`);
+      }
+    }
+    return this.enqueueLevelAMessage({ account, target, missing, now });
+  }
+
+  enqueueLevelAMessage({ account, target, missing, now }) {
+    const items = missing.map(({ item }) => item);
+    const text = [
+      "Critical Habits Monitor: DELIVERY REQUIRED. Level A daily guardian trigger.",
+      `Today still has no recorded Level A activity for: ${items.map((item) => item.label).join(", ")}.`,
+      "These are not ordinary tasks. They are the foundation habits Jane already chose for her future self.",
+      ...items.map((item) => `${item.label}: ${item.meaning || "她已经选择的长期成长方向"}.`),
+      "Return send_message, not silent. Send one concise, natural, warm-but-grounded message that restores priority awareness without guilt.",
+      "Do not supervise, command, scold, or make it sound like a checklist app.",
+      "Offer a realistic choice: one minimum version now, postpone, or consciously rest/skip today.",
+      "Always Return matters more than a perfect streak.",
+    ].join("\n");
+    const key = missing.map(({ key: itemKey }) => itemKey).join("+");
+    const message = this.systemMessageQueue.enqueue({
+      id: `critical-habit:${key}:${crypto.randomUUID()}`,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      workspaceRoot: target.workspaceRoot,
+      text,
+      createdAt: now.toISOString(),
+    });
+    console.log(`[cyberboss] critical habit queued level=A habits=${items.map((item) => item.id).join(",")}`);
     return message;
   }
 
@@ -151,6 +208,20 @@ class CriticalHabitsMonitor {
 
 function habit(id, label, keywords, categoryPrefixes, meaning = "", estimatedMinutes = 30) {
   return { id, label, keywords, categoryPrefixes, meaning, estimatedMinutes };
+}
+
+function buildLevelADirectMessage(items) {
+  const labels = items.map((item) => item.label).join("、");
+  const meanings = items
+    .map((item) => item.meaning)
+    .filter(Boolean)
+    .join("；");
+  return [
+    `Jane，我轻轻提醒一下：今天还没有看到 ${labels} 的记录。`,
+    meanings ? `它们不是打卡，是你给未来自己的地基：${meanings}。` : "它们不是打卡，是你给未来自己的地基。",
+    "如果现在还来得及，挑一个最小版本碰一下就好；如果今天真的不合适，也可以明确延期或休息。",
+    "重点不是完美，是回来。",
+  ].join("\n\n");
 }
 
 function matchesHabit(event, item) {

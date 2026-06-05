@@ -36,6 +36,7 @@ const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queu
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
 const { ModelRouterService } = require("../services/model-router-service");
+const { isWakeUpMessage } = require("../services/timeline-auto-capture-service");
 const {
   matchesCommandPrefix,
   canonicalizeCommandTokens,
@@ -558,7 +559,7 @@ class CyberbossApp {
       } else if (result.pending) {
         console.log(`[cyberboss] timeline auto-capture pending sender=${normalized.senderId || ""}`);
       }
-      if (result.wokeUp) {
+      if (result.wokeUp || looksLikeWakeReentryText(text)) {
         this.projectServices.priorityAwareness?.queueWakeReentry({
           accountId: normalized?.accountId || this.activeAccountId || this.channelAdapter.resolveAccount().accountId,
         }, {
@@ -2989,4 +2990,12 @@ function parseFallbackSystemAction(text) {
   } catch {
     return { action: "", message: "" };
   }
+}
+
+function looksLikeWakeReentryText(text) {
+  const body = normalizeCommandArgument(text);
+  if (!body || !isWakeUpMessage(body)) {
+    return false;
+  }
+  return !/(明天|后天|到时候|如果|等.*醒|醒了以后|醒来以后|wake.*tomorrow|when i wake)/i.test(body);
 }

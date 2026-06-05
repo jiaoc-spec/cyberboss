@@ -49,6 +49,8 @@ function buildSystemInboundText(text, createdAt = "", config = {}) {
     "Do any timeline/diary/reminder/whereabouts work in this turn.",
     "Before sending any check-in, infer Jane's current state from recent conversation, calendar/time boundaries, timeline, and local context. If she recently said she was going to sleep, nap, rest after a night shift, lie down, or said good night, assume she is sleeping/recovering for the next several hours unless there is clear newer evidence.",
     "During a sleep/rest/night-shift recovery window, do not ask what she is doing, whether she is busy, or whether she has finished. Use silent unless there is a truly important reminder or safety-related reason to interrupt.",
+    "Mandatory guardian triggers are not random check-ins. If the trigger starts with Critical Habits Monitor, Priority Awareness Assistant, or Wake-up reentry Priority Awareness trigger, return send_message unless the trigger itself explicitly says to stay silent. Do not silently drop Level A or priority-awareness reminders.",
+    "If the trigger contains DELIVERY REQUIRED, silent is not a valid action. Send one short natural message.",
     "If you act, end with send_message that briefly and naturally reflects what you did or what changed; use silent only if you do nothing.",
     "Return exactly one JSON object after any tool calls:",
     "{\"action\":\"silent\"}",

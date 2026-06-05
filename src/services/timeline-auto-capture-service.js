@@ -423,4 +423,4 @@ function pad(value) {
   return String(value).padStart(2, "0");
 }
 
-module.exports = { TimelineAutoCaptureService };
+module.exports = { TimelineAutoCaptureService, isWakeUpMessage };
