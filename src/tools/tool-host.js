@@ -186,7 +186,7 @@ const PROJECT_TOOLS = [
   },
   {
     name: "cyberboss_daily_state_read",
-    description: "Read the synthesized Daily State for a date. Use before context-sensitive replies about what Jane is likely doing, what Level A habits are done or missing, night-shift recovery, calendar boundaries, energy/body signals, career growth signals, and whether to offer a minimum-version priority reminder.",
+    description: "Read the synthesized Daily State for a date. Use before context-sensitive replies about what Jane is likely doing, whether she is currently working/on night shift, what Level A habits are done or missing, night-shift recovery, calendar boundaries, energy/body signals, career growth signals, and whether to offer a minimum-version priority reminder.",
     shortHint: "Read today's synthesized life context.",
     topics: ["daily-state", "priority", "calendar", "timeline", "health"],
     inputSchema: {

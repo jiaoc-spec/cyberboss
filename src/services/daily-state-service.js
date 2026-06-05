@@ -15,6 +15,7 @@ const SLEEP_PATTERN = /(sleep|睡觉|睡眠|补觉|躺床|休息|nap|schlaf)/i;
 const LOW_ENERGY_PATTERN = /(累|困|疲惫|没力气|不在状态|耗竭|崩|脑子|低电量|状态不好|tired|exhausted)/i;
 const PERIOD_PATTERN = /(大姨妈|月经|经期|肚子疼|痛经|止痛药|period)/i;
 const WAKE_PATTERN = /(醒了|起床|睡醒|起来了|wake|woke)/i;
+const CURRENT_WORK_PATTERN = /(我|现在|正在|还在).{0,8}(上班|工作|夜班|值班|dienst|shift)|(?:上班|夜班|值班).{0,8}(中|期间|现在)/i;
 
 class DailyStateService {
   constructor({ config, dailyInbox, timeline, calendar, health } = {}) {
@@ -49,6 +50,7 @@ class DailyStateService {
       hasPhoneUse: phoneUseEvents.length > 0 || PHONE_PATTERN.test(allText),
       hasCommute: commuteEvents.length > 0 || COMMUTE_PATTERN.test(allText),
       hasSleepOrRest: sleepEvents.length > 0 || SLEEP_PATTERN.test(allText),
+      currentlyWorking: CURRENT_WORK_PATTERN.test(allText),
       lowEnergy: LOW_ENERGY_PATTERN.test(allText),
       periodOrBodyDiscomfort: PERIOD_PATTERN.test(allText),
       wakeMentioned: WAKE_PATTERN.test(allText),
