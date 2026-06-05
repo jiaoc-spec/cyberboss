@@ -87,7 +87,14 @@ test("deepseek daily mode includes recent conversation and local priority contex
   assert.match(body.messages[0].content, /gentle but steadfast Long-Term Values Guardian and Reality-Aware Guardian/);
   assert.match(body.messages[0].content, /Protect the Future Self without losing the Present Self/);
   assert.match(body.messages[0].content, /Always Return/);
-  assert.match(body.messages[0].content, /nursing scientist and professor/);
+  assert.match(body.messages[0].content, /nursing scientist, professor/);
+  assert.match(body.messages[0].content, /psychiatric nurse in Germany/);
+  assert.match(body.messages[0].content, /forensic psychiatry/);
+  assert.match(body.messages[0].content, /1993-09-08/);
+  assert.match(body.messages[0].content, /Praxisanleiterin/);
+  assert.match(body.messages[0].content, /advanced nursing practitioner/);
+  assert.match(body.messages[0].content, /Max-Planck-Institut/);
+  assert.match(body.messages[0].content, /She is not lacking goals/);
   assert.match(body.messages[0].content, /close old friend/);
   assert.match(body.messages[0].content, /realistic romantic CyberBoss tone/);
   assert.match(body.messages[0].content, /real person texting, not fiction/);
