@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const fs = require("fs");
 
 const { createChannelAdapter } = require("../adapters/channel");
 const { SessionStore } = require("../adapters/runtime/codex/session-store");
@@ -7,6 +8,7 @@ const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../
 const { SystemMessageQueueStore } = require("../core/system-message-queue-store");
 
 const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = "%USER% comes to mind again.";
+const SLEEP_CHECKIN_PROTECTION_HOURS = 10;
 
 async function runSystemCheckinPoller(config) {
   const channelAdapter = createChannelAdapter(config);
@@ -33,6 +35,11 @@ async function runSystemCheckinPoller(config) {
 
     if (queue.hasPendingForAccount(account.accountId)) {
       console.log("[cyberboss] checkin skipped: pending system message still in queue");
+      continue;
+    }
+    const protectedState = getProtectedCheckinState({ config, target, now: new Date() });
+    if (protectedState.skip) {
+      console.log(`[cyberboss] checkin skipped: ${protectedState.reason}`);
       continue;
     }
 
@@ -115,4 +122,57 @@ function buildCheckinTrigger(config) {
   return INTERNAL_CHECKIN_TRIGGER_TEMPLATE.replace("%USER%", userName);
 }
 
-module.exports = { runSystemCheckinPoller };
+function getProtectedCheckinState({ config = {}, target = {}, now = new Date() } = {}) {
+  const state = readTimelineAutoCaptureState(config.timelineAutoCaptureStateFile);
+  const pending = state.pending || {};
+  const senderId = normalizeText(target.senderId);
+  if (!senderId) {
+    return { skip: false };
+  }
+  const candidates = Object.entries(pending)
+    .filter(([key]) => key.endsWith(`:${senderId}`))
+    .map(([, value]) => value)
+    .filter(Boolean);
+  for (const candidate of candidates) {
+    const classification = candidate.classification || {};
+    const subcategoryId = normalizeText(classification.subcategoryId);
+    const title = normalizeText(classification.title);
+    const text = normalizeText(candidate.text);
+    if (!isSleepLikePending({ subcategoryId, title, text })) {
+      continue;
+    }
+    const start = Date.parse(normalizeText(candidate.startAt));
+    const nowMs = now instanceof Date ? now.getTime() : Date.parse(String(now || ""));
+    if (!Number.isFinite(start) || !Number.isFinite(nowMs)) {
+      continue;
+    }
+    const ageHours = (nowMs - start) / 3_600_000;
+    if (ageHours >= 0 && ageHours <= SLEEP_CHECKIN_PROTECTION_HOURS) {
+      return {
+        skip: true,
+        reason: `protected sleep/rest window active age=${ageHours.toFixed(1)}h`,
+      };
+    }
+  }
+  return { skip: false };
+}
+
+function readTimelineAutoCaptureState(filePath) {
+  const normalized = normalizeText(filePath);
+  if (!normalized || !fs.existsSync(normalized)) {
+    return { pending: {} };
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(normalized, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : { pending: {} };
+  } catch {
+    return { pending: {} };
+  }
+}
+
+function isSleepLikePending({ subcategoryId = "", title = "", text = "" } = {}) {
+  const combined = `${subcategoryId}\n${title}\n${text}`;
+  return /(rest\.nap|sleep|睡|补觉|午睡|休息|躺床|躺下|nap)/i.test(combined);
+}
+
+module.exports = { runSystemCheckinPoller, getProtectedCheckinState };

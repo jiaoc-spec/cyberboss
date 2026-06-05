@@ -47,6 +47,8 @@ function buildSystemInboundText(text, createdAt = "", config = {}) {
     ...(localTime ? [`[${localTime}]`, ""] : []),
     "SYSTEM ACTION MODE: internal trigger, not user chat.",
     "Do any timeline/diary/reminder/whereabouts work in this turn.",
+    "Before sending any check-in, infer Jane's current state from recent conversation, calendar/time boundaries, timeline, and local context. If she recently said she was going to sleep, nap, rest after a night shift, lie down, or said good night, assume she is sleeping/recovering for the next several hours unless there is clear newer evidence.",
+    "During a sleep/rest/night-shift recovery window, do not ask what she is doing, whether she is busy, or whether she has finished. Use silent unless there is a truly important reminder or safety-related reason to interrupt.",
     "If you act, end with send_message that briefly and naturally reflects what you did or what changed; use silent only if you do nothing.",
     "Return exactly one JSON object after any tool calls:",
     "{\"action\":\"silent\"}",
