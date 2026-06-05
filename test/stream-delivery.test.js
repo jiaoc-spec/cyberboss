@@ -456,6 +456,34 @@ test("plain weixin reply does not leak a standalone structured action payload", 
   });
 });
 
+test("plain weixin reply strips natural-language backend processing narration", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4d", {
+    userId: "user-4d",
+    contextToken: "ctx-4d",
+    provider: "weixin",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4d",
+    turnId: "turn-4d",
+    itemId: "item-4d",
+    text: [
+      "我先把今天的时间轴和分类看一下，再把这段夜班里的实事接进去。",
+      "这段先记成一个夜班里的低脑力整理块，免得它一闪就过去了。",
+      "很好。先把归我管的那段时间圈住，其他时间就能好好规划了。",
+      "",
+      "你歇口气缓过来以后，咱们再一起想工作日怎么安排。不急，慢慢来。",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4d",
+    text: "很好。先把归我管的那段时间圈住，其他时间就能好好规划了。\n\n你歇口气缓过来以后，咱们再一起想工作日怎么安排。不急，慢慢来。",
+    contextToken: "ctx-4d",
+  }]);
+});
+
 test("plain weixin reply sends finalized item text even if earlier streaming text was different", async () => {
   const { sent, streamDelivery } = createHarness();
   streamDelivery.queueReplyTargetForThread("thread-4b", {

@@ -748,8 +748,40 @@ function sanitizeReplyText(plainReplyText) {
     return "";
   }
   const protocolSanitized = sanitizeProtocolLeakText(normalized);
-  return trimOuterBlankLines(protocolSanitized.text || "");
+  return sanitizeOperationalLeakText(protocolSanitized.text || "");
 }
+
+function sanitizeOperationalLeakText(text) {
+  const normalized = normalizeLineEndings(String(text || ""));
+  if (!normalized) {
+    return "";
+  }
+  const lines = normalized.split("\n");
+  const kept = [];
+  for (const line of lines) {
+    if (isOperationalLeakLine(line)) {
+      continue;
+    }
+    kept.push(line);
+  }
+  return trimOuterBlankLines(kept.join("\n").replace(/\n{3,}/g, "\n\n"));
+}
+
+function isOperationalLeakLine(line) {
+  const normalized = String(line || "").trim();
+  if (!normalized) {
+    return false;
+  }
+  return OPERATIONAL_LEAK_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+const OPERATIONAL_LEAK_PATTERNS = [
+  /^我(?:先|会|来|去|再|马上)?把.*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表).*(?:看一下|查一下|处理|整理|接进去|接上|写进去|补进去|更新|同步|分类|归类|记(?:一下|成|进|到)?)/i,
+  /^我(?:先|会|来|去|再|马上)?(?:看一下|查一下|处理|整理|更新|同步|读取|检查).*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表)/i,
+  /^这段(?:先|会|可以)?(?:记成|记为|归类为|分类为|接进|接到|写进|放进).*(?:时间轴|timeline|日记|Obsidian|低脑力整理块|记录|分类|category)?/i,
+  /^先(?:把|看|查|处理|整理|更新).*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表)/i,
+  /(?:后台|内部|tool|pipeline|数据层|记录层|工具调用|工具结果).*(?:处理|记录|分类|更新|同步|写入|执行)/i,
+];
 
 function resolveSystemReplyDelivery(replyText, policy = createSystemReplyPolicy("")) {
   const normalized = normalizeLineEndings(String(replyText || "")).trim();
