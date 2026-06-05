@@ -11,6 +11,14 @@ const CODEX_INTENT_PATTERNS = [
   /(今天还有什么|还剩什么|哪些.*完成|哪些.*没|我该做什么|接下来做什么)/i,
 ];
 
+const SOFT_TECH_CHAT_PATTERNS = [
+  /(codex|deepseek|telegram|macbook|笔记本|联网|连接|网络|回复|不回复|发消息|没反应)/i,
+];
+
+const HARD_TECH_ACTION_PATTERNS = [
+  /(检查|查看|排查|修复|重启|启动|配置|安装|更新|提交|push|commit|日志|log|terminal|命令|api|github|git|npm|python|javascript|node)/i,
+];
+
 const DAILY_SIGNAL_PATTERNS = [
   /(下班了|到家了|出发了|吃饭了|洗澡了|睡了|醒了|累|开心|难过|烦|不开心|感恩|心情|感觉)/i,
   /(完成了|做完了|学完了|练完了|运动结束|学习结束|英语|德语|sport|english|deutsch)/i,
@@ -58,6 +66,13 @@ class ModelRouterService {
     if (body.length > (Number(this.config.deepseekDailyMaxChars) || 800)) {
       return { mode: "codex", reason: "long_message" };
     }
+    const isSoftTechChat = SOFT_TECH_CHAT_PATTERNS.some((pattern) => pattern.test(body));
+    const isHardTechAction = HARD_TECH_ACTION_PATTERNS.some((pattern) => pattern.test(body));
+    if (isSoftTechChat) {
+      return isHardTechAction
+        ? { mode: "codex", reason: "hard_tech_action" }
+        : { mode: "deepseek", reason: "soft_tech_chat" };
+    }
     if (CODEX_INTENT_PATTERNS.some((pattern) => pattern.test(body))) {
       return { mode: "codex", reason: "tool_or_complex_intent" };
     }
@@ -80,5 +95,7 @@ function normalizeText(value) {
 module.exports = {
   ModelRouterService,
   CODEX_INTENT_PATTERNS,
+  SOFT_TECH_CHAT_PATTERNS,
+  HARD_TECH_ACTION_PATTERNS,
   DAILY_SIGNAL_PATTERNS,
 };

@@ -24,6 +24,16 @@ test("model router sends ordinary daily conversation to DeepSeek", () => {
     senderId: "jane",
     provider: "telegram",
   }).mode, "deepseek");
+  assert.equal(router.decide({
+    text: "我很好奇我的 MacBook 明明收进书包里了，你怎么还能发消息？",
+    senderId: "jane",
+    provider: "telegram",
+  }).mode, "deepseek");
+  assert.equal(router.decide({
+    text: "现在好像又不行了，可能是 codex 没有联网了",
+    senderId: "jane",
+    provider: "telegram",
+  }).mode, "deepseek");
 });
 
 test("model router keeps tool and complex intents on Codex", () => {
@@ -34,6 +44,7 @@ test("model router keeps tool and complex intents on Codex", () => {
     "生成今天的 Obsidian 日记和 timeline 报表",
     "请分析我这个月的长期趋势",
     "帮我修复 CyberBoss 代码",
+    "帮我检查 Codex 为什么没有联网",
     "运动、德语、英语都必须在睡觉前完成",
   ]) {
     assert.equal(router.decide({
