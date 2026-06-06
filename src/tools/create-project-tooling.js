@@ -7,6 +7,7 @@ const { ReminderService } = require("../services/reminder-service");
 const { StickerService } = require("../services/sticker-service");
 const { SystemMessageService } = require("../services/system-message-service");
 const { TimelineService } = require("../services/timeline-service");
+const { WinsService } = require("../services/wins-service");
 const { RuntimeContextStore } = require("./runtime-context-store");
 const { ProjectToolHost } = require("./tool-host");
 const { WhereaboutsService } = require("whereabouts-mcp");
@@ -46,6 +47,7 @@ function createProjectTooling(config, options = {}) {
         majorMoveThresholdMeters: config.locationMajorMoveThresholdMeters,
       },
     }),
+    wins: new WinsService({ config }),
   };
   const toolHost = new ProjectToolHost({
     services,
