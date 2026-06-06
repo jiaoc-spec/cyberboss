@@ -11,6 +11,8 @@ const { FocusProtectionService } = require("../services/focus-protection-service
 const { HealthService } = require("../services/health-service");
 const { MissingContextService } = require("../services/missing-context-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
+const { WinsService } = require("../services/wins-service");
+const { DecisionJournalService } = require("../services/decision-journal-service");
 const { PriorityAwarenessService } = require("../services/priority-awareness-service");
 const { ReminderService } = require("../services/reminder-service");
 const { ShiftRatingService } = require("../services/shift-rating-service");
@@ -61,6 +63,8 @@ function createProjectTooling(config, options = {}) {
     missingContext,
     patternLedger,
     priorityAwareness,
+    wins: new WinsService({ config }),
+    decisionJournal: new DecisionJournalService({ config }),
     reminder,
     shiftRating: new ShiftRatingService({ config, channelAdapter }),
     system: new SystemMessageService({ config, channelAdapter, sessionStore }),

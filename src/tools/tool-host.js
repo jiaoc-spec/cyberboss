@@ -852,6 +852,129 @@ const PROJECT_TOOLS = [
       };
     },
   },
+  {
+    name: "cyberboss_wins_record",
+    description: "Record a success event (win) with the key factor that made it possible. Call this after Jane completes a Level A/B habit and you want to capture what helped.",
+    shortHint: "Record a win with success_factor.",
+    topics: ["wins"],
+    inputSchema: {
+      type: "object",
+      required: ["task", "success_factor"],
+      properties: {
+        task: { type: "string", description: "The habit or task completed, e.g. Sport, Englisch, Deutsch." },
+        domain: { type: "string", description: "Domain: health, learning, career, wellbeing, etc." },
+        success_factor: { type: "string", description: "Key success factor code. E.g. right_after_work, small_chunk, had_reminder, energy_good, good_environment, other." },
+        evidence: { type: "string", description: "Optional: how it went or what made it concrete." },
+        energy_context: { type: "string", description: "Optional energy level at the time: high, medium, low." },
+        shift_context: { type: "string", description: "Optional work context: day_shift, night_shift, off, recovery." },
+        reminder_context: { type: "string", description: "Optional: did a reminder help, yes or no." },
+        note: { type: "string", description: "Optional free-text note." },
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Defaults to today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.wins.record(args);
+      return {
+        text: `Win recorded: ${result.id} task=${result.task} factor=${result.success_factor}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_wins_query",
+    description: "Query the wins ledger to find success patterns. Use before Daily Review, Weekly Review, or when building pattern evidence.",
+    shortHint: "Query wins ledger by task, domain, or date range.",
+    topics: ["wins"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        task: { type: "string", description: "Filter by task name substring." },
+        domain: { type: "string", description: "Filter by domain substring." },
+        since: { type: "string", description: "Filter wins from this date (YYYY-MM-DD) onwards." },
+        limit: { type: "integer", description: "Maximum number of wins to return (most recent first)." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.wins.query(args);
+      return {
+        text: `Wins query: ${result.total} results.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_decision_record",
+    description: "Record an important decision to the Decision Journal. Only call when Jane confirms she wants to record a decision — do not auto-record every mention of plans.",
+    shortHint: "Record a decision with context and expected outcome.",
+    topics: ["decision"],
+    inputSchema: {
+      type: "object",
+      required: ["decision"],
+      properties: {
+        decision: { type: "string", description: "The decision in one clear sentence." },
+        context: { type: "string", description: "Background: what prompted this decision." },
+        reasons: { type: "string", description: "Why this option was chosen." },
+        expected_outcome: { type: "string", description: "What Jane expects to happen." },
+        risks: { type: "string", description: "Downsides or risks she is aware of." },
+        review_date: { type: "string", description: "Optional future date (YYYY-MM-DD) to revisit this decision." },
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Defaults to today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.decisionJournal.record(args);
+      return {
+        text: `Decision recorded: ${result.id}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_decision_update",
+    description: "Update the later_outcome and reflection of an existing decision. Call during Weekly/Monthly Review or when Jane revisits a past decision.",
+    shortHint: "Update a decision with outcome and reflection.",
+    topics: ["decision"],
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string", description: "Decision id such as dec_abc1234." },
+        later_outcome: { type: "string", description: "What actually happened." },
+        reflection: { type: "string", description: "What Jane thinks about the decision in retrospect." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.decisionJournal.updateOutcome(args);
+      return {
+        text: `Decision updated: ${result.id}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_decision_list",
+    description: "List decisions from the Decision Journal. Use during Weekly/Monthly Review or when Jane asks about past decisions.",
+    shortHint: "List decisions, optionally only pending review.",
+    topics: ["decision"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        pending_review_only: { type: "boolean", description: "If true, only return decisions without a later_outcome." },
+        limit: { type: "integer", description: "Maximum number of decisions to return (most recent first)." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.decisionJournal.list(args);
+      return {
+        text: `Decision list: ${result.total} results.`,
+        data: result,
+      };
+    },
+  },
 ];
 
 const STATIC_EXTRA_TOOL_NAMES = new WhereaboutsToolHost({ service: null })

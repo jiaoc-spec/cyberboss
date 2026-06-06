@@ -65,6 +65,8 @@ function readConfig() {
     missingContextFirstPromptHour: readIntEnv("CYBERBOSS_MISSING_CONTEXT_FIRST_PROMPT_HOUR") ?? 12,
     missingContextResponseWindowMs: readIntEnv("CYBERBOSS_MISSING_CONTEXT_RESPONSE_WINDOW_MS") || 6 * 60 * 60_000,
     patternLedgerFile: readTextEnv("CYBERBOSS_PATTERN_LEDGER_FILE") || path.join(stateDir, "pattern-ledger.json"),
+    winsLedgerFile: readTextEnv("CYBERBOSS_WINS_LEDGER_FILE") || path.join(stateDir, "wins-ledger.json"),
+    decisionJournalFile: readTextEnv("CYBERBOSS_DECISION_JOURNAL_FILE") || path.join(stateDir, "decision-journal.json"),
     priorityAwarenessEnabled: readOptionalBoolEnv("CYBERBOSS_PRIORITY_AWARENESS_ENABLED") !== false,
     priorityAwarenessStateFile: readTextEnv("CYBERBOSS_PRIORITY_AWARENESS_STATE_FILE") || path.join(stateDir, "priority-awareness.json"),
     priorityAwarenessCheckIntervalMs: readIntEnv("CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS") || 300_000,
