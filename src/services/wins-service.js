@@ -86,7 +86,7 @@ class WinsService {
   }
 
   _save(ledger) {
-    const data = { schemaVersion: SCHEMA_VERSION, updatedAt: new Date().toISOString(), ...ledger };
+    const data = { schemaVersion: SCHEMA_VERSION, ...ledger, updatedAt: new Date().toISOString() };
     fs.writeFileSync(this.config.winsLedgerFile, JSON.stringify(data, null, 2), "utf8");
   }
 }

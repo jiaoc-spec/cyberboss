@@ -95,7 +95,7 @@ class DecisionJournalService {
   }
 
   _save(journal) {
-    const data = { schemaVersion: SCHEMA_VERSION, updatedAt: new Date().toISOString(), ...journal };
+    const data = { schemaVersion: SCHEMA_VERSION, ...journal, updatedAt: new Date().toISOString() };
     fs.writeFileSync(this.config.decisionJournalFile, JSON.stringify(data, null, 2), "utf8");
   }
 }
