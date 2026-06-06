@@ -49,6 +49,10 @@ const {
 } = require("../adapters/runtime/shared/approval-command");
 const { runSystemCheckinPoller } = require("../app/system-checkin-poller");
 const { createProjectTooling } = require("../tools/create-project-tooling");
+const { detectDecisionTrigger, buildDecisionTriggerAnnotation } = require("./decision-trigger");
+const { DecisionJournalState, isDecisionJournalConfirmation } = require("./decision-journal-state");
+const { detectWinTrigger, buildWinsPrompt, resolveSuccessFactor } = require("./wins-trigger");
+const { WinsLedgerState } = require("./wins-ledger-state");
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 const MIN_LONG_POLL_TIMEOUT_MS = 2_000;
 const SESSION_EXPIRED_ERRCODE = -14;
@@ -126,6 +130,8 @@ class CyberbossApp {
       onEmptyReply: (payload) => this.handleEmptyModelReply(payload),
     });
     this.pendingOperationByRunKey = new Map();
+    this.decisionJournalState = new DecisionJournalState();
+    this.winsLedgerState = new WinsLedgerState();
     this.runtimeEventChain = Promise.resolve();
     this.runtimeAdapter.onEvent((event) => {
       this.threadStateStore.applyRuntimeEvent(event);
@@ -465,6 +471,13 @@ class CyberbossApp {
       }
     }
 
+    const djHandled = await this.handleDecisionJournalIntercept(normalized);
+    if (djHandled) {
+      return;
+    }
+
+    await this.handleWinsLedgerIntercept(normalized);
+
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
     await this.rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized });
     const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
@@ -699,6 +712,107 @@ class CyberbossApp {
     }
   }
 
+  async handleDecisionJournalIntercept(normalized) {
+    const senderId = normalizeText(normalized.senderId);
+    const userText = normalizeText(normalized.text);
+    const contextToken = normalizeText(normalized.contextToken);
+    const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
+
+    if (this.decisionJournalState.hasPending(senderId)) {
+      if (userText && !hasAttachments && isDecisionJournalConfirmation(userText)) {
+        const pending = this.decisionJournalState.getPending(senderId);
+        this.decisionJournalState.clearPending(senderId);
+        try {
+          await this.projectServices.decisionJournal.record({
+            decision: pending.text,
+            date: pending.date,
+            context: "Recorded via Decision Journal bridge trigger.",
+          });
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: "好，已记录到 Decision Journal ✓",
+            contextToken,
+          });
+        } catch (err) {
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: `记录失败：${err instanceof Error ? err.message : String(err)}`,
+            contextToken,
+          });
+        }
+        return true;
+      }
+      this.decisionJournalState.clearPending(senderId);
+    }
+
+    if (userText && !hasAttachments && detectDecisionTrigger(userText)) {
+      await this.channelAdapter.sendText({
+        userId: senderId,
+        text: "这看起来像一个重要决定，要不要记录到 Decision Journal？",
+        contextToken,
+      });
+      this.decisionJournalState.setPending(senderId, {
+        text: userText,
+        date: new Date().toISOString().slice(0, 10),
+      });
+    }
+
+    return false;
+  }
+
+  async handleWinsLedgerIntercept(normalized) {
+    const senderId = normalizeText(normalized.senderId);
+    const userText = normalizeText(normalized.text);
+    const contextToken = normalizeText(normalized.contextToken);
+    const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
+
+    if (this.winsLedgerState.hasPending(senderId)) {
+      const factor = userText && !hasAttachments ? resolveSuccessFactor(userText) : null;
+      if (factor) {
+        const pending = this.winsLedgerState.getPending(senderId);
+        this.winsLedgerState.clearPending(senderId);
+        try {
+          await this.projectServices.wins.record({
+            task: pending.task,
+            domain: pending.domain,
+            success_factor: factor,
+            date: pending.date,
+          });
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: "✓ 已记录到 Wins Ledger",
+            contextToken,
+          });
+        } catch (err) {
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: `记录失败：${err instanceof Error ? err.message : String(err)}`,
+            contextToken,
+          });
+        }
+      } else {
+        this.winsLedgerState.clearPending(senderId);
+      }
+      return;
+    }
+
+    if (userText && !hasAttachments) {
+      const win = detectWinTrigger(userText);
+      if (win) {
+        await this.channelAdapter.sendText({
+          userId: senderId,
+          text: buildWinsPrompt(),
+          contextToken,
+        });
+        this.winsLedgerState.setPending(senderId, {
+          task: win.task,
+          domain: win.domain,
+          date: new Date().toISOString().slice(0, 10),
+        });
+      }
+    }
+  }
+
   async buildRuntimeTurn({ prepared, model = "" }) {
     if (prepared?.provider === "system") {
       return {
@@ -712,12 +826,17 @@ class CyberbossApp {
       runtimeAdapter: this.runtimeAdapter,
       model,
     });
+    let text = assembleRuntimeTurnText({
+      prepared,
+      config: this.config,
+      visionContext,
+    });
+    const originalText = String(prepared?.originalText || prepared?.text || "").trim();
+    if (detectDecisionTrigger(originalText)) {
+      text = text + "\n\n" + buildDecisionTriggerAnnotation();
+    }
     return {
-      text: assembleRuntimeTurnText({
-        prepared,
-        config: this.config,
-        visionContext,
-      }),
+      text,
       attachments: Array.isArray(visionContext.runtimeAttachments) ? visionContext.runtimeAttachments : [],
       visionContext,
     };
