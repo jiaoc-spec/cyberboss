@@ -9,6 +9,7 @@ const { DailyStateService } = require("../services/daily-state-service");
 const { DiaryService } = require("../services/diary-service");
 const { FocusProtectionService } = require("../services/focus-protection-service");
 const { HealthService } = require("../services/health-service");
+const { MissingContextService } = require("../services/missing-context-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
 const { PriorityAwarenessService } = require("../services/priority-awareness-service");
 const { ReminderService } = require("../services/reminder-service");
@@ -41,6 +42,7 @@ function createProjectTooling(config, options = {}) {
   const patternLedger = new PatternLedgerService({ config });
   const reminder = new ReminderService({ config, channelAdapter, sessionStore });
   const focusProtection = new FocusProtectionService({ config, reminder, timeline });
+  const missingContext = new MissingContextService({ config, dailyState, channelAdapter, sessionStore });
   const priorityAwareness = new PriorityAwarenessService({
     config,
     timeline,
@@ -56,6 +58,7 @@ function createProjectTooling(config, options = {}) {
     diary,
     focusProtection,
     health,
+    missingContext,
     patternLedger,
     priorityAwareness,
     reminder,

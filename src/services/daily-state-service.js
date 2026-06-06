@@ -7,6 +7,7 @@ const {
   DEFAULT_LEVEL_C,
   matchesHabit,
 } = require("./critical-habits-monitor");
+const { readMissingContextState } = require("./missing-context-service");
 
 const NIGHT_SHIFT_PATTERN = /(night\s*shift|nachtdienst|nachtwache|夜班)/i;
 const PHONE_PATTERN = /(screen\s*time|bildschirmzeit|刷手机|看手机|手机时间|手机使用|scroll)/i;
@@ -33,6 +34,7 @@ class DailyStateService {
     const inbox = this.readInbox(targetDate);
     const timelineEvents = await this.readTimelineEvents(targetDate);
     const calendarEvents = await this.readCalendarEvents(targetDate);
+    const missingContext = readMissingContextState(this.config.missingContextStateFile, targetDate);
     const allText = [
       inbox.text,
       ...timelineEvents.map(eventToText),
@@ -99,7 +101,9 @@ class DailyStateService {
         dailyInbox: inbox.exists ? inbox.filePath : "",
         timelineEvents: timelineEvents.length,
         calendarEvents: calendarEvents.length,
+        missingContextQuestions: missingContext.questions.length,
       },
+      missingContext,
       signals,
       recommendedMode,
       priorityTiming,

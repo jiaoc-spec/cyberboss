@@ -216,6 +216,7 @@ class CyberbossApp {
             this.flushPendingHealthImports(),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
+            this.flushMissingContextMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
           const response = await this.channelAdapter.getUpdates({
@@ -240,6 +241,7 @@ class CyberbossApp {
             this.flushPendingHealthImports(),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
+            this.flushMissingContextMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
         } catch (error) {
@@ -451,6 +453,12 @@ class CyberbossApp {
     }
     if (typeof this.observeIncomingShiftRating === "function") {
       const handled = await this.observeIncomingShiftRating(normalized);
+      if (handled) {
+        return;
+      }
+    }
+    if (typeof this.observeIncomingMissingContext === "function") {
+      const handled = await this.observeIncomingMissingContext(normalized);
       if (handled) {
         return;
       }
@@ -1189,6 +1197,14 @@ class CyberbossApp {
     }
   }
 
+  async flushMissingContextMonitor(account) {
+    try {
+      await this.projectServices?.missingContext?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] missing context monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
   async flushFailureWatchdog(account) {
     try {
       await this.failureWatchdog?.check(account);
@@ -1238,6 +1254,19 @@ class CyberbossApp {
       }
     } catch (error) {
       console.error(`[cyberboss] shift rating observation failed: ${formatErrorMessage(error)}`);
+    }
+    return false;
+  }
+
+  async observeIncomingMissingContext(normalized) {
+    try {
+      const result = await this.projectServices?.missingContext?.observeIncoming(normalized);
+      if (result?.handled) {
+        console.log(`[cyberboss] missing context answer captured sender=${normalized?.senderId || ""}`);
+        return true;
+      }
+    } catch (error) {
+      console.error(`[cyberboss] missing context observation failed: ${formatErrorMessage(error)}`);
     }
     return false;
   }

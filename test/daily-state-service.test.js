@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const { DailyStateService } = require("../src/services/daily-state-service");
 
@@ -90,4 +93,50 @@ test("daily state treats current night shift wording as active work", async () =
   });
 
   assert.equal(state.signals.currentlyWorking, true);
+});
+
+test("daily state includes missing context answers as structured evidence", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-daily-state-missing-"));
+  const missingContextStateFile = path.join(dir, "missing-context-state.json");
+  fs.writeFileSync(missingContextStateFile, `${JSON.stringify({
+    days: {
+      "2026-06-06": {
+        fields: {
+          reason_for_missing_level_a: {
+            field: "reason_for_missing_level_a",
+            value: "fatigue",
+            label: "太累",
+            answeredAt: "2026-06-06T20:06:00+02:00",
+          },
+        },
+        questions: [{ id: "q1", status: "answered" }],
+      },
+    },
+  })}\n`);
+  const service = new DailyStateService({
+    config: { timeZone: "Europe/Berlin", missingContextStateFile },
+    dailyInbox: {
+      read() {
+        return { exists: true, filePath: "/tmp/2026-06-06.md", text: "" };
+      },
+    },
+    timeline: {
+      async read() {
+        return { data: { events: [] } };
+      },
+    },
+    calendar: {
+      async read() {
+        return { events: [] };
+      },
+    },
+  });
+
+  const state = await service.analyze({
+    date: "2026-06-06",
+    now: new Date("2026-06-06T21:00:00+02:00"),
+  });
+
+  assert.equal(state.sources.missingContextQuestions, 1);
+  assert.equal(state.missingContext.fields.reason_for_missing_level_a.value, "fatigue");
 });

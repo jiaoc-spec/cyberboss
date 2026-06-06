@@ -169,6 +169,8 @@ CYBERBOSS_PRIORITY_AWARENESS_CHECKPOINT_MINUTES=120,45
 CYBERBOSS_PRIORITY_AWARENESS_BOUNDARY_BUFFER_MINUTES=30
 CYBERBOSS_FOCUS_PROTECTION_ENABLED=true
 CYBERBOSS_FOCUS_PROTECTION_REMINDER_SNOOZE_MS=300000
+CYBERBOSS_MISSING_CONTEXT_ENABLED=true
+CYBERBOSS_MISSING_CONTEXT_DAILY_MAX_QUESTIONS=3
 CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT=
 CYBERBOSS_APPLE_CALENDAR_SCRIPT_FILE=
 CYBERBOSS_HEALTH_INBOX_DIR=
@@ -222,6 +224,8 @@ What these do:
   Enables deadline-aware, unordered daily priority tracking. Cyberboss combines explicit priorities, realistic duration estimates, a preparation buffer, Timeline completion evidence, and Future Events so it can gently restore awareness while the full plan is still feasible. See `docs/priority-awareness.md`.
 - `CYBERBOSS_FOCUS_PROTECTION_*`
   Protects an active focus window from non-urgent reminders, random check-ins, Critical Habits, and ordinary Priority Awareness prompts. See `docs/focus-protection.md`.
+- `CYBERBOSS_MISSING_CONTEXT_*`
+  Asks at most a few short multiple-choice questions when Daily Review or Pattern Ledger would otherwise lack important context. Answers are stored as structured evidence and exposed through the Daily State Engine. See `docs/missing-context-queue.md`.
 - `CYBERBOSS_CRITICAL_HABITS_*`
   Enables Level A/B/C long-term value protection. Level A can now use the Daily State Engine to remind earlier on night-shift or recovery days instead of waiting for a fixed evening check. Defaults include a 180-minute night-shift lead time and a 15:00 recovery-day check.
 - `CYBERBOSS_FAILURE_WATCHDOG_*`
