@@ -11,6 +11,7 @@ const { HealthService } = require("../services/health-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
 const { PriorityAwarenessService } = require("../services/priority-awareness-service");
 const { ReminderService } = require("../services/reminder-service");
+const { ShiftRatingService } = require("../services/shift-rating-service");
 const { StickerService } = require("../services/sticker-service");
 const { SystemMessageService } = require("../services/system-message-service");
 const { TimelineAutoCaptureService } = require("../services/timeline-auto-capture-service");
@@ -53,6 +54,7 @@ function createProjectTooling(config, options = {}) {
     patternLedger,
     priorityAwareness,
     reminder: new ReminderService({ config, channelAdapter, sessionStore }),
+    shiftRating: new ShiftRatingService({ config, channelAdapter }),
     system: new SystemMessageService({ config, channelAdapter, sessionStore }),
     channelFile,
     sticker: new StickerService({ config, channelAdapter, sessionStore, channelFileService: channelFile }),

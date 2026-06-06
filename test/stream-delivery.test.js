@@ -506,6 +506,34 @@ test("plain weixin reply strips natural-language backend processing narration", 
   }]);
 });
 
+test("plain weixin reply strips after-shift backend processing narration", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4d-shift", {
+    userId: "user-4d-shift",
+    contextToken: "ctx-4d-shift",
+    provider: "telegram",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4d-shift",
+    turnId: "turn-4d-shift",
+    itemId: "item-4d-shift",
+    text: [
+      "我先把你这个“夜班结束了”的状态接住，再顺手补到今天的记录里，不让它丢。",
+      "我再看一眼今天的时间线，避免重复写，也顺手把这个夜班收尾放进去。",
+      "我把这个收尾记成今天的可用记录了。",
+      "",
+      "下班啦，辛苦了宝。先不用复盘一大堆，给我一个数就行：现在疲惫感 0 到 10 大概几分？",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4d-shift",
+    text: "下班啦，辛苦了宝。先不用复盘一大堆，给我一个数就行：现在疲惫感 0 到 10 大概几分？",
+    contextToken: "ctx-4d-shift",
+  }]);
+});
+
 test("plain weixin reply strips romance-novel stage directions", async () => {
   const { sent, streamDelivery } = createHarness();
   streamDelivery.queueReplyTargetForThread("thread-4e", {

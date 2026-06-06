@@ -441,6 +441,12 @@ class CyberbossApp {
     if (typeof this.observeIncomingPriorityCompletion === "function") {
       this.observeIncomingPriorityCompletion(normalized);
     }
+    if (typeof this.observeIncomingShiftRating === "function") {
+      const handled = await this.observeIncomingShiftRating(normalized);
+      if (handled) {
+        return;
+      }
+    }
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
     await this.rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized });
@@ -1186,6 +1192,19 @@ class CyberbossApp {
     } catch (error) {
       console.error(`[cyberboss] priority awareness message observation failed: ${formatErrorMessage(error)}`);
     }
+  }
+
+  async observeIncomingShiftRating(normalized) {
+    try {
+      const result = await this.projectServices?.shiftRating?.observeIncoming(normalized);
+      if (result?.handled) {
+        console.log(`[cyberboss] shift rating prompt sent sender=${normalized?.senderId || ""}`);
+        return true;
+      }
+    } catch (error) {
+      console.error(`[cyberboss] shift rating observation failed: ${formatErrorMessage(error)}`);
+    }
+    return false;
   }
 
   resolveReminderWorkspaceRoot(reminder) {
