@@ -7,6 +7,7 @@ const { ChannelFileService } = require("../services/channel-file-service");
 const { DailyInboxService } = require("../services/daily-inbox-service");
 const { DailyStateService } = require("../services/daily-state-service");
 const { DiaryService } = require("../services/diary-service");
+const { FocusProtectionService } = require("../services/focus-protection-service");
 const { HealthService } = require("../services/health-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
 const { PriorityAwarenessService } = require("../services/priority-awareness-service");
@@ -38,11 +39,14 @@ function createProjectTooling(config, options = {}) {
   const health = new HealthService({ config, diary });
   const dailyState = new DailyStateService({ config, dailyInbox, timeline, calendar, health });
   const patternLedger = new PatternLedgerService({ config });
+  const reminder = new ReminderService({ config, channelAdapter, sessionStore });
+  const focusProtection = new FocusProtectionService({ config, reminder, timeline });
   const priorityAwareness = new PriorityAwarenessService({
     config,
     timeline,
     channelAdapter,
     sessionStore,
+    focusProtection,
   });
   const services = {
     calendar,
@@ -50,10 +54,11 @@ function createProjectTooling(config, options = {}) {
     dailyInbox,
     dailyState,
     diary,
+    focusProtection,
     health,
     patternLedger,
     priorityAwareness,
-    reminder: new ReminderService({ config, channelAdapter, sessionStore }),
+    reminder,
     shiftRating: new ShiftRatingService({ config, channelAdapter }),
     system: new SystemMessageService({ config, channelAdapter, sessionStore }),
     channelFile,

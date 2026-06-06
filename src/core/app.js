@@ -36,6 +36,7 @@ const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queu
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
+const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
 const { ModelRouterService } = require("../services/model-router-service");
 const { isWakeUpMessage } = require("../services/timeline-auto-capture-service");
 const {
@@ -99,6 +100,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       dailyState: this.projectServices.dailyState,
+      focusProtection: this.projectServices.focusProtection,
     });
     this.failureWatchdog = new FailureWatchdogService({
       config,
@@ -440,6 +442,12 @@ class CyberbossApp {
     }
     if (typeof this.observeIncomingPriorityCompletion === "function") {
       this.observeIncomingPriorityCompletion(normalized);
+    }
+    if (typeof this.observeIncomingFocusProtection === "function") {
+      const handled = await this.observeIncomingFocusProtection(normalized);
+      if (handled) {
+        return;
+      }
     }
     if (typeof this.observeIncomingShiftRating === "function") {
       const handled = await this.observeIncomingShiftRating(normalized);
@@ -1139,6 +1147,15 @@ class CyberbossApp {
 
     for (const reminder of dueReminders) {
       try {
+        const focusDelay = this.projectServices?.focusProtection?.shouldDelayReminder?.(reminder, new Date());
+        if (focusDelay?.delay) {
+          this.reminderQueue.enqueue({
+            ...reminder,
+            dueAtMs: Date.now() + (Number(this.config.focusProtectionReminderSnoozeMs) || 5 * 60_000),
+          });
+          console.log(`[cyberboss] reminder delayed by focus protection reminder=${reminder.id}`);
+          continue;
+        }
         this.systemMessageQueue.enqueue({
           id: `reminder:${reminder.id}`,
           accountId: reminder.accountId,
@@ -1192,6 +1209,24 @@ class CyberbossApp {
     } catch (error) {
       console.error(`[cyberboss] priority awareness message observation failed: ${formatErrorMessage(error)}`);
     }
+  }
+
+  async observeIncomingFocusProtection(normalized) {
+    try {
+      const result = await this.projectServices?.focusProtection?.observeIncoming(normalized);
+      if (result?.handled) {
+        await this.channelAdapter.sendText({
+          userId: normalized.senderId,
+          text: result.reply,
+          contextToken: normalized.contextToken,
+        });
+        console.log(`[cyberboss] focus protection handled sender=${normalized?.senderId || ""}`);
+        return true;
+      }
+    } catch (error) {
+      console.error(`[cyberboss] focus protection observation failed: ${formatErrorMessage(error)}`);
+    }
+    return false;
   }
 
   async observeIncomingShiftRating(normalized) {
@@ -1267,6 +1302,9 @@ class CyberbossApp {
         return;
       case "checkin":
         await this.handleCheckinCommand(normalized, command);
+        return;
+      case "focus":
+        await this.handleFocusCommand(normalized, command);
         return;
       case "chunk":
         await this.handleChunkCommand(normalized, command);
@@ -1612,6 +1650,22 @@ class CyberbossApp {
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
       text: `✅ Check-in interval reset to ${parsedRange.minMinutes}-${parsedRange.maxMinutes} minutes and will apply on the next polling cycle.`,
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleFocusCommand(normalized, command) {
+    const result = await this.projectServices?.focusProtection?.startFromCommand?.(command.args, normalized);
+    let text = result?.reply || "";
+    if (result?.cancelled) {
+      text = "好，Focus 先取消。你不用补解释，等会儿我们从现在重新接。";
+    }
+    if (!text) {
+      text = result?.error || "💡 Usage: /focus 25 Englisch · /focus until 18:00 Deutsch · /focus cancel";
+    }
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text,
       contextToken: normalized.contextToken,
     });
   }
@@ -2847,6 +2901,9 @@ function buildElicitationApprovalPromptText(approval) {
 
 function buildReminderSystemTrigger(reminder, config = {}) {
   const reminderText = String(reminder?.text || "").trim();
+  if (reminderText.startsWith(FOCUS_REMINDER_PREFIX)) {
+    return reminderText;
+  }
   const userName = String(config?.userName || "").trim() || "the user";
   return `Due reminder for ${userName}: ${reminderText}`;
 }

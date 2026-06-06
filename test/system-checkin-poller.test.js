@@ -58,3 +58,27 @@ test("check-in protection expires after the sleep/rest window", () => {
 
   assert.equal(result.skip, false);
 });
+
+test("check-in is skipped during active focus protection", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-checkin-focus-"));
+  const stateFile = path.join(dir, "focus-protection-state.json");
+  fs.writeFileSync(stateFile, `${JSON.stringify({
+    sessions: [{
+      id: "focus-1",
+      senderKey: "telegram:jane",
+      status: "active",
+      task: "Englisch",
+      startAt: "2026-06-05T10:00:00+02:00",
+      endAt: "2026-06-05T10:25:00+02:00",
+    }],
+  })}\n`);
+
+  const result = getProtectedCheckinState({
+    config: { focusProtectionStateFile: stateFile },
+    target: { senderId: "jane" },
+    now: new Date("2026-06-05T10:12:00+02:00"),
+  });
+
+  assert.equal(result.skip, true);
+  assert.match(result.reason, /focus protection active/);
+});

@@ -57,6 +57,7 @@ function createMonitor(overrides = {}) {
       },
     },
     dailyState: overrides.dailyState,
+    focusProtection: overrides.focusProtection,
   });
   return { monitor, queued, sent };
 }
@@ -106,4 +107,19 @@ test("level A reminder can trigger before fixed hour on night shift days", async
   assert.match(sent[0].text, /夜班前/);
   assert.match(sent[0].text, /Sport、Deutsch/);
   assert.doesNotMatch(sent[0].text, /Englisch 的记录/);
+});
+
+test("level A reminder is paused during active focus protection", async () => {
+  const { monitor, sent } = createMonitor({
+    focusProtection: {
+      isProtected() {
+        return { protected: true, session: { task: "Englisch" } };
+      },
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T20:04:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(sent.length, 0);
 });

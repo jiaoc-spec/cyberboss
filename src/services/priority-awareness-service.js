@@ -10,12 +10,13 @@ const CLOSED_STATUSES = new Set(["completed", "postponed", "skipped", "cancelled
 const VALID_STATUSES = new Set([...ACTIVE_STATUSES, ...CLOSED_STATUSES]);
 
 class PriorityAwarenessService {
-  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null }) {
+  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
+    this.focusProtection = focusProtection;
     this.stateFile = this.config.priorityAwarenessStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -154,7 +155,6 @@ class PriorityAwarenessService {
     if (!target.senderId || !target.workspaceRoot) {
       return { queued: [] };
     }
-
     const targetDate = localDate(now, this.timeZone());
     const state = this.loadState();
     const day = state.days[targetDate];
@@ -168,6 +168,14 @@ class PriorityAwarenessService {
     const pending = day.priorities.filter((item) => ACTIVE_STATUSES.has(item.status));
     if (!Number.isFinite(deadlineMs) || remainingMs <= 0 || !pending.length) {
       this.saveState(state);
+      return { queued: [] };
+    }
+    const focus = this.focusProtection?.isProtected?.({
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "",
+      now,
+    });
+    if (focus?.protected && !isHardBoundaryClose(remainingMs, this.config.priorityAwarenessBoundaryBufferMinutes)) {
       return { queued: [] };
     }
 
@@ -454,6 +462,11 @@ function dueCheckpoint(day, now, configuredMinutes) {
     }
   }
   return "";
+}
+
+function isHardBoundaryClose(remainingMs, boundaryBufferMinutes) {
+  const minutes = Number.isFinite(Number(boundaryBufferMinutes)) ? Number(boundaryBufferMinutes) : 30;
+  return remainingMs <= Math.max(5, minutes) * 60_000;
 }
 
 function buildFeasibilityState({ day, pending, now, bufferMinutes, checkIntervalMs, timeZone }) {

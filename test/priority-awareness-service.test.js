@@ -43,6 +43,7 @@ function createService(overrides = {}) {
         return message;
       },
     },
+    focusProtection: overrides.focusProtection,
   });
   return { service, queued };
 }
@@ -176,6 +177,49 @@ test("monitor stays silent after the deadline or when everything is closed", asy
   await service.check({ accountId: "account-1" }, new Date("2026-06-04T17:00:00+02:00"));
 
   assert.equal(queued.length, 0);
+});
+
+test("monitor pauses during focus protection before the hard boundary", async () => {
+  const { service, queued } = createService({
+    focusProtection: {
+      isProtected() {
+        return { protected: true, session: { task: "Englisch" } };
+      },
+    },
+  });
+  service.set({
+    date: "2026-06-04",
+    deadlineAt: "2026-06-04T16:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-04T13:01:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(queued.length, 0);
+});
+
+test("monitor can still surface a hard-boundary warning during focus protection", async () => {
+  const { service, queued } = createService({
+    focusProtection: {
+      isProtected() {
+        return { protected: true, session: { task: "Englisch" } };
+      },
+    },
+  });
+  service.set({
+    date: "2026-06-04",
+    deadlineAt: "2026-06-04T16:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-04T15:35:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.equal(queued.length, 1);
+  assert.match(queued[0].text, /Still open: Sport, Deutsch/);
 });
 
 test("wake-up reentry queues one priority awareness message and cools down", () => {

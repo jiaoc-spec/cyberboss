@@ -6,6 +6,7 @@ const { SessionStore } = require("../adapters/runtime/codex/session-store");
 const { CheckinConfigStore, resolveDefaultCheckinRange } = require("../core/checkin-config-store");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { SystemMessageQueueStore } = require("../core/system-message-queue-store");
+const { getActiveFocusSession } = require("../services/focus-protection-service");
 
 const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = "%USER% comes to mind again.";
 const SLEEP_CHECKIN_PROTECTION_HOURS = 10;
@@ -123,6 +124,20 @@ function buildCheckinTrigger(config) {
 }
 
 function getProtectedCheckinState({ config = {}, target = {}, now = new Date() } = {}) {
+  const focusState = readJsonState(config.focusProtectionStateFile, { sessions: [] });
+  const focus = getActiveFocusSession(focusState, {
+    senderKey: `telegram:${normalizeText(target.senderId)}`,
+    now,
+  }) || getActiveFocusSession(focusState, {
+    senderKey: `weixin:${normalizeText(target.senderId)}`,
+    now,
+  });
+  if (focus) {
+    return {
+      skip: true,
+      reason: `focus protection active task=${focus.task}`,
+    };
+  }
   const state = readTimelineAutoCaptureState(config.timelineAutoCaptureStateFile);
   const pending = state.pending || {};
   const senderId = normalizeText(target.senderId);
@@ -155,6 +170,19 @@ function getProtectedCheckinState({ config = {}, target = {}, now = new Date() }
     }
   }
   return { skip: false };
+}
+
+function readJsonState(filePath, fallback) {
+  const normalized = normalizeText(filePath);
+  if (!normalized || !fs.existsSync(normalized)) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(normalized, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function readTimelineAutoCaptureState(filePath) {

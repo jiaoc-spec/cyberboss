@@ -150,6 +150,13 @@ const COMMAND_GROUPS = [
         status: "active",
       },
       {
+        action: "focus.protect",
+        summary: "Start or cancel Focus Protection Mode",
+        terminal: [],
+        weixin: ["/focus 25 Englisch", "/focus until 18:00 Deutsch", "/focus cancel"],
+        status: "active",
+      },
+      {
         action: "channel.chunk_min",
         summary: "Adjust the minimum short-chunk merge size for WeChat replies",
         terminal: [],

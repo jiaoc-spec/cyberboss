@@ -167,6 +167,8 @@ CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS=300000
 CYBERBOSS_PRIORITY_AWARENESS_COOLDOWN_MS=3600000
 CYBERBOSS_PRIORITY_AWARENESS_CHECKPOINT_MINUTES=120,45
 CYBERBOSS_PRIORITY_AWARENESS_BOUNDARY_BUFFER_MINUTES=30
+CYBERBOSS_FOCUS_PROTECTION_ENABLED=true
+CYBERBOSS_FOCUS_PROTECTION_REMINDER_SNOOZE_MS=300000
 CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT=
 CYBERBOSS_APPLE_CALENDAR_SCRIPT_FILE=
 CYBERBOSS_HEALTH_INBOX_DIR=
@@ -218,6 +220,8 @@ What these do:
   Default `true`. When diary, timeline, study stats, workout stats, mood/energy inference, or weekly review data is unclear, Cyberboss asks one concise follow-up question instead of inventing missing details. Set `false` to mark unclear fields as unknown without asking.
 - `CYBERBOSS_PRIORITY_AWARENESS_*`
   Enables deadline-aware, unordered daily priority tracking. Cyberboss combines explicit priorities, realistic duration estimates, a preparation buffer, Timeline completion evidence, and Future Events so it can gently restore awareness while the full plan is still feasible. See `docs/priority-awareness.md`.
+- `CYBERBOSS_FOCUS_PROTECTION_*`
+  Protects an active focus window from non-urgent reminders, random check-ins, Critical Habits, and ordinary Priority Awareness prompts. See `docs/focus-protection.md`.
 - `CYBERBOSS_CRITICAL_HABITS_*`
   Enables Level A/B/C long-term value protection. Level A can now use the Daily State Engine to remind earlier on night-shift or recovery days instead of waiting for a fixed evening check. Defaults include a 180-minute night-shift lead time and a 15:00 recovery-day check.
 - `CYBERBOSS_FAILURE_WATCHDOG_*`
@@ -376,6 +380,8 @@ Switch the runtime with `CYBERBOSS_RUNTIME`. You do not need a different command
   Stop the current running turn
 - `/checkin <min>-<max>`
   Update the proactive random check-in range for the current project
+- `/focus 25 Englisch`, `/focus until 18:00 Deutsch`, `/focus cancel`
+  Start or cancel Focus Protection Mode for the current chat
 - `/chunk <number>`
   Adjust the minimum merge size for short reply chunks
 - `/yes`

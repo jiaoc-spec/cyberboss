@@ -24,13 +24,14 @@ const DEFAULT_LEVEL_C = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, focusProtection }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.dailyState = dailyState;
+    this.focusProtection = focusProtection;
     this.stateFile = this.config.criticalHabitsStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -47,6 +48,14 @@ class CriticalHabitsMonitor {
 
     const target = this.resolveTarget(account);
     if (!target.senderId || !target.workspaceRoot) {
+      return { queued: [] };
+    }
+    const focus = this.focusProtection?.isProtected?.({
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "",
+      now,
+    });
+    if (focus?.protected) {
       return { queued: [] };
     }
 
