@@ -667,6 +667,104 @@ const PROJECT_TOOLS = [
       };
     },
   },
+  {
+    name: "cyberboss_pattern_add",
+    description: "Add a new pattern to the Pattern Ledger with the enhanced research schema. Use when you identify a recurring behavioral, energy, or learning pattern worth tracking.",
+    shortHint: "Add a new pattern with observation, hypothesis, confidence, and impact.",
+    topics: ["pattern"],
+    inputSchema: {
+      type: "object",
+      required: ["title", "domain"],
+      properties: {
+        title: { type: "string", description: "Short title for the pattern." },
+        domain: { type: "string", description: "Domain: energy, learning, health, career, recovery, reminder-effectiveness, success-patterns, decision-patterns." },
+        observation: { type: "string", description: "Objective facts observed — do not interpret yet." },
+        hypothesis: { type: "string", description: "Possible explanation, must be labeled as hypothesis/speculation." },
+        confidence: { type: "string", description: "Confidence level: low, medium, or high." },
+        impact: { type: "string", description: "Which areas this pattern affects: health, learning, career, etc." },
+        tags: { type: "array", items: { type: "string" }, description: "Optional tags." },
+        status: { type: "string", description: "Pattern status: hypothesis, active, resolved, archived." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.patternLedger.add(args);
+      return {
+        text: `Pattern added: ${result.id} title="${result.title}"`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_add_evidence",
+    description: "Add evidence to an existing pattern. Use when you observe a new data point that supports or challenges the pattern.",
+    shortHint: "Add evidence to an existing pattern by id.",
+    topics: ["pattern"],
+    inputSchema: {
+      type: "object",
+      required: ["id", "note"],
+      properties: {
+        id: { type: "string", description: "Pattern id such as pat_abc1234." },
+        date: { type: "string", description: "Evidence date in YYYY-MM-DD. Defaults to today." },
+        source: { type: "string", description: "Source: daily-review, weekly-review, user-report, wins-ledger, timeline." },
+        note: { type: "string", description: "What was observed." },
+        weight: { type: "integer", description: "Evidence weight 1-3. Default 1." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.patternLedger.addEvidence(args);
+      return {
+        text: `Evidence added to pattern ${args.id}. Total evidence: ${result.evidence?.length || 0}.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_add_intervention",
+    description: "Add an intervention idea to an existing pattern. Use when you have a hypothesis about how to improve the pattern.",
+    shortHint: "Add an intervention idea to a pattern.",
+    topics: ["pattern"],
+    inputSchema: {
+      type: "object",
+      required: ["id", "idea"],
+      properties: {
+        id: { type: "string", description: "Pattern id." },
+        idea: { type: "string", description: "Specific intervention to try, e.g. 'On recovery days, only require 5-minute Sport version for 4 weeks.'" },
+        target_domain: { type: "string", description: "Which domain this intervention targets." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.patternLedger.addIntervention(args);
+      return {
+        text: `Intervention added to pattern ${args.id}.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_list",
+    description: "List patterns from the Pattern Ledger. Use during Weekly/Monthly Review or when building pattern analysis.",
+    shortHint: "List patterns, optionally filtered by domain or status.",
+    topics: ["pattern"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Filter by domain substring." },
+        status: { type: "string", description: "Filter by status: hypothesis, active, resolved, archived." },
+        limit: { type: "integer", description: "Maximum number of patterns to return." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.patternLedger.list(args);
+      return {
+        text: `Pattern list: ${result.total} results.`,
+        data: result,
+      };
+    },
+  },
 ];
 
 const STATIC_EXTRA_TOOL_NAMES = new WhereaboutsToolHost({ service: null })
