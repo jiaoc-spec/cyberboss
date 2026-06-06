@@ -62,3 +62,26 @@ test("pattern ledger addEvidence updates an existing pattern", () => {
   assert.equal(updated.pattern.confidence, 0.5);
   assert.equal(updated.pattern.lastSeenAt, "2026-06-06");
 });
+
+test("pattern ledger records high fatigue and missing level A relation", () => {
+  const service = createService();
+
+  const result = service.recordDailyStateEvidence({
+    dailyState: {
+      date: "2026-06-06",
+      shiftRating: { found: true, score: 8, fatigueBand: "high" },
+      levelA: [
+        { id: "sport", label: "Sport", completed: false },
+        { id: "english", label: "Englisch", completed: true },
+      ],
+    },
+    missingLevelA: [{ id: "sport", label: "Sport" }],
+    observedAt: new Date("2026-06-06T20:00:00+02:00"),
+  });
+
+  assert.equal(result.recorded, true);
+  assert.equal(result.pattern.domain, "energy");
+  assert.match(result.pattern.summary, /High after-shift fatigue/);
+  assert.match(result.pattern.evidence[0].note, /8\/10/);
+  assert.match(result.pattern.evidence[0].note, /Sport/);
+});

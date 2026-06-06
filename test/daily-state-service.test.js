@@ -140,3 +140,49 @@ test("daily state includes missing context answers as structured evidence", asyn
   assert.equal(state.sources.missingContextQuestions, 1);
   assert.equal(state.missingContext.fields.reason_for_missing_level_a.value, "fatigue");
 });
+
+test("daily state reads high shift fatigue and recommends minimum mode", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-daily-state-shift-"));
+  const shiftRatingStateFile = path.join(dir, "shift-rating-state.json");
+  fs.writeFileSync(shiftRatingStateFile, `${JSON.stringify({
+    lastPromptBySender: {
+      "telegram:jane": {
+        date: "2026-06-06",
+        text: "夜班结束了",
+        promptedAt: "2026-06-06T07:32:00+02:00",
+        answeredAt: "2026-06-06T07:35:00+02:00",
+        answerText: "8分",
+        score: 8,
+        fatigueBand: "high",
+      },
+    },
+  })}\n`);
+  const service = new DailyStateService({
+    config: { timeZone: "Europe/Berlin", shiftRatingStateFile },
+    dailyInbox: {
+      read() {
+        return { exists: true, filePath: "/tmp/2026-06-06.md", text: "" };
+      },
+    },
+    timeline: {
+      async read() {
+        return { data: { events: [] } };
+      },
+    },
+    calendar: {
+      async read() {
+        return { events: [] };
+      },
+    },
+  });
+
+  const state = await service.analyze({
+    date: "2026-06-06",
+    now: new Date("2026-06-06T20:00:00+02:00"),
+  });
+
+  assert.equal(state.shiftRating.score, 8);
+  assert.equal(state.shiftRating.fatigueBand, "high");
+  assert.equal(state.signals.highAfterShiftFatigue, true);
+  assert.equal(state.recommendedMode, "minimum");
+});

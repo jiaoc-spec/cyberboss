@@ -120,11 +120,14 @@ function markAnswered(state, senderKey, date, text, now) {
   if (!previous) {
     return;
   }
+  const score = parseFatigueScore(text);
   state.lastPromptBySender[senderKey] = {
     ...previous,
     date: previous.date || date,
     answeredAt: now.toISOString(),
     answerText: text,
+    score,
+    fatigueBand: classifyFatigue(score),
   };
 }
 
@@ -136,6 +139,56 @@ function buildShiftRatingPrompt(text) {
     "先不用复盘一大堆，给我一个数就行：现在疲惫感 0 到 10 大概几分？",
     "我想把这班结束后的真实体感留住，后面好更懂怎么照顾你。",
   ].join("\n");
+}
+
+function parseFatigueScore(text) {
+  const body = normalizeText(text);
+  const matches = [...body.matchAll(/(?:10|[0-9](?:\.[0-9])?)/g)]
+    .map((match) => Number.parseFloat(match[0]))
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 10);
+  return matches.length ? matches[0] : null;
+}
+
+function classifyFatigue(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return "unknown";
+  if (value <= 3) return "low";
+  if (value <= 6) return "medium";
+  return "high";
+}
+
+function readShiftRatingForDate(filePath, date) {
+  const normalized = normalizeText(filePath);
+  if (!normalized || !fs.existsSync(normalized)) {
+    return { found: false, score: null, fatigueBand: "unknown", entries: [] };
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(normalized, "utf8"));
+    const entries = Object.entries(parsed?.lastPromptBySender || {})
+      .map(([senderKey, value]) => normalizeShiftRatingEntry(senderKey, value))
+      .filter((entry) => entry.date === date && entry.answeredAt)
+      .sort((left, right) => Date.parse(right.answeredAt) - Date.parse(left.answeredAt));
+    const latest = entries[0];
+    return latest
+      ? { found: true, score: latest.score, fatigueBand: latest.fatigueBand, latest, entries }
+      : { found: false, score: null, fatigueBand: "unknown", entries: [] };
+  } catch {
+    return { found: false, score: null, fatigueBand: "unknown", entries: [] };
+  }
+}
+
+function normalizeShiftRatingEntry(senderKey, value = {}) {
+  const score = Number.isFinite(Number(value.score)) ? Number(value.score) : parseFatigueScore(value.answerText);
+  return {
+    senderKey,
+    date: normalizeText(value.date),
+    promptedAt: normalizeText(value.promptedAt),
+    answeredAt: normalizeText(value.answeredAt),
+    answerText: normalizeText(value.answerText),
+    shiftText: normalizeText(value.text),
+    score,
+    fatigueBand: normalizeText(value.fatigueBand) || classifyFatigue(score),
+  };
 }
 
 function parseDateOrNow(value) {
@@ -158,7 +211,10 @@ function normalizeText(value) {
 
 module.exports = {
   ShiftRatingService,
+  classifyFatigue,
   looksLikeShiftEnded,
   looksLikeFutureShiftPlan,
   looksLikeScore,
+  parseFatigueScore,
+  readShiftRatingForDate,
 };

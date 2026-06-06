@@ -101,6 +101,7 @@ class CyberbossApp {
       systemMessageQueue: this.systemMessageQueue,
       dailyState: this.projectServices.dailyState,
       focusProtection: this.projectServices.focusProtection,
+      patternLedger: this.projectServices.patternLedger,
     });
     this.failureWatchdog = new FailureWatchdogService({
       config,

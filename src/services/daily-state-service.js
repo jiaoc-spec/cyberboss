@@ -8,6 +8,7 @@ const {
   matchesHabit,
 } = require("./critical-habits-monitor");
 const { readMissingContextState } = require("./missing-context-service");
+const { readShiftRatingForDate } = require("./shift-rating-service");
 
 const NIGHT_SHIFT_PATTERN = /(night\s*shift|nachtdienst|nachtwache|夜班)/i;
 const PHONE_PATTERN = /(screen\s*time|bildschirmzeit|刷手机|看手机|手机时间|手机使用|scroll)/i;
@@ -35,6 +36,7 @@ class DailyStateService {
     const timelineEvents = await this.readTimelineEvents(targetDate);
     const calendarEvents = await this.readCalendarEvents(targetDate);
     const missingContext = readMissingContextState(this.config.missingContextStateFile, targetDate);
+    const shiftRating = readShiftRatingForDate(this.config.shiftRatingStateFile, targetDate);
     const allText = [
       inbox.text,
       ...timelineEvents.map(eventToText),
@@ -56,6 +58,8 @@ class DailyStateService {
       lowEnergy: LOW_ENERGY_PATTERN.test(allText),
       periodOrBodyDiscomfort: PERIOD_PATTERN.test(allText),
       wakeMentioned: WAKE_PATTERN.test(allText),
+      highAfterShiftFatigue: shiftRating.fatigueBand === "high",
+      mediumAfterShiftFatigue: shiftRating.fatigueBand === "medium",
       careerSignals: collectSignalMatches(allText, [
         "Praxisanleitung",
         "Wundmanagement",
@@ -80,7 +84,7 @@ class DailyStateService {
         "力量训练",
       ]),
     };
-    const recommendedMode = signals.lowEnergy || signals.periodOrBodyDiscomfort || signals.hasNightShift
+    const recommendedMode = signals.lowEnergy || signals.periodOrBodyDiscomfort || signals.hasNightShift || signals.highAfterShiftFatigue
       ? "minimum"
       : "standard";
     const priorityTiming = buildPriorityTiming({
@@ -102,8 +106,10 @@ class DailyStateService {
         timelineEvents: timelineEvents.length,
         calendarEvents: calendarEvents.length,
         missingContextQuestions: missingContext.questions.length,
+        shiftRating: shiftRating.found ? this.config.shiftRatingStateFile : "",
       },
       missingContext,
+      shiftRating,
       signals,
       recommendedMode,
       priorityTiming,

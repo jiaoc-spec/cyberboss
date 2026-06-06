@@ -58,6 +58,7 @@ function createMonitor(overrides = {}) {
     },
     dailyState: overrides.dailyState,
     focusProtection: overrides.focusProtection,
+    patternLedger: overrides.patternLedger,
   });
   return { monitor, queued, sent };
 }
@@ -122,4 +123,38 @@ test("level A reminder is paused during active focus protection", async () => {
 
   assert.equal(result.queued.length, 0);
   assert.equal(sent.length, 0);
+});
+
+test("high after-shift fatigue changes level A reminder to minimum mode and records pattern evidence", async () => {
+  const patternCalls = [];
+  const { monitor, sent } = createMonitor({
+    dailyState: {
+      async analyze() {
+        return {
+          recommendedMode: "minimum",
+          shiftRating: { found: true, score: 8, fatigueBand: "high" },
+          priorityTiming: { isDue: true, reason: "fixed_daily_guardian_time" },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: true },
+            { id: "german", label: "Deutsch", completed: false },
+          ],
+        };
+      },
+    },
+    patternLedger: {
+      recordDailyStateEvidence(args) {
+        patternCalls.push(args);
+        return { recorded: true };
+      },
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T20:04:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.match(sent[0].text, /疲惫分是 8\/10/);
+  assert.match(sent[0].text, /最小版本/);
+  assert.equal(patternCalls.length, 1);
+  assert.deepEqual(patternCalls[0].missingLevelA.map((item) => item.id), ["sport", "german"]);
 });

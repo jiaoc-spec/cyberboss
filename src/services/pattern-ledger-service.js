@@ -72,6 +72,41 @@ class PatternLedgerService {
     return { filePath: this.filePath, pattern };
   }
 
+  recordDailyStateEvidence({ dailyState = null, missingLevelA = [], observedAt = new Date() } = {}) {
+    if (!dailyState?.shiftRating?.found || dailyState.shiftRating.fatigueBand !== "high") {
+      return { recorded: false, reason: "no_high_fatigue" };
+    }
+    const missing = (missingLevelA.length ? missingLevelA : dailyState.levelA || [])
+      .filter((item) => item && item.completed !== true)
+      .map((item) => item.label || item.id)
+      .filter(Boolean);
+    if (!missing.length) {
+      return { recorded: false, reason: "no_missing_level_a" };
+    }
+    const score = dailyState.shiftRating.score;
+    return {
+      recorded: true,
+      ...this.upsert({
+        title: "High after-shift fatigue affects Level A habits",
+        domain: "energy",
+        confidence: 0.35,
+        summary: "High after-shift fatigue appears to make Level A habits harder to complete on the same day.",
+        hypothesis: "When after-shift fatigue is high, Sport, Deutsch, or Englisch may need minimum versions instead of full versions.",
+        impact: "This affects health, language learning, and long-term growth because foundational habits are more likely to drop after demanding shifts.",
+        supportStrategy: "Use minimum mode after high-fatigue shifts: Sport 10 minutes, Englisch 5 minutes, Deutsch 5-10 minutes, or conscious recovery.",
+        nextObservation: "Track whether minimum mode after high-fatigue shifts improves return rate without adding guilt.",
+        tags: ["fatigue", "level-a", "recovery", "minimum-mode"],
+        evidence: [{
+          date: dailyState.date,
+          source: "daily-state",
+          note: `After-shift fatigue ${score}/10 (${dailyState.shiftRating.fatigueBand}); missing Level A: ${missing.join(", ")}.`,
+          weight: "medium",
+        }],
+        lastSeenAt: observedAt instanceof Date ? observedAt.toISOString() : normalizeText(observedAt),
+      }),
+    };
+  }
+
   loadLedger() {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8"));

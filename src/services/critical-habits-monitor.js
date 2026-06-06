@@ -24,7 +24,7 @@ const DEFAULT_LEVEL_C = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, focusProtection }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, focusProtection, patternLedger }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -32,6 +32,7 @@ class CriticalHabitsMonitor {
     this.systemMessageQueue = systemMessageQueue;
     this.dailyState = dailyState;
     this.focusProtection = focusProtection;
+    this.patternLedger = patternLedger;
     this.stateFile = this.config.criticalHabitsStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -81,6 +82,7 @@ class CriticalHabitsMonitor {
       }
       if (missing.length) {
         queued.push(await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState }));
+        this.recordPatternEvidence({ dailyState: todayState, missing, now });
         for (const { key } of missing) {
           state.sent[key] = now.toISOString();
         }
@@ -148,6 +150,21 @@ class CriticalHabitsMonitor {
     } catch (error) {
       console.error(`[cyberboss] critical habits daily state failed date=${date}: ${error.message}`);
       return null;
+    }
+  }
+
+  recordPatternEvidence({ dailyState, missing, now }) {
+    if (!this.patternLedger || typeof this.patternLedger.recordDailyStateEvidence !== "function") {
+      return;
+    }
+    try {
+      this.patternLedger.recordDailyStateEvidence({
+        dailyState,
+        missingLevelA: missing.map(({ item }) => item),
+        observedAt: now,
+      });
+    } catch (error) {
+      console.error(`[cyberboss] critical habits pattern evidence failed: ${error.message}`);
     }
   }
 
@@ -248,9 +265,10 @@ function buildLevelADirectMessage(items, dailyState = null) {
     .filter((item) => item.completed)
     .map((item) => item.label);
   const mode = dailyState?.recommendedMode === "minimum" ? "minimum" : "standard";
+  const fatigue = dailyState?.shiftRating?.found ? dailyState.shiftRating : null;
   const timingReason = dailyState?.priorityTiming?.reason || "";
   const boundaryLabel = dailyState?.priorityTiming?.boundaryLabel || "";
-  const intro = buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel });
+  const intro = buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue });
   return [
     intro,
     meanings ? `它们不是打卡，是你给未来自己的地基：${meanings}。` : "它们不是打卡，是你给未来自己的地基。",
@@ -261,15 +279,19 @@ function buildLevelADirectMessage(items, dailyState = null) {
   ].join("\n\n");
 }
 
-function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel }) {
+function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue }) {
   const doneText = completed.length ? `已经完成：${completed.join("、")}。` : "";
   const timingText = timingReason && timingReason !== "fixed_daily_guardian_time"
     ? `${boundaryLabel || "今天的时间边界"}已经靠近了，`
+    : "";
+  const fatigueText = fatigue?.fatigueBand === "high"
+    ? `你刚才给的下班疲惫分是 ${fatigue.score}/10，今天我们按最小版本来，不按完整版本逼自己。`
     : "";
   if (mode === "minimum") {
     return [
       "Jane，我轻轻把你的重点拉回眼前一下。",
       doneText,
+      fatigueText,
       `${timingText}今天还没有看到 ${labels} 的记录。`,
     ].filter(Boolean).join("\n");
   }

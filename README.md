@@ -228,6 +228,8 @@ What these do:
   Asks at most a few short multiple-choice questions when Daily Review or Pattern Ledger would otherwise lack important context. Answers are stored as structured evidence and exposed through the Daily State Engine. See `docs/missing-context-queue.md`.
 - `CYBERBOSS_CRITICAL_HABITS_*`
   Enables Level A/B/C long-term value protection. Level A can now use the Daily State Engine to remind earlier on night-shift or recovery days instead of waiting for a fixed evening check. Defaults include a 180-minute night-shift lead time and a 15:00 recovery-day check.
+- `CYBERBOSS_SHIFT_RATING_*`
+  Captures the after-shift 0-10 fatigue score and feeds it into Daily State, Critical Habits minimum mode, reviews, and Pattern Ledger evidence. See `docs/shift-rating-state.md`.
 - `CYBERBOSS_FAILURE_WATCHDOG_*`
   Checks after midnight whether the previous day's Daily Review, Daily Inbox archive, and Obsidian note look complete. If the automation appears stuck, Cyberboss notifies Jane in Telegram.
 - `CYBERBOSS_PATTERN_LEDGER_FILE`
