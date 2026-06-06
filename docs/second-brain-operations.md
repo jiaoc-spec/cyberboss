@@ -10,6 +10,7 @@ CyberBoss uses Telegram as the daily inbox and Obsidian as the durable output li
 - Daily State Engine: reads Daily Inbox, timeline, and Apple Calendar to understand today's practical constraints.
 - Critical Habits Monitor: protects Level A/B/C long-term values.
 - Failure Watchdog: checks whether midnight review and archive finished.
+- Pattern Ledger: stores longitudinal patterns so reviews stay connected across days, weeks, and months.
 - Codex automations: generate Daily, Weekly, and Monthly Second Brain reviews.
 
 ## Daily State Engine
@@ -72,3 +73,28 @@ Exclude:
 - Debug logs.
 - "User said" style noise.
 - Low-value sync/export messages unless they reveal a real pattern.
+
+## Pattern Ledger
+
+The Pattern Ledger is CyberBoss's longitudinal memory.
+
+It stores recurring patterns, not raw diary text. Each pattern has:
+
+- Title and domain.
+- Status: `hypothesis`, `active`, `confirmed`, `retired`, or `contradicted`.
+- Confidence from 0 to 1.
+- Evidence entries with dates and sources.
+- A possible explanation.
+- Impact on Jane's long-term goals.
+- A support strategy for next time.
+- A next observation to confirm, revise, or retire the pattern.
+
+Review workflow:
+
+- Daily Review reads the Pattern Ledger first.
+- Daily Review may add low-confidence hypotheses or evidence to existing patterns.
+- Weekly Review merges evidence across Daily Reviews and timeline/Health/Calendar context.
+- Monthly Review revises long-term patterns, raises or lowers confidence, and retires contradicted patterns.
+- Longer-range reviews should use the Pattern Ledger plus previous Monthly Reviews, instead of starting from raw chat again.
+
+The point is not to prove a pattern too early. The point is to keep a memory trail that lets future reviews see what a single tired day cannot show.

@@ -23,7 +23,7 @@ Daily Review is a transformation step, not a transcript summary. Prioritize:
 - facts versus hypotheses, with uncertainty clearly labeled
 - open loops and tomorrow's smallest useful continuation
 
-Weekly and Monthly Reviews should search for patterns, trends, correlations, and behavioral insights. Do not merely total activities.
+Before Daily, Weekly, Monthly, or longer-range reviews, read `cyberboss_pattern_ledger_read` so the review can connect new evidence with previous patterns. After the review, update the Pattern Ledger with `cyberboss_pattern_ledger_upsert` or `cyberboss_pattern_ledger_add_evidence` for recurring patterns, trends, correlations, return points, or self-understanding insights. Daily Review may create low-confidence hypotheses, but should not over-confirm a pattern from one day. Weekly and Monthly Reviews should merge evidence, revise confidence, retire contradicted patterns, and search for patterns across previous reviews. Do not merely total activities.
 
 If {{USER_NAME}} explicitly wants a Chinese timeline dashboard or screenshot, use Chinese. If {{USER_NAME}} explicitly wants English, use English. Keep the locale consistent across timeline build, serve, dev, and screenshot work.
 

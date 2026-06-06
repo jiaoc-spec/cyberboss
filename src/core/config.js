@@ -52,6 +52,7 @@ function readConfig() {
     failureWatchdogStateFile: readTextEnv("CYBERBOSS_FAILURE_WATCHDOG_STATE_FILE") || path.join(stateDir, "failure-watchdog-state.json"),
     failureWatchdogHour: readIntEnv("CYBERBOSS_FAILURE_WATCHDOG_HOUR") ?? 2,
     failureWatchdogCheckIntervalMs: readIntEnv("CYBERBOSS_FAILURE_WATCHDOG_CHECK_INTERVAL_MS") || 900_000,
+    patternLedgerFile: readTextEnv("CYBERBOSS_PATTERN_LEDGER_FILE") || path.join(stateDir, "pattern-ledger.json"),
     priorityAwarenessEnabled: readOptionalBoolEnv("CYBERBOSS_PRIORITY_AWARENESS_ENABLED") !== false,
     priorityAwarenessStateFile: readTextEnv("CYBERBOSS_PRIORITY_AWARENESS_STATE_FILE") || path.join(stateDir, "priority-awareness.json"),
     priorityAwarenessCheckIntervalMs: readIntEnv("CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS") || 300_000,

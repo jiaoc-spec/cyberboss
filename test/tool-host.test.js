@@ -28,6 +28,17 @@ function createHost() {
         },
         observeEvents() {},
       },
+      patternLedger: {
+        read(args) {
+          return { patterns: [{ id: "pat_1", title: "Night shift recovery" }], count: 1, totalCount: 1, ...args };
+        },
+        upsert(args) {
+          return { created: !args.id, pattern: { id: args.id || "pat_1", ...args } };
+        },
+        addEvidence(args) {
+          return { pattern: { id: args.patternId, title: "Night shift recovery", evidence: args.evidence } };
+        },
+      },
       system: {
         queueMessage(args) {
           return { id: "system-1", ...args };
@@ -319,6 +330,26 @@ test("tool host accepts structured timeline screenshot input", async () => {
   }, {});
   assert.equal(result.text, "Timeline screenshot sent: /tmp/shot.png");
   assert.equal(result.data.delivery.filePath, "/tmp/shot.png");
+});
+
+test("tool host exposes pattern ledger tools", async () => {
+  const host = createHost();
+
+  const read = await host.invokeTool("cyberboss_pattern_ledger_read", { domain: "night-shift" });
+  const upsert = await host.invokeTool("cyberboss_pattern_ledger_upsert", {
+    title: "Night shift recovery affects Level A",
+    domain: "night-shift",
+    confidence: 0.4,
+    evidence: [{ date: "2026-06-05", source: "daily-review", note: "Level A was missing after night shift." }],
+  });
+  const evidence = await host.invokeTool("cyberboss_pattern_ledger_add_evidence", {
+    patternId: "pat_1",
+    evidence: [{ date: "2026-06-06", source: "daily-review", note: "Repeated." }],
+  });
+
+  assert.match(read.text, /Pattern Ledger loaded/);
+  assert.match(upsert.text, /Pattern created/);
+  assert.match(evidence.text, /Pattern evidence added/);
 });
 
 test("tool host descriptions include schema summary for models that only surface descriptions", () => {

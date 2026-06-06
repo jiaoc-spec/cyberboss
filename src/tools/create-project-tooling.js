@@ -8,6 +8,7 @@ const { DailyInboxService } = require("../services/daily-inbox-service");
 const { DailyStateService } = require("../services/daily-state-service");
 const { DiaryService } = require("../services/diary-service");
 const { HealthService } = require("../services/health-service");
+const { PatternLedgerService } = require("../services/pattern-ledger-service");
 const { PriorityAwarenessService } = require("../services/priority-awareness-service");
 const { ReminderService } = require("../services/reminder-service");
 const { StickerService } = require("../services/sticker-service");
@@ -35,6 +36,7 @@ function createProjectTooling(config, options = {}) {
   const calendar = new CalendarService({ config });
   const health = new HealthService({ config, diary });
   const dailyState = new DailyStateService({ config, dailyInbox, timeline, calendar, health });
+  const patternLedger = new PatternLedgerService({ config });
   const priorityAwareness = new PriorityAwarenessService({
     config,
     timeline,
@@ -48,6 +50,7 @@ function createProjectTooling(config, options = {}) {
     dailyState,
     diary,
     health,
+    patternLedger,
     priorityAwareness,
     reminder: new ReminderService({ config, channelAdapter, sessionStore }),
     system: new SystemMessageService({ config, channelAdapter, sessionStore }),

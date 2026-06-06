@@ -222,6 +222,8 @@ What these do:
   Enables Level A/B/C long-term value protection. Level A can now use the Daily State Engine to remind earlier on night-shift or recovery days instead of waiting for a fixed evening check. Defaults include a 180-minute night-shift lead time and a 15:00 recovery-day check.
 - `CYBERBOSS_FAILURE_WATCHDOG_*`
   Checks after midnight whether the previous day's Daily Review, Daily Inbox archive, and Obsidian note look complete. If the automation appears stuck, Cyberboss notifies Jane in Telegram.
+- `CYBERBOSS_PATTERN_LEDGER_FILE`
+  Longitudinal Memory / Pattern Ledger JSON file. Reviews read and update this file so Daily, Weekly, and Monthly insights remain connected over time instead of becoming isolated summaries.
 - `docs/second-brain-operations.md`
   Describes the current Second Brain workflow: Telegram as inbox, timeline as structured evidence, Obsidian as output, and reviews focused on growth rather than backend noise.
 - `CYBERBOSS_DIARY_BACKEND`
@@ -539,6 +541,10 @@ Agent-facing Cyberboss capabilities are project-native structured tools.
 
 - `cyberboss_reminder_create`
 - `cyberboss_diary_append`
+- `cyberboss_daily_state_read`
+- `cyberboss_pattern_ledger_read`
+- `cyberboss_pattern_ledger_upsert`
+- `cyberboss_pattern_ledger_add_evidence`
 - `cyberboss_timeline_write`
 - `cyberboss_timeline_build`
 - `cyberboss_timeline_serve`

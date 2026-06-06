@@ -206,6 +206,111 @@ const PROJECT_TOOLS = [
     },
   },
   {
+    name: "cyberboss_pattern_ledger_read",
+    description: "Read CyberBoss Longitudinal Memory / Pattern Ledger before Daily, Weekly, Monthly, or long-range reviews. Use this to connect today's evidence with patterns accumulated across days, weeks, and months instead of treating each review as isolated.",
+    shortHint: "Read long-term patterns.",
+    topics: ["review", "patterns", "longitudinal-memory", "second-brain"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Optional domain such as energy, night-shift, learning, sport, career, screen-time, emotion, research, dance." },
+        status: { type: "string", description: "Optional status: hypothesis, active, confirmed, retired, contradicted." },
+        tag: { type: "string" },
+        query: { type: "string" },
+        minConfidence: { type: "number" },
+        limit: { type: "integer" },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.patternLedger.read(args);
+      const limited = args.limit ? { ...result, patterns: result.patterns.slice(0, args.limit), count: Math.min(result.count, args.limit) } : result;
+      return {
+        text: `Pattern Ledger loaded: ${limited.count}/${result.totalCount} patterns.`,
+        data: limited,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_ledger_upsert",
+    description: "Create or update one long-term pattern after a review. Use when evidence suggests a recurring pattern, trend, correlation, return point, or self-understanding insight. Upsert by id when known, otherwise by domain + title.",
+    shortHint: "Create or update a long-term pattern.",
+    topics: ["review", "patterns", "longitudinal-memory", "second-brain"],
+    inputSchema: {
+      type: "object",
+      required: ["title"],
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        domain: { type: "string" },
+        status: { type: "string", description: "hypothesis, active, confirmed, retired, or contradicted." },
+        confidence: { type: "number", description: "0 to 1. Keep low when evidence is thin." },
+        summary: { type: "string", description: "Short human-readable pattern summary." },
+        hypothesis: { type: "string", description: "Possible explanation, clearly framed as hypothesis when uncertain." },
+        impact: { type: "string", description: "How this affects Jane's long-term goals, energy, learning, health, or identity." },
+        supportStrategy: { type: "string", description: "How CyberBoss should support Jane when this pattern appears again." },
+        nextObservation: { type: "string", description: "What to watch next to confirm, revise, or retire this pattern." },
+        tags: { type: "array", items: { type: "string" } },
+        evidence: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string" },
+              source: { type: "string", description: "daily-review, weekly-review, monthly-review, timeline, health, calendar, or user-report." },
+              note: { type: "string" },
+              weight: { type: "number" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.patternLedger.upsert(args);
+      return {
+        text: `${result.created ? "Pattern created" : "Pattern updated"}: ${result.pattern.title}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_ledger_add_evidence",
+    description: "Add evidence to an existing Pattern Ledger item without rewriting the whole pattern.",
+    shortHint: "Add evidence to a long-term pattern.",
+    topics: ["review", "patterns", "longitudinal-memory", "second-brain"],
+    inputSchema: {
+      type: "object",
+      required: ["patternId", "evidence"],
+      properties: {
+        patternId: { type: "string" },
+        confidence: { type: "number" },
+        evidence: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string" },
+              source: { type: "string" },
+              note: { type: "string" },
+              weight: { type: "number" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.patternLedger.addEvidence(args);
+      return {
+        text: `Pattern evidence added: ${result.pattern.title}`,
+        data: result,
+      };
+    },
+  },
+  {
     name: "cyberboss_priority_set",
     description: "Set today's explicit priority-awareness commitments and their shared time boundary. Use this when the user says several things are important before sleep, leaving, work, or another deadline. Include realistic estimatedMinutes when the user gives a duration or when the default would be misleading. A list is unordered unless the user explicitly specifies an order.",
     shortHint: "Set an unordered priority set with a timezone-aware deadline and realistic duration estimates.",
