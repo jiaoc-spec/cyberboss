@@ -596,6 +596,77 @@ const PROJECT_TOOLS = [
       };
     },
   },
+  {
+    name: "cyberboss_decision_record",
+    description: "Record an important decision to the Decision Journal. Only call when Jane confirms she wants to record a decision — do not auto-record every mention of plans. Trigger phrases: 我决定, 我选择, 我打算, 我在纠结, 要不要, 暂时不, 我先.",
+    shortHint: "Record a decision with context and expected outcome.",
+    topics: ["decision"],
+    inputSchema: {
+      type: "object",
+      required: ["decision"],
+      properties: {
+        decision: { type: "string", description: "The decision in one clear sentence." },
+        context: { type: "string", description: "Background: what prompted this decision." },
+        reasons: { type: "string", description: "Why this option was chosen." },
+        expected_outcome: { type: "string", description: "What Jane expects to happen." },
+        risks: { type: "string", description: "Downsides or risks she is aware of." },
+        review_date: { type: "string", description: "Optional future date (YYYY-MM-DD) to revisit this decision." },
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Defaults to today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.decisionJournal.record(args);
+      return {
+        text: `Decision recorded: ${result.id}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_decision_update",
+    description: "Update the later_outcome and reflection of an existing decision. Call during Weekly/Monthly Review or when Jane revisits a past decision.",
+    shortHint: "Update a decision with outcome and reflection.",
+    topics: ["decision"],
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string", description: "Decision id such as dec_abc1234." },
+        later_outcome: { type: "string", description: "What actually happened." },
+        reflection: { type: "string", description: "What Jane thinks about the decision in retrospect." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.decisionJournal.updateOutcome(args);
+      return {
+        text: `Decision updated: ${result.id}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_decision_list",
+    description: "List decisions from the Decision Journal. Use during Weekly/Monthly Review or when Jane asks about past decisions.",
+    shortHint: "List decisions, optionally only pending review.",
+    topics: ["decision"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        pending_review_only: { type: "boolean", description: "If true, only return decisions without a later_outcome." },
+        limit: { type: "integer", description: "Maximum number of decisions to return (most recent first)." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.decisionJournal.list(args);
+      return {
+        text: `Decision list: ${result.total} results.`,
+        data: result,
+      };
+    },
+  },
 ];
 
 const STATIC_EXTRA_TOOL_NAMES = new WhereaboutsToolHost({ service: null })
