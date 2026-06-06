@@ -544,6 +544,58 @@ const PROJECT_TOOLS = [
       };
     },
   },
+  {
+    name: "cyberboss_wins_record",
+    description: "Record a success event (win) with the key factor that made it possible. Call this after Jane completes a Level A/B habit and you want to capture what helped.",
+    shortHint: "Record a win with success_factor.",
+    topics: ["wins"],
+    inputSchema: {
+      type: "object",
+      required: ["task", "success_factor"],
+      properties: {
+        task: { type: "string", description: "The habit or task completed, e.g. Sport, Englisch, Deutsch." },
+        domain: { type: "string", description: "Domain: health, learning, career, wellbeing, etc." },
+        success_factor: { type: "string", description: "Key success factor code. E.g. right_after_work, small_chunk, had_reminder, energy_good, good_environment, other." },
+        evidence: { type: "string", description: "Optional: how it went or what made it concrete." },
+        energy_context: { type: "string", description: "Optional energy level at the time: high, medium, low." },
+        shift_context: { type: "string", description: "Optional work context: day_shift, night_shift, off, recovery." },
+        reminder_context: { type: "string", description: "Optional: did a reminder help, yes or no." },
+        note: { type: "string", description: "Optional free-text note." },
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Defaults to today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.wins.record(args);
+      return {
+        text: `Win recorded: ${result.id} task=${result.task} factor=${result.success_factor}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_wins_query",
+    description: "Query the wins ledger to find success patterns. Use before Daily Review, Weekly Review, or when building pattern evidence.",
+    shortHint: "Query wins ledger by task, domain, or date range.",
+    topics: ["wins"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        task: { type: "string", description: "Filter by task name substring." },
+        domain: { type: "string", description: "Filter by domain substring." },
+        since: { type: "string", description: "Filter wins from this date (YYYY-MM-DD) onwards." },
+        limit: { type: "integer", description: "Maximum number of wins to return (most recent first)." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.wins.query(args);
+      return {
+        text: `Wins query: ${result.total} results.`,
+        data: result,
+      };
+    },
+  },
 ];
 
 const STATIC_EXTRA_TOOL_NAMES = new WhereaboutsToolHost({ service: null })
