@@ -53,6 +53,7 @@ const { detectDecisionTrigger, buildDecisionTriggerAnnotation } = require("./dec
 const { DecisionJournalState, isDecisionJournalConfirmation } = require("./decision-journal-state");
 const { detectWinTrigger, buildWinsPrompt, resolveSuccessFactor } = require("./wins-trigger");
 const { WinsLedgerState } = require("./wins-ledger-state");
+const { detectPatternViewTrigger, formatPatternList } = require("./pattern-trigger");
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 const MIN_LONG_POLL_TIMEOUT_MS = 2_000;
 const SESSION_EXPIRED_ERRCODE = -14;
@@ -476,6 +477,11 @@ class CyberbossApp {
       return;
     }
 
+    const patternHandled = await this.handlePatternIntercept(normalized);
+    if (patternHandled) {
+      return;
+    }
+
     await this.handleWinsLedgerIntercept(normalized);
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
@@ -733,6 +739,12 @@ class CyberbossApp {
             text: "好，已记录到 Decision Journal ✓",
             contextToken,
           });
+          await this.autoAddPatternEvidence({
+            domain: "decision-patterns",
+            note: `Decision recorded: ${pending.text.slice(0, 80)}, date: ${pending.date}`,
+            source: "decision-journal",
+            date: pending.date,
+          });
         } catch (err) {
           await this.channelAdapter.sendText({
             userId: senderId,
@@ -760,6 +772,50 @@ class CyberbossApp {
     return false;
   }
 
+  async handlePatternIntercept(normalized) {
+    const senderId = normalizeText(normalized.senderId);
+    const userText = normalizeText(normalized.text);
+    const contextToken = normalizeText(normalized.contextToken);
+    const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
+
+    if (!userText || hasAttachments || !detectPatternViewTrigger(userText)) {
+      return false;
+    }
+    try {
+      const result = await this.projectServices.patternLedger.list({ limit: 10 });
+      const summary = formatPatternList(result.patterns || []);
+      await this.channelAdapter.sendText({
+        userId: senderId,
+        text: `Pattern Ledger（共 ${result.total} 条）：\n\n${summary}`,
+        contextToken,
+      });
+    } catch (err) {
+      await this.channelAdapter.sendText({
+        userId: senderId,
+        text: `读取 Pattern Ledger 失败：${err instanceof Error ? err.message : String(err)}`,
+        contextToken,
+      });
+    }
+    return true;
+  }
+
+  async autoAddPatternEvidence({ domain, note, source, date }) {
+    try {
+      const result = await this.projectServices.patternLedger.list({ domain });
+      for (const pattern of (result.patterns || []).slice(0, 3)) {
+        await this.projectServices.patternLedger.addEvidence({
+          id: pattern.id,
+          source,
+          note,
+          date,
+          weight: 1,
+        });
+      }
+    } catch {
+      // best-effort, silent on failure
+    }
+  }
+
   async handleWinsLedgerIntercept(normalized) {
     const senderId = normalizeText(normalized.senderId);
     const userText = normalizeText(normalized.text);
@@ -782,6 +838,12 @@ class CyberbossApp {
             userId: senderId,
             text: "✓ 已记录到 Wins Ledger",
             contextToken,
+          });
+          await this.autoAddPatternEvidence({
+            domain: pending.domain,
+            note: `Win: ${pending.task}, success_factor: ${factor}, date: ${pending.date}`,
+            source: "wins-ledger",
+            date: pending.date,
           });
         } catch (err) {
           await this.channelAdapter.sendText({
