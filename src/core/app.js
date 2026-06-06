@@ -782,11 +782,11 @@ class CyberbossApp {
       return false;
     }
     try {
-      const result = await this.projectServices.patternLedger.list({ limit: 10 });
+      const result = this.projectServices.patternLedger.read({});
       const summary = formatPatternList(result.patterns || []);
       await this.channelAdapter.sendText({
         userId: senderId,
-        text: `Pattern Ledger（共 ${result.total} 条）：\n\n${summary}`,
+        text: `Pattern Ledger（共 ${result.count} 条）：\n\n${summary}`,
         contextToken,
       });
     } catch (err) {
@@ -801,14 +801,11 @@ class CyberbossApp {
 
   async autoAddPatternEvidence({ domain, note, source, date }) {
     try {
-      const result = await this.projectServices.patternLedger.list({ domain });
+      const result = this.projectServices.patternLedger.read({ domain });
       for (const pattern of (result.patterns || []).slice(0, 3)) {
-        await this.projectServices.patternLedger.addEvidence({
-          id: pattern.id,
-          source,
-          note,
-          date,
-          weight: 1,
+        this.projectServices.patternLedger.addEvidence({
+          patternId: pattern.id,
+          evidence: [{ note, source, date }],
         });
       }
     } catch {
