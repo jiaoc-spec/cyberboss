@@ -54,6 +54,8 @@ const { DecisionJournalState, isDecisionJournalConfirmation } = require("./decis
 const { detectWinTrigger, buildWinsPrompt, resolveSuccessFactor } = require("./wins-trigger");
 const { WinsLedgerState } = require("./wins-ledger-state");
 const { detectPatternViewTrigger, formatPatternList } = require("./pattern-trigger");
+const { matchPatternsByDomain } = require("./pattern-domain-map");
+const { UnmatchedEvidenceStore } = require("./unmatched-evidence-store");
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 const MIN_LONG_POLL_TIMEOUT_MS = 2_000;
 const SESSION_EXPIRED_ERRCODE = -14;
@@ -133,6 +135,9 @@ class CyberbossApp {
     this.pendingOperationByRunKey = new Map();
     this.decisionJournalState = new DecisionJournalState();
     this.winsLedgerState = new WinsLedgerState();
+    this.unmatchedEvidenceStore = new UnmatchedEvidenceStore({
+      filePath: path.join(config.stateDir, "unmatched-evidence.json"),
+    });
     this.runtimeEventChain = Promise.resolve();
     this.runtimeAdapter.onEvent((event) => {
       this.threadStateStore.applyRuntimeEvent(event);
@@ -801,12 +806,18 @@ class CyberbossApp {
 
   async autoAddPatternEvidence({ domain, note, source, date }) {
     try {
-      const result = this.projectServices.patternLedger.read({ domain });
-      for (const pattern of (result.patterns || []).slice(0, 3)) {
-        this.projectServices.patternLedger.addEvidence({
-          patternId: pattern.id,
-          evidence: [{ note, source, date }],
-        });
+      const result = this.projectServices.patternLedger.read({});
+      const allPatterns = result.patterns || [];
+      const matched = matchPatternsByDomain(allPatterns, domain).slice(0, 3);
+      if (matched.length) {
+        for (const pattern of matched) {
+          this.projectServices.patternLedger.addEvidence({
+            patternId: pattern.id,
+            evidence: [{ note, source, date }],
+          });
+        }
+      } else {
+        this.unmatchedEvidenceStore.append({ originDomain: domain, note, source, date });
       }
     } catch {
       // best-effort, silent on failure
