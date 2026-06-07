@@ -51,7 +51,7 @@ const { runSystemCheckinPoller } = require("../app/system-checkin-poller");
 const { createProjectTooling } = require("../tools/create-project-tooling");
 const { detectDecisionTrigger, buildDecisionTriggerAnnotation } = require("./decision-trigger");
 const { DecisionJournalState, isDecisionJournalConfirmation } = require("./decision-journal-state");
-const { detectWinTrigger, buildWinsPrompt, resolveSuccessFactor } = require("./wins-trigger");
+const { detectWinTrigger, buildWinsPrompt, parseWinsResponse } = require("./wins-trigger");
 const { WinsLedgerState } = require("./wins-ledger-state");
 const { detectPatternViewTrigger, formatPatternList } = require("./pattern-trigger");
 const { matchPatternsByDomain } = require("./pattern-domain-map");
@@ -831,15 +831,16 @@ class CyberbossApp {
     const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
 
     if (this.winsLedgerState.hasPending(senderId)) {
-      const factor = userText && !hasAttachments ? resolveSuccessFactor(userText) : null;
-      if (factor) {
+      const parsed = userText && !hasAttachments ? parseWinsResponse(userText) : null;
+      if (parsed) {
         const pending = this.winsLedgerState.getPending(senderId);
         this.winsLedgerState.clearPending(senderId);
         try {
           await this.projectServices.wins.record({
             task: pending.task,
             domain: pending.domain,
-            success_factor: factor,
+            success_factor: parsed.success_factor,
+            note: parsed.note,
             date: pending.date,
           });
           await this.channelAdapter.sendText({

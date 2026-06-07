@@ -56,9 +56,37 @@ function buildWinsPrompt() {
   return `这次能完成，主要是什么帮到你了？\n${SUCCESS_FACTOR_OPTIONS}`;
 }
 
-function resolveSuccessFactor(text) {
+// Parses replies like "2", "2和3", "2 还有3", "2+3", "6. 精力太好了"
+// Returns { success_factor, note } or null if no valid digit found.
+function parseWinsResponse(text) {
   const normalized = String(text || "").trim();
-  return SUCCESS_FACTOR_MAP[normalized] || null;
+  if (!normalized) {
+    return null;
+  }
+  const digits = [...normalized.matchAll(/[1-6]/g)].map((m) => m[0]);
+  if (!digits.length) {
+    return null;
+  }
+  const primaryFactor = SUCCESS_FACTOR_MAP[digits[0]];
+  if (!primaryFactor) {
+    return null;
+  }
+  const additionalFactors = digits.slice(1)
+    .map((d) => SUCCESS_FACTOR_MAP[d])
+    .filter(Boolean);
+  const freeText = normalized
+    .replace(/[1-6]/g, "")
+    .replace(/[和还有也+、，,。.：:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const noteParts = [...additionalFactors];
+  if (freeText) {
+    noteParts.push(freeText);
+  }
+  return {
+    success_factor: primaryFactor,
+    note: noteParts.join("; "),
+  };
 }
 
-module.exports = { detectWinTrigger, buildWinsPrompt, resolveSuccessFactor };
+module.exports = { detectWinTrigger, buildWinsPrompt, parseWinsResponse };
