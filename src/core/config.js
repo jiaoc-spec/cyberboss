@@ -83,6 +83,7 @@ function readConfig() {
     claudeExtraArgs: readListEnv("CYBERBOSS_CLAUDE_EXTRA_ARGS"),
     sessionsFile: path.join(stateDir, "sessions.json"),
     startWithCheckin: (mode === "start" && hasArgFlag(argv, "--checkin")) || readBoolEnv("CYBERBOSS_ENABLE_CHECKIN"),
+    obsidianDailyNoteDir: readTextEnv("CYBERBOSS_OBSIDIAN_DAILY_DIR"),
   };
 }
 

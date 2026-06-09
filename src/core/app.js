@@ -42,6 +42,14 @@ const {
 } = require("../adapters/runtime/shared/approval-command");
 const { runSystemCheckinPoller } = require("../app/system-checkin-poller");
 const { createProjectTooling } = require("../tools/create-project-tooling");
+const { detectDecisionTrigger, buildDecisionTriggerAnnotation } = require("./decision-trigger");
+const { DecisionJournalState, isDecisionJournalConfirmation } = require("./decision-journal-state");
+const { detectWinTrigger, buildWinsPrompt, parseWinsResponse } = require("./wins-trigger");
+const { WinsLedgerState } = require("./wins-ledger-state");
+const { detectPatternViewTrigger, formatPatternList } = require("./pattern-trigger");
+const { matchPatternsByDomain } = require("./pattern-domain-map");
+const { checkReviewStatus, formatStatusReport } = require("../services/daily-review-check");
+const { UnmatchedEvidenceStore } = require("./unmatched-evidence-store");
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 const MIN_LONG_POLL_TIMEOUT_MS = 2_000;
 const SESSION_EXPIRED_ERRCODE = -14;
@@ -89,6 +97,11 @@ class CyberbossApp {
       onDeferredSystemReply: (payload) => this.deferSystemReply(payload),
     });
     this.pendingOperationByRunKey = new Map();
+    this.decisionJournalState = new DecisionJournalState();
+    this.winsLedgerState = new WinsLedgerState();
+    this.unmatchedEvidenceStore = new UnmatchedEvidenceStore({
+      filePath: path.join(config.stateDir, "unmatched-evidence.json"),
+    });
     this.runtimeEventChain = Promise.resolve();
     this.runtimeAdapter.onEvent((event) => {
       this.threadStateStore.applyRuntimeEvent(event);
@@ -332,6 +345,167 @@ class CyberbossApp {
     await this.handlePreparedMessage(normalized, { allowCommands: true });
   }
 
+  async handleDecisionJournalIntercept(normalized) {
+    const senderId = normalizeText(normalized.senderId);
+    const userText = normalizeText(normalized.text);
+    const contextToken = normalizeText(normalized.contextToken);
+    const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
+
+    if (this.decisionJournalState.hasPending(senderId)) {
+      if (userText && !hasAttachments && isDecisionJournalConfirmation(userText)) {
+        const pending = this.decisionJournalState.getPending(senderId);
+        this.decisionJournalState.clearPending(senderId);
+        try {
+          await this.projectServices.decisionJournal.record({
+            decision: pending.text,
+            date: pending.date,
+            context: "Recorded via Decision Journal bridge trigger.",
+          });
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: "好，已记录到 Decision Journal ✓",
+            contextToken,
+          });
+          await this.autoAddPatternEvidence({
+            domain: "decision-patterns",
+            note: `Decision recorded: ${pending.text.slice(0, 80)}, date: ${pending.date}`,
+            source: "decision-journal",
+            date: pending.date,
+          });
+        } catch (err) {
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: `记录失败：${err instanceof Error ? err.message : String(err)}`,
+            contextToken,
+          });
+        }
+        return true;
+      }
+      this.decisionJournalState.clearPending(senderId);
+    }
+
+    if (userText && !hasAttachments && detectDecisionTrigger(userText)) {
+      await this.channelAdapter.sendText({
+        userId: senderId,
+        text: "这看起来像一个重要决定，要不要记录到 Decision Journal？",
+        contextToken,
+      });
+      this.decisionJournalState.setPending(senderId, {
+        text: userText,
+        date: new Date().toISOString().slice(0, 10),
+      });
+    }
+
+    return false;
+  }
+
+  async handlePatternIntercept(normalized) {
+    const senderId = normalizeText(normalized.senderId);
+    const userText = normalizeText(normalized.text);
+    const contextToken = normalizeText(normalized.contextToken);
+    const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
+
+    if (!userText || hasAttachments || !detectPatternViewTrigger(userText)) {
+      return false;
+    }
+    try {
+      const result = this.projectServices.patternLedger.read({});
+      const summary = formatPatternList(result.patterns || []);
+      await this.channelAdapter.sendText({
+        userId: senderId,
+        text: `Pattern Ledger（共 ${result.count} 条）：\n\n${summary}`,
+        contextToken,
+      });
+    } catch (err) {
+      await this.channelAdapter.sendText({
+        userId: senderId,
+        text: `读取 Pattern Ledger 失败：${err instanceof Error ? err.message : String(err)}`,
+        contextToken,
+      });
+    }
+    return true;
+  }
+
+  async autoAddPatternEvidence({ domain, note, source, date }) {
+    try {
+      const result = this.projectServices.patternLedger.read({});
+      const allPatterns = result.patterns || [];
+      const matched = matchPatternsByDomain(allPatterns, domain).slice(0, 3);
+      if (matched.length) {
+        for (const pattern of matched) {
+          this.projectServices.patternLedger.addEvidence({
+            patternId: pattern.id,
+            evidence: [{ note, source, date }],
+          });
+        }
+      } else {
+        this.unmatchedEvidenceStore.append({ originDomain: domain, note, source, date });
+      }
+    } catch {
+      // best-effort, silent on failure
+    }
+  }
+
+  async handleWinsLedgerIntercept(normalized) {
+    const senderId = normalizeText(normalized.senderId);
+    const userText = normalizeText(normalized.text);
+    const contextToken = normalizeText(normalized.contextToken);
+    const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
+
+    if (this.winsLedgerState.hasPending(senderId)) {
+      const parsed = userText && !hasAttachments ? parseWinsResponse(userText) : null;
+      if (parsed) {
+        const pending = this.winsLedgerState.getPending(senderId);
+        this.winsLedgerState.clearPending(senderId);
+        try {
+          await this.projectServices.wins.record({
+            task: pending.task,
+            domain: pending.domain,
+            success_factor: parsed.success_factor,
+            note: parsed.note,
+            date: pending.date,
+          });
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: "✓ 已记录到 Wins Ledger",
+            contextToken,
+          });
+          await this.autoAddPatternEvidence({
+            domain: pending.domain,
+            note: `Win: ${pending.task}, success_factor: ${parsed.success_factor}, date: ${pending.date}`,
+            source: "wins-ledger",
+            date: pending.date,
+          });
+        } catch (err) {
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: `记录失败：${err instanceof Error ? err.message : String(err)}`,
+            contextToken,
+          });
+        }
+      } else {
+        this.winsLedgerState.clearPending(senderId);
+      }
+      return;
+    }
+
+    if (userText && !hasAttachments) {
+      const win = detectWinTrigger(userText);
+      if (win) {
+        await this.channelAdapter.sendText({
+          userId: senderId,
+          text: buildWinsPrompt(),
+          contextToken,
+        });
+        this.winsLedgerState.setPending(senderId, {
+          task: win.task,
+          domain: win.domain,
+          date: new Date().toISOString().slice(0, 10),
+        });
+      }
+    }
+  }
+
   deferSystemReply({ threadId = "", userId = "", text = "", error = null, kind = "plain_reply" }) {
     return this.deferredSystemReplyQueue.enqueue({
       id: `${normalizeCommandArgument(threadId) || "system"}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
@@ -382,6 +556,18 @@ class CyberbossApp {
       await this.dispatchChannelCommand(normalized, command);
       return;
     }
+
+    const djHandled = await this.handleDecisionJournalIntercept(normalized);
+    if (djHandled) {
+      return;
+    }
+
+    const patternHandled = await this.handlePatternIntercept(normalized);
+    if (patternHandled) {
+      return;
+    }
+
+    await this.handleWinsLedgerIntercept(normalized);
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
     const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
@@ -500,12 +686,17 @@ class CyberbossApp {
       runtimeAdapter: this.runtimeAdapter,
       model,
     });
+    let text = assembleRuntimeTurnText({
+      prepared,
+      config: this.config,
+      visionContext,
+    });
+    const originalText = String(prepared?.originalText || prepared?.text || "").trim();
+    if (detectDecisionTrigger(originalText)) {
+      text = text + "\n\n" + buildDecisionTriggerAnnotation();
+    }
     return {
-      text: assembleRuntimeTurnText({
-        prepared,
-        config: this.config,
-        visionContext,
-      }),
+      text,
       attachments: Array.isArray(visionContext.runtimeAttachments) ? visionContext.runtimeAttachments : [],
       visionContext,
     };
@@ -992,6 +1183,12 @@ class CyberbossApp {
       case "help":
         await this.handleHelpCommand(normalized);
         return;
+      case "review-status":
+        await this.handleReviewStatusCommand(normalized, command);
+        return;
+      case "backfill":
+        await this.handleBackfillCommand(normalized, command);
+        return;
       default:
         await this.channelAdapter.sendText({
           userId: normalized.senderId,
@@ -1454,6 +1651,97 @@ class CyberbossApp {
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
       text: buildWeixinHelpText(),
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleReviewStatusCommand(normalized, command) {
+    const date = normalizeCommandArgument(command.args).split(/\s+/)[0];
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      await this.channelAdapter.sendText({
+        userId: normalized.senderId,
+        text: "💡 Usage: /review-status YYYY-MM-DD\nExample: /review-status 2026-06-08",
+        contextToken: normalized.contextToken,
+      });
+      return;
+    }
+    const result = checkReviewStatus({
+      stateDir: this.config.stateDir,
+      obsidianDailyNoteDir: this.config.obsidianDailyNoteDir,
+      date,
+    });
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text: formatStatusReport(result),
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleBackfillCommand(normalized, command) {
+    const rawArgs = normalizeCommandArgument(command.args).split(/\s+/);
+    const date = rawArgs.find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
+    const force = rawArgs.includes("--force");
+
+    if (!date) {
+      await this.channelAdapter.sendText({
+        userId: normalized.senderId,
+        text: "💡 Usage: /backfill YYYY-MM-DD [--force]\nExample: /backfill 2026-06-08",
+        contextToken: normalized.contextToken,
+      });
+      return;
+    }
+
+    const result = checkReviewStatus({
+      stateDir: this.config.stateDir,
+      obsidianDailyNoteDir: this.config.obsidianDailyNoteDir,
+      date,
+    });
+
+    if (result.obsidian.hasReviewContent && !force) {
+      await this.channelAdapter.sendText({
+        userId: normalized.senderId,
+        text: `⚠️ Daily Review for ${date} appears complete.\nUse /backfill ${date} --force to regenerate.`,
+        contextToken: normalized.contextToken,
+      });
+      return;
+    }
+
+    if (!result.inbox.found) {
+      await this.channelAdapter.sendText({
+        userId: normalized.senderId,
+        text: `❌ No Daily Inbox found for ${date}. Cannot backfill without source data.`,
+        contextToken: normalized.contextToken,
+      });
+      return;
+    }
+
+    const bindingKey = this.runtimeAdapter.getSessionStore().buildBindingKey({
+      workspaceId: normalized.workspaceId,
+      accountId: normalized.accountId,
+      senderId: normalized.senderId,
+    });
+    const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
+
+    this.systemMessageQueue.enqueue({
+      id: crypto.randomUUID(),
+      accountId: normalized.accountId,
+      senderId: normalized.senderId,
+      workspaceRoot,
+      text: buildBackfillSystemMessage(date),
+      createdAt: new Date().toISOString(),
+    });
+
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text: [
+        `✅ Backfill queued for ${date}`,
+        "",
+        formatStatusReport(result),
+        "",
+        "⚠️ 注意：此任务需要主 runtime（Codex）才能执行。",
+        "如果 Codex 当前不可用，DeepSeek fallback 无法写入 Obsidian，会保持 silent 等待主模型恢复。",
+        "如需立即补跑，请从终端运行 npm run backfill 后用 Claude Code 直接生成。",
+      ].join("\n"),
       contextToken: normalized.contextToken,
     });
   }
@@ -2329,4 +2617,30 @@ function stringifyRpcId(value) {
 
 function hasRpcId(value) {
   return stringifyRpcId(value) !== "";
+}
+
+function buildBackfillSystemMessage(date) {
+  return `[BACKFILL REQUEST date=${date}] [COMPLEX_TASK requires_tools=true no_deepseek_fallback=true]
+
+如果你是 DeepSeek fallback 而非主 runtime（Codex/Claude），请直接回复 {"action":"silent"}，不要生成任何内容。此任务需要文件读写工具才能正确执行。
+
+---
+
+请补生成 ${date} 的 Obsidian Daily Review / 昨日时间轴报表。
+
+数据源（按优先级读取）：
+1. ~/.cyberboss/daily-inbox/${date}.md
+2. ~/.cyberboss/apple-calendar-cache.json（过滤 ${date} 的事件）
+3. ~/.cyberboss/missing-context-state.json（该日期的回答）
+4. ~/.cyberboss/critical-habits-state.json（Level A/B/C）
+5. ~/.cyberboss/shift-rating-state.json
+6. ~/.cyberboss/pattern-ledger.json
+7. ~/.cyberboss/wins-ledger.json
+8. ~/.cyberboss/decision-journal.json
+
+Obsidian 目标文件：03. 🔵 Tagebuch/01. 日记/${date}.md
+- 如文件已有"待午夜后自动生成"占位符，整体填充
+- 如文件已有部分内容，追加缺失 section，不要删除已有内容
+
+原则：Meaning over Activity，不写 debug/技术日志噪音，缺失信息标记 unknown，重点帮助理解那一天。`;
 }

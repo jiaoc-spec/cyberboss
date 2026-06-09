@@ -66,6 +66,8 @@ The intentionally small public set is:
 - `npm run shared:status`
 - `npm run doctor`
 - `npm run help`
+- `npm run review-status -- YYYY-MM-DD`
+- `npm run backfill -- YYYY-MM-DD [--force]`
 
 ## Project Tools
 
@@ -107,6 +109,8 @@ Notes:
 - `/model <id>`
 - `/star`
 - `/help`
+- `/review-status <YYYY-MM-DD>`
+- `/backfill <YYYY-MM-DD>`
 
 Notes:
 

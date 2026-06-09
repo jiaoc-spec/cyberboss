@@ -252,6 +252,20 @@ const COMMAND_GROUPS = [
         weixin: ["/help"],
         status: "active",
       },
+      {
+        action: "daily.review_status",
+        summary: "Check whether a date's Daily Review is complete",
+        terminal: ["review-status <YYYY-MM-DD>"],
+        weixin: ["/review-status <YYYY-MM-DD>"],
+        status: "active",
+      },
+      {
+        action: "daily.backfill",
+        summary: "Queue a backfill request for a date's Daily Review",
+        terminal: ["backfill <YYYY-MM-DD>"],
+        weixin: ["/backfill <YYYY-MM-DD>"],
+        status: "active",
+      },
     ],
   },
 ];
@@ -336,6 +350,8 @@ function actionEmoji(action) {
     case "model.select": return "🤖";
     case "app.help": return "❓";
     case "app.star": return "⭐️";
+    case "daily.review_status": return "🔍";
+    case "daily.backfill": return "📋";
     default: return "•";
   }
 }
