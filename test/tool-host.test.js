@@ -16,6 +16,29 @@ function createHost() {
           return { id: "reminder-1", ...args };
         },
       },
+      priorityAwareness: {
+        set(args) {
+          return { date: args.date || "2026-04-21", priorities: args.priorities, ...args };
+        },
+        status(args) {
+          return { date: args.date || "2026-04-21", priorities: [] };
+        },
+        update(args) {
+          return { date: args.date || "2026-04-21", priorities: [], ...args };
+        },
+        observeEvents() {},
+      },
+      patternLedger: {
+        read(args) {
+          return { patterns: [{ id: "pat_1", title: "Night shift recovery" }], count: 1, totalCount: 1, ...args };
+        },
+        upsert(args) {
+          return { created: !args.id, pattern: { id: args.id || "pat_1", ...args } };
+        },
+        addEvidence(args) {
+          return { pattern: { id: args.patternId, title: "Night shift recovery", evidence: args.evidence } };
+        },
+      },
       system: {
         queueMessage(args) {
           return { id: "system-1", ...args };
@@ -232,6 +255,25 @@ test("tool host validates structured reminder input types", async () => {
   }, /input\.delayMinutes must be an integer/);
 });
 
+test("tool host exposes structured priority awareness tools", async () => {
+  const host = createHost();
+  const setResult = await host.invokeTool("cyberboss_priority_set", {
+    date: "2026-04-21",
+    deadlineAt: "2026-04-21T16:00:00+02:00",
+    deadlineLabel: "补觉",
+    priorities: [
+      { label: "Sport", level: "A" },
+      { label: "Deutsch", level: "A" },
+    ],
+  }, {});
+  const statusResult = await host.invokeTool("cyberboss_priority_status", {
+    date: "2026-04-21",
+  }, {});
+
+  assert.match(setResult.text, /Sport, Deutsch/);
+  assert.equal(statusResult.text, "Priority awareness state for 2026-04-21: 0 priorities.");
+});
+
 test("tool host exposes sticker tools with compact structured outputs", async () => {
   const host = createHost();
   const tagsResult = await host.invokeTool("cyberboss_sticker_tags", {}, {});
@@ -288,6 +330,26 @@ test("tool host accepts structured timeline screenshot input", async () => {
   }, {});
   assert.equal(result.text, "Timeline screenshot sent: /tmp/shot.png");
   assert.equal(result.data.delivery.filePath, "/tmp/shot.png");
+});
+
+test("tool host exposes pattern ledger tools", async () => {
+  const host = createHost();
+
+  const read = await host.invokeTool("cyberboss_pattern_ledger_read", { domain: "night-shift" });
+  const upsert = await host.invokeTool("cyberboss_pattern_ledger_upsert", {
+    title: "Night shift recovery affects Level A",
+    domain: "night-shift",
+    confidence: 0.4,
+    evidence: [{ date: "2026-06-05", source: "daily-review", note: "Level A was missing after night shift." }],
+  });
+  const evidence = await host.invokeTool("cyberboss_pattern_ledger_add_evidence", {
+    patternId: "pat_1",
+    evidence: [{ date: "2026-06-06", source: "daily-review", note: "Repeated." }],
+  });
+
+  assert.match(read.text, /Pattern Ledger loaded/);
+  assert.match(upsert.text, /Pattern created/);
+  assert.match(evidence.text, /Pattern evidence added/);
 });
 
 test("tool host descriptions include schema summary for models that only surface descriptions", () => {

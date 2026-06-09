@@ -1,7 +1,5 @@
 const crypto = require("crypto");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
-const { loadPersistedContextTokens } = require("../adapters/channel/weixin/context-token-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
 const { resolvePreferredSenderId } = require("../core/default-targets");
 const { resolveBodyInput } = require("./text-input");
@@ -12,11 +10,10 @@ const DELAY_UNIT_MS = {
   h: 60 * 60_000,
   d: 24 * 60 * 60_000,
 };
-const LOCAL_TIMEZONE_OFFSET = "+08:00";
-
 class ReminderService {
-  constructor({ config, sessionStore }) {
+  constructor({ config, channelAdapter, sessionStore }) {
     this.config = config;
+    this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.queue = new ReminderQueueStore({ filePath: config.reminderQueueFile });
   }
@@ -35,24 +32,33 @@ class ReminderService {
       throw new Error("Reminder text cannot be empty. Pass text or textFile.");
     }
 
-    const dueAtMs = resolveDueAtMs({ delay, delayMinutes, at, dueAt });
+    const dueAtMs = resolveDueAtMs({
+      delay,
+      delayMinutes,
+      at,
+      dueAt,
+      timeZone: this.config.timeZone || this.config.diaryTimeZone || "UTC",
+    });
     if (!Number.isFinite(dueAtMs) || dueAtMs <= Date.now()) {
       throw new Error("Missing a valid time. Use delayMinutes or dueAt like 2026-04-07T21:30+08:00.");
     }
 
-    const account = resolveSelectedAccount(this.config);
+    const account = this.channelAdapter.resolveAccount();
+    const contextTokens = typeof this.channelAdapter.getKnownContextTokens === "function"
+      ? this.channelAdapter.getKnownContextTokens()
+      : {};
     const senderId = resolveReminderSenderId({
       config: this.config,
       accountId: account.accountId,
       explicitUser: userId,
       context,
       sessionStore: this.sessionStore,
+      contextTokens,
     });
     if (!senderId) {
-      throw new Error("Cannot determine the WeChat user for this reminder.");
+      throw new Error("Cannot determine the channel user for this reminder.");
     }
 
-    const contextTokens = loadPersistedContextTokens(this.config, account.accountId);
     const contextToken = String(contextTokens[senderId] || "").trim();
     if (!contextToken) {
       throw new Error(`Cannot find context_token for ${senderId}. Let this user talk to the bot once first.`);
@@ -71,7 +77,7 @@ class ReminderService {
   }
 }
 
-function resolveReminderSenderId({ config, accountId, explicitUser = "", context = {}, sessionStore = null }) {
+function resolveReminderSenderId({ config, accountId, explicitUser = "", context = {}, sessionStore = null, contextTokens = {} }) {
   const explicit = normalizeText(explicitUser);
   if (explicit) {
     return explicit;
@@ -84,13 +90,14 @@ function resolveReminderSenderId({ config, accountId, explicitUser = "", context
     config,
     accountId,
     sessionStore,
+    contextTokens,
   });
 }
 
-function resolveDueAtMs({ delay = "", delayMinutes = undefined, at = "", dueAt = "" } = {}) {
+function resolveDueAtMs({ delay = "", delayMinutes = undefined, at = "", dueAt = "", timeZone = "UTC" } = {}) {
   const delayMs = parseDelay(delay);
   const normalizedDelayMinutes = parseDelayMinutes(delayMinutes);
-  const scheduledAtMs = parseAbsoluteTime(dueAt || at);
+  const scheduledAtMs = parseAbsoluteTime(dueAt || at, timeZone);
   const timeSourceCount = [delayMs, normalizedDelayMinutes, scheduledAtMs].filter((value) => value > 0).length;
   if (timeSourceCount > 1) {
     throw new Error("Use only one of delay, delayMinutes, at, or dueAt.");
@@ -149,18 +156,18 @@ function parseDelay(rawValue) {
   return totalMs > 0 ? totalMs : 0;
 }
 
-function parseAbsoluteTime(rawValue) {
+function parseAbsoluteTime(rawValue, timeZone = "UTC") {
   const normalized = String(rawValue || "").trim();
   if (!normalized) {
     return 0;
   }
 
-  const normalizedIso = normalizeAbsoluteTimeString(normalized);
-  const parsed = Date.parse(normalizedIso);
+  const normalizedIso = normalizeAbsoluteTimeString(normalized, timeZone);
+  const parsed = typeof normalizedIso === "number" ? normalizedIso : Date.parse(normalizedIso);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeAbsoluteTimeString(value) {
+function normalizeAbsoluteTimeString(value, timeZone = "UTC") {
   const normalized = String(value || "").trim();
   if (!normalized) {
     return "";
@@ -172,15 +179,57 @@ function normalizeAbsoluteTimeString(value) {
 
   const dateTimeMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/);
   if (dateTimeMatch) {
-    return `${dateTimeMatch[1]}T${dateTimeMatch[2]}${LOCAL_TIMEZONE_OFFSET}`;
+    return localDateTimeToEpochMs(`${dateTimeMatch[1]}T${dateTimeMatch[2]}`, timeZone);
   }
 
   const dateOnlyMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})$/);
   if (dateOnlyMatch) {
-    return `${dateOnlyMatch[1]}T09:00:00${LOCAL_TIMEZONE_OFFSET}`;
+    return localDateTimeToEpochMs(`${dateOnlyMatch[1]}T09:00:00`, timeZone);
   }
 
   return normalized;
+}
+
+function localDateTimeToEpochMs(value, timeZone) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    return 0;
+  }
+  const desiredUtcMs = Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6] || 0)
+  );
+  let candidateMs = desiredUtcMs;
+  for (let index = 0; index < 2; index += 1) {
+    const parts = zonedDateTimeParts(new Date(candidateMs), timeZone);
+    const representedUtcMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+    candidateMs += desiredUtcMs - representedUtcMs;
+  }
+  return candidateMs;
+}
+
+function zonedDateTimeParts(date, timeZone) {
+  const parts = {};
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type !== "literal") {
+      parts[part.type] = Number(part.value);
+    }
+  }
+  return parts;
 }
 
 function normalizeText(value) {

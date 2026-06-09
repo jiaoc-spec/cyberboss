@@ -33,6 +33,10 @@ function createTimelineIntegration(config) {
 }
 
 function resolveTimelineBinPath() {
+  const localWorkspaceBin = path.resolve(__dirname, "..", "..", "..", "..", "timeline-for-agent", "bin", "timeline-for-agent.js");
+  if (fs.existsSync(localWorkspaceBin)) {
+    return localWorkspaceBin;
+  }
   const packageJsonPath = require.resolve("timeline-for-agent/package.json");
   return path.join(path.dirname(packageJsonPath), "bin", "timeline-for-agent.js");
 }

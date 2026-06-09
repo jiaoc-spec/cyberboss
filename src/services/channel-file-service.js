@@ -1,8 +1,6 @@
 const fs = require("fs");
 const path = require("path");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
-const { loadPersistedContextTokens } = require("../adapters/channel/weixin/context-token-store");
 const { resolvePreferredSenderId } = require("../core/default-targets");
 
 class ChannelFileService {
@@ -13,19 +11,22 @@ class ChannelFileService {
   }
 
   async sendToCurrentChat({ filePath = "", userId = "" } = {}, context = {}) {
-    const account = resolveSelectedAccount(this.config);
+    const account = this.channelAdapter.resolveAccount();
+    const contextTokens = typeof this.channelAdapter.getKnownContextTokens === "function"
+      ? this.channelAdapter.getKnownContextTokens()
+      : {};
     const targetUserId = normalizeText(userId)
       || normalizeText(context?.senderId)
       || resolvePreferredSenderId({
         config: this.config,
         accountId: account.accountId,
         sessionStore: this.sessionStore,
+        contextTokens,
       });
     if (!targetUserId) {
-      throw new Error("Cannot determine which WeChat user should receive the file.");
+      throw new Error("Cannot determine which channel user should receive the file.");
     }
 
-    const contextTokens = loadPersistedContextTokens(this.config, account.accountId);
     const contextToken = String(contextTokens[targetUserId] || "").trim();
     if (!contextToken) {
       throw new Error(`Cannot find a context token for user ${targetUserId}. Let this user talk to the bot once first.`);

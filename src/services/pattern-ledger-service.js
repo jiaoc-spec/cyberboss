@@ -1,197 +1,402 @@
-const crypto = require("crypto");
 const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 
-const SCHEMA_VERSION = 1;
-const VALID_CONFIDENCE = new Set(["low", "medium", "high"]);
+const DEFAULT_SCHEMA_VERSION = 1;
 
 class PatternLedgerService {
-  constructor({ config }) {
-    this.config = config;
+  constructor({ config } = {}) {
+    this.config = config || {};
+    this.filePath = this.config.patternLedgerFile;
   }
 
-  async add({
-    title = "",
-    domain = "",
-    observation = "",
-    hypothesis = "",
-    confidence = "low",
-    impact = "",
-    tags = [],
-    status = "hypothesis",
-  } = {}) {
-    if (!String(title || "").trim()) {
-      throw new Error("pattern_add: title is required.");
-    }
-
-    const now = new Date();
-    const resolvedConfidence = normalizeConfidence(confidence);
-    const pattern = {
-      id: `pat_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`,
-      title: String(title).trim(),
-      domain: String(domain || "").trim(),
-      status: String(status || "hypothesis").trim(),
-      confidence: resolvedConfidence,
-      observation: String(observation || "").trim(),
-      hypothesis: String(hypothesis || "").trim(),
-      impact: String(impact || "").trim(),
-      tags: Array.isArray(tags) ? tags.map((t) => String(t).trim()).filter(Boolean) : [],
-      evidence: [],
-      intervention_ideas: [],
-      outcome_tracking: [],
-      firstSeenAt: formatDate(now),
-      lastSeenAt: formatDate(now),
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+  read(args = {}) {
+    const ledger = this.loadLedger();
+    const filters = normalizeFilters(args);
+    const patterns = ledger.patterns
+      .filter((pattern) => matchesFilters(pattern, filters))
+      .sort(comparePatterns);
+    return {
+      filePath: this.filePath,
+      generatedAt: new Date().toISOString(),
+      schemaVersion: ledger.schemaVersion,
+      patterns,
+      count: patterns.length,
+      totalCount: ledger.patterns.length,
     };
-
-    const ledger = this._load();
-    ledger.patterns.push(pattern);
-    this._save(ledger);
-    return pattern;
   }
 
-  async addEvidence({ id = "", date = "", source = "", note = "", weight = 1 } = {}) {
-    const normalizedId = String(id || "").trim();
-    if (!normalizedId) {
-      throw new Error("pattern_add_evidence: id is required.");
-    }
+  upsert(args = {}) {
+    const now = new Date().toISOString();
+    const ledger = this.loadLedger();
+    const incoming = normalizePatternInput(args, now);
+    const existingIndex = findExistingPatternIndex(ledger.patterns, incoming);
+    const previous = existingIndex >= 0 ? ledger.patterns[existingIndex] : null;
+    const pattern = previous
+      ? mergePattern(previous, incoming, now)
+      : createPattern(incoming, now);
 
-    const ledger = this._load();
-    const index = ledger.patterns.findIndex((p) => p.id === normalizedId);
-    if (index === -1) {
-      throw new Error(`pattern_add_evidence: pattern ${normalizedId} not found.`);
+    if (existingIndex >= 0) {
+      ledger.patterns[existingIndex] = pattern;
+    } else {
+      ledger.patterns.push(pattern);
     }
-
-    const now = new Date();
-    const evidenceDate = String(date || "").trim() || formatDate(now);
-    const evidence = {
-      date: evidenceDate,
-      source: String(source || "").trim(),
-      note: String(note || "").trim(),
-      weight: Number.isFinite(Number(weight)) ? Number(weight) : 1,
+    ledger.updatedAt = now;
+    this.saveLedger(ledger);
+    return {
+      filePath: this.filePath,
+      pattern,
+      created: existingIndex < 0,
     };
-
-    if (!Array.isArray(ledger.patterns[index].evidence)) {
-      ledger.patterns[index].evidence = [];
-    }
-    ledger.patterns[index].evidence.push(evidence);
-    ledger.patterns[index].lastSeenAt = evidenceDate;
-    ledger.patterns[index].updatedAt = now.toISOString();
-    this._save(ledger);
-    return ledger.patterns[index];
   }
 
-  async addIntervention({ id = "", idea = "", target_domain = "" } = {}) {
-    const normalizedId = String(id || "").trim();
-    if (!normalizedId) {
-      throw new Error("pattern_add_intervention: id is required.");
+  addEvidence(args = {}) {
+    const patternId = normalizeText(args.patternId);
+    if (!patternId) {
+      throw new Error("Pattern evidence requires patternId.");
     }
-
-    const ledger = this._load();
-    const index = ledger.patterns.findIndex((p) => p.id === normalizedId);
-    if (index === -1) {
-      throw new Error(`pattern_add_intervention: pattern ${normalizedId} not found.`);
+    const now = new Date().toISOString();
+    const ledger = this.loadLedger();
+    const pattern = ledger.patterns.find((item) => item.id === patternId);
+    if (!pattern) {
+      throw new Error(`Pattern not found: ${patternId}`);
     }
-
-    if (!Array.isArray(ledger.patterns[index].intervention_ideas)) {
-      ledger.patterns[index].intervention_ideas = [];
+    pattern.evidence = mergeEvidence(pattern.evidence, normalizeEvidenceList(args.evidence || args));
+    pattern.updatedAt = now;
+    pattern.lastSeenAt = latestEvidenceDate(pattern.evidence) || pattern.lastSeenAt || "";
+    if (Number.isFinite(Number(args.confidence))) {
+      pattern.confidence = normalizeConfidence(args.confidence);
     }
-    ledger.patterns[index].intervention_ideas.push({
-      idea: String(idea || "").trim(),
-      target_domain: String(target_domain || "").trim(),
-      addedAt: new Date().toISOString(),
-      outcome: "",
-    });
-    ledger.patterns[index].updatedAt = new Date().toISOString();
-    this._save(ledger);
-    return ledger.patterns[index];
+    ledger.updatedAt = now;
+    this.saveLedger(ledger);
+    return { filePath: this.filePath, pattern };
   }
 
-  async trackOutcome({ id = "", intervention_index = 0, outcome = "" } = {}) {
-    const normalizedId = String(id || "").trim();
-    if (!normalizedId) {
-      throw new Error("pattern_track_outcome: id is required.");
+  recordDailyStateEvidence({ dailyState = null, missingLevelA = [], observedAt = new Date() } = {}) {
+    if (!dailyState?.shiftRating?.found || dailyState.shiftRating.fatigueBand !== "high") {
+      return { recorded: false, reason: "no_high_fatigue" };
     }
-
-    const ledger = this._load();
-    const patternIndex = ledger.patterns.findIndex((p) => p.id === normalizedId);
-    if (patternIndex === -1) {
-      throw new Error(`pattern_track_outcome: pattern ${normalizedId} not found.`);
+    const missing = (missingLevelA.length ? missingLevelA : dailyState.levelA || [])
+      .filter((item) => item && item.completed !== true)
+      .map((item) => item.label || item.id)
+      .filter(Boolean);
+    if (!missing.length) {
+      return { recorded: false, reason: "no_missing_level_a" };
     }
-
-    const ideas = ledger.patterns[patternIndex].intervention_ideas;
-    if (!Array.isArray(ideas) || !ideas[intervention_index]) {
-      throw new Error(`pattern_track_outcome: intervention_index ${intervention_index} not found.`);
-    }
-
-    ideas[intervention_index].outcome = String(outcome || "").trim();
-    ideas[intervention_index].trackedAt = new Date().toISOString();
-    ledger.patterns[patternIndex].updatedAt = new Date().toISOString();
-    this._save(ledger);
-    return ledger.patterns[patternIndex];
+    const score = dailyState.shiftRating.score;
+    return {
+      recorded: true,
+      ...this.upsert({
+        title: "High after-shift fatigue affects Level A habits",
+        domain: "energy",
+        confidence: 0.35,
+        summary: "High after-shift fatigue appears to make Level A habits harder to complete on the same day.",
+        hypothesis: "When after-shift fatigue is high, Sport, Deutsch, or Englisch may need minimum versions instead of full versions.",
+        impact: "This affects health, language learning, and long-term growth because foundational habits are more likely to drop after demanding shifts.",
+        supportStrategy: "Use minimum mode after high-fatigue shifts: Sport 10 minutes, Englisch 5 minutes, Deutsch 5-10 minutes, or conscious recovery.",
+        nextObservation: "Track whether minimum mode after high-fatigue shifts improves return rate without adding guilt.",
+        tags: ["fatigue", "level-a", "recovery", "minimum-mode"],
+        evidence: [{
+          date: dailyState.date,
+          source: "daily-state",
+          note: `After-shift fatigue ${score}/10 (${dailyState.shiftRating.fatigueBand}); missing Level A: ${missing.join(", ")}.`,
+          weight: "medium",
+        }],
+        lastSeenAt: observedAt instanceof Date ? observedAt.toISOString() : normalizeText(observedAt),
+      }),
+    };
   }
 
-  async list({ domain = "", status = "", limit = 0 } = {}) {
-    const ledger = this._load();
-    let patterns = ledger.patterns.slice().reverse();
-
-    if (String(domain || "").trim()) {
-      const d = String(domain).trim().toLowerCase();
-      patterns = patterns.filter((p) => String(p.domain || "").toLowerCase().includes(d));
-    }
-    if (String(status || "").trim()) {
-      const s = String(status).trim().toLowerCase();
-      patterns = patterns.filter((p) => String(p.status || "").toLowerCase() === s);
-    }
-
-    const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 0;
-    if (safeLimit) {
-      patterns = patterns.slice(0, safeLimit);
-    }
-
-    return { patterns, total: patterns.length };
-  }
-
-  _load() {
+  loadLedger() {
     try {
-      const raw = fs.readFileSync(this.config.patternLedgerFile, "utf8");
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.patterns)) {
-        return { schemaVersion: SCHEMA_VERSION, patterns: [] };
-      }
-      return parsed;
+      const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
+      return normalizeLedger(parsed);
     } catch {
-      return { schemaVersion: SCHEMA_VERSION, patterns: [] };
+      return normalizeLedger({});
     }
   }
 
-  _save(ledger) {
-    const data = { schemaVersion: SCHEMA_VERSION, ...ledger, updatedAt: new Date().toISOString() };
-    fs.writeFileSync(this.config.patternLedgerFile, JSON.stringify(data, null, 2), "utf8");
+  saveLedger(ledger) {
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+    fs.writeFileSync(this.filePath, `${JSON.stringify(normalizeLedger(ledger), null, 2)}\n`, "utf8");
   }
+}
+
+function normalizeLedger(value) {
+  return {
+    schemaVersion: Number.isInteger(value?.schemaVersion) ? value.schemaVersion : DEFAULT_SCHEMA_VERSION,
+    updatedAt: normalizeText(value?.updatedAt),
+    patterns: Array.isArray(value?.patterns)
+      ? value.patterns.map(normalizeStoredPattern).filter(Boolean)
+      : [],
+  };
+}
+
+function normalizeStoredPattern(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const title = normalizeText(value.title);
+  if (!title) {
+    return null;
+  }
+  const evidence = normalizeEvidenceList(value.evidence);
+  return {
+    id: normalizeText(value.id) || stablePatternId({ title, domain: value.domain }),
+    title,
+    domain: normalizeDomain(value.domain),
+    status: normalizeStatus(value.status),
+    confidence: normalizeConfidence(value.confidence),
+    summary: normalizeText(value.summary),
+    hypothesis: normalizeText(value.hypothesis),
+    impact: normalizeText(value.impact),
+    supportStrategy: normalizeText(value.supportStrategy),
+    nextObservation: normalizeText(value.nextObservation),
+    tags: normalizeTextArray(value.tags),
+    evidence,
+    firstSeenAt: normalizeText(value.firstSeenAt) || latestEvidenceDate(evidence) || "",
+    lastSeenAt: normalizeText(value.lastSeenAt) || latestEvidenceDate(evidence) || "",
+    createdAt: normalizeText(value.createdAt),
+    updatedAt: normalizeText(value.updatedAt),
+  };
+}
+
+function normalizePatternInput(args, now) {
+  const title = normalizeText(args.title);
+  if (!title) {
+    throw new Error("Pattern title is required.");
+  }
+  const evidence = normalizeEvidenceList(args.evidence);
+  return {
+    id: normalizeText(args.id),
+    title,
+    domain: normalizeDomain(args.domain),
+    status: normalizeStatus(args.status),
+    confidence: normalizeConfidence(args.confidence),
+    summary: normalizeText(args.summary),
+    hypothesis: normalizeText(args.hypothesis),
+    impact: normalizeText(args.impact),
+    supportStrategy: normalizeText(args.supportStrategy),
+    nextObservation: normalizeText(args.nextObservation),
+    tags: normalizeTextArray(args.tags),
+    evidence,
+    firstSeenAt: normalizeText(args.firstSeenAt) || latestEvidenceDate(evidence) || now,
+    lastSeenAt: normalizeText(args.lastSeenAt) || latestEvidenceDate(evidence) || now,
+  };
+}
+
+function createPattern(input, now) {
+  return {
+    id: input.id || stablePatternId(input),
+    title: input.title,
+    domain: input.domain,
+    status: input.status,
+    confidence: input.confidence,
+    summary: input.summary,
+    hypothesis: input.hypothesis,
+    impact: input.impact,
+    supportStrategy: input.supportStrategy,
+    nextObservation: input.nextObservation,
+    tags: input.tags,
+    evidence: input.evidence,
+    firstSeenAt: input.firstSeenAt,
+    lastSeenAt: input.lastSeenAt,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function mergePattern(previous, incoming, now) {
+  const evidence = mergeEvidence(previous.evidence, incoming.evidence);
+  return {
+    ...previous,
+    title: incoming.title || previous.title,
+    domain: incoming.domain || previous.domain,
+    status: incoming.status || previous.status,
+    confidence: incoming.confidence,
+    summary: incoming.summary || previous.summary,
+    hypothesis: incoming.hypothesis || previous.hypothesis,
+    impact: incoming.impact || previous.impact,
+    supportStrategy: incoming.supportStrategy || previous.supportStrategy,
+    nextObservation: incoming.nextObservation || previous.nextObservation,
+    tags: mergeTextArrays(previous.tags, incoming.tags),
+    evidence,
+    firstSeenAt: earliestTextDate(previous.firstSeenAt, incoming.firstSeenAt) || previous.firstSeenAt || incoming.firstSeenAt,
+    lastSeenAt: latestTextDate(previous.lastSeenAt, incoming.lastSeenAt, latestEvidenceDate(evidence)) || previous.lastSeenAt || incoming.lastSeenAt,
+    updatedAt: now,
+  };
+}
+
+function normalizeEvidenceList(value) {
+  const list = Array.isArray(value) ? value : value?.date || value?.note || value?.source ? [value] : [];
+  return list.map((item) => {
+    const date = normalizeText(item?.date);
+    const note = normalizeText(item?.note || item?.summary || item?.text);
+    const source = normalizeText(item?.source);
+    const weight = normalizeEvidenceWeight(item?.weight);
+    if (!date && !note) {
+      return null;
+    }
+    return { date, source, note, weight };
+  }).filter(Boolean);
+}
+
+function mergeEvidence(existing, incoming) {
+  const map = new Map();
+  for (const item of [...normalizeEvidenceList(existing), ...normalizeEvidenceList(incoming)]) {
+    const key = `${item.date}::${item.source}::${item.note}`;
+    map.set(key, item);
+  }
+  return [...map.values()].sort((left, right) => normalizeText(left.date).localeCompare(normalizeText(right.date)));
+}
+
+function normalizeFilters(args = {}) {
+  return {
+    domain: normalizeText(args.domain),
+    status: normalizeText(args.status),
+    tag: normalizeText(args.tag),
+    query: normalizeText(args.query).toLowerCase(),
+    minConfidence: Number.isFinite(Number(args.minConfidence)) ? Number(args.minConfidence) : null,
+    limit: normalizePositiveInteger(args.limit),
+  };
+}
+
+function matchesFilters(pattern, filters) {
+  if (filters.domain && pattern.domain !== normalizeDomain(filters.domain)) {
+    return false;
+  }
+  if (filters.status && pattern.status !== normalizeStatus(filters.status)) {
+    return false;
+  }
+  if (filters.tag && !pattern.tags.some((tag) => tag.toLowerCase() === filters.tag.toLowerCase())) {
+    return false;
+  }
+  if (filters.minConfidence !== null && pattern.confidence < filters.minConfidence) {
+    return false;
+  }
+  if (filters.query) {
+    const haystack = [
+      pattern.title,
+      pattern.summary,
+      pattern.hypothesis,
+      pattern.impact,
+      pattern.supportStrategy,
+      ...pattern.tags,
+      ...pattern.evidence.map((item) => item.note),
+    ].join("\n").toLowerCase();
+    if (!haystack.includes(filters.query)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function comparePatterns(left, right) {
+  if (right.confidence !== left.confidence) {
+    return right.confidence - left.confidence;
+  }
+  return normalizeText(right.lastSeenAt).localeCompare(normalizeText(left.lastSeenAt));
+}
+
+function findExistingPatternIndex(patterns, incoming) {
+  if (incoming.id) {
+    const byId = patterns.findIndex((pattern) => pattern.id === incoming.id);
+    if (byId >= 0) return byId;
+  }
+  const incomingKey = canonicalPatternKey(incoming);
+  return patterns.findIndex((pattern) => canonicalPatternKey(pattern) === incomingKey);
+}
+
+function stablePatternId(pattern) {
+  const digest = crypto
+    .createHash("sha1")
+    .update(canonicalPatternKey(pattern))
+    .digest("hex")
+    .slice(0, 10);
+  return `pat_${digest}`;
+}
+
+function canonicalPatternKey(pattern) {
+  return `${normalizeDomain(pattern.domain)}:${normalizeText(pattern.title).toLowerCase().replace(/\s+/g, " ")}`;
+}
+
+function normalizeDomain(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const allowed = new Set([
+    "energy",
+    "sleep",
+    "night-shift",
+    "work",
+    "learning",
+    "language",
+    "sport",
+    "health",
+    "emotion",
+    "motivation",
+    "procrastination",
+    "career",
+    "research",
+    "dance",
+    "screen-time",
+    "relationship",
+    "other",
+  ]);
+  return allowed.has(normalized) ? normalized : "other";
+}
+
+function normalizeStatus(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (["active", "hypothesis", "confirmed", "retired", "contradicted"].includes(normalized)) {
+    return normalized;
+  }
+  return "hypothesis";
 }
 
 function normalizeConfidence(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (VALID_CONFIDENCE.has(normalized)) {
-    return normalized;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0.3;
   }
-  const num = Number(value);
-  if (Number.isFinite(num)) {
-    if (num >= 0.7) return "high";
-    if (num >= 0.4) return "medium";
-    return "low";
-  }
-  return "low";
+  return Math.max(0, Math.min(1, Number(numeric.toFixed(2))));
 }
 
-function formatDate(date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+function normalizeEvidenceWeight(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  return Math.max(0, Math.min(3, Number(numeric.toFixed(2))));
+}
+
+function normalizeTextArray(value) {
+  return Array.isArray(value)
+    ? [...new Set(value.map(normalizeText).filter(Boolean))]
+    : [];
+}
+
+function mergeTextArrays(left, right) {
+  return [...new Set([...normalizeTextArray(left), ...normalizeTextArray(right)])];
+}
+
+function latestEvidenceDate(evidence) {
+  return latestTextDate(...normalizeEvidenceList(evidence).map((item) => item.date));
+}
+
+function latestTextDate(...dates) {
+  return dates.map(normalizeText).filter(Boolean).sort().at(-1) || "";
+}
+
+function earliestTextDate(...dates) {
+  return dates.map(normalizeText).filter(Boolean).sort()[0] || "";
+}
+
+function normalizePositiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function normalizeText(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 module.exports = { PatternLedgerService };

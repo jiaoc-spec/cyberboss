@@ -6,8 +6,6 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
-const { loadPersistedContextTokens } = require("../adapters/channel/weixin/context-token-store");
 const { resolvePreferredSenderId } = require("../core/default-targets");
 
 const execFileAsync = promisify(execFile);
@@ -211,8 +209,12 @@ class StickerService {
       return false;
     }
     let account = null;
+    let contextTokens = {};
     try {
-      account = resolveSelectedAccount(this.config);
+      account = this.channelAdapter.resolveAccount();
+      contextTokens = typeof this.channelAdapter.getKnownContextTokens === "function"
+        ? this.channelAdapter.getKnownContextTokens()
+        : {};
     } catch {
       return false;
     }
@@ -222,11 +224,11 @@ class StickerService {
         config: this.config,
         accountId: account.accountId,
         sessionStore: this.sessionStore,
+        contextTokens,
       });
     if (!targetUserId) {
       return false;
     }
-    const contextTokens = loadPersistedContextTokens(this.config, account.accountId);
     const contextToken = normalizeText(contextTokens[targetUserId]);
     if (!contextToken) {
       return false;

@@ -69,9 +69,40 @@ function listProjectToolNames() {
 
 const PROJECT_TOOLS = [
   {
+    name: "cyberboss_calendar_read",
+    description: "Read calendar events from the configured calendar provider. On macOS, the default Apple Calendar provider uses EventKit and the user's locally synced Apple/iCloud calendars.",
+    shortHint: "Read Apple Calendar events for today or the next few days.",
+    topics: ["calendar", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        provider: { type: "string", description: "Optional provider. Current value: apple." },
+        start: { type: "string", description: "Optional ISO datetime range start." },
+        end: { type: "string", description: "Optional ISO datetime range end." },
+        days: { type: "integer", description: "Optional number of days from start/today. Default 7." },
+        calendars: {
+          type: "array",
+          description: "Optional Apple Calendar names to include.",
+          items: { type: "string" },
+        },
+        includeNotes: { type: "boolean", description: "Whether to include event notes." },
+        includeUrls: { type: "boolean", description: "Whether to include event URLs." },
+        requestAccess: { type: "boolean", description: "Whether to trigger the macOS Calendar permission request when access has not been granted yet." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.calendar.read(args);
+      return {
+        text: `Calendar events loaded: ${Array.isArray(result?.events) ? result.events.length : 0}.`,
+        data: result,
+      };
+    },
+  },
+  {
     name: "cyberboss_diary_append",
-    description: "Append a diary entry into Cyberboss local diary storage.",
-    shortHint: "Append a diary entry with direct text content.",
+    description: "Append a cleaned, durable diary entry into the configured diary backend. When the Obsidian backend is enabled, use this for Growth Log summaries, important corrections, and reviews rather than raw chat capture.",
+    shortHint: "Append a cleaned Growth Log or review entry.",
     topics: ["diary"],
     inputSchema: {
       type: "object",
@@ -88,6 +119,279 @@ const PROJECT_TOOLS = [
       const result = await services.diary.append(args);
       return {
         text: `Diary appended to ${result.filePath}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_daily_inbox_read",
+    description: "Read the local raw Telegram/CyberBoss Daily Inbox for a date before producing a Daily Review. Raw inbox content is evidence, not final Obsidian knowledge.",
+    shortHint: "Read a date's raw Daily Inbox before review.",
+    topics: ["diary", "review", "inbox"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Default today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.dailyInbox.read(args);
+      return {
+        text: result.exists ? `Daily Inbox loaded: ${result.filePath}` : `Daily Inbox missing: ${result.filePath}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_daily_inbox_archive",
+    description: "Archive a local raw Daily Inbox file after the Daily Review, Timeline, statistics, and durable Obsidian output have been completed successfully. This does not delete Telegram messages.",
+    shortHint: "Archive a reviewed Daily Inbox date.",
+    topics: ["diary", "review", "inbox"],
+    inputSchema: {
+      type: "object",
+      required: ["date"],
+      properties: {
+        date: { type: "string", description: "Date in YYYY-MM-DD to archive." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.dailyInbox.archive(args);
+      return {
+        text: result.archived ? `Daily Inbox archived: ${result.archivePath}` : `Daily Inbox not found: ${result.sourcePath}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_health_import",
+    description: "Import pending Apple Health / Shortcuts export files from the configured health inbox into the diary backend, usually Obsidian Daily Notes.",
+    shortHint: "Import Health inbox files into the Daily Note.",
+    topics: ["health", "diary", "obsidian"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", description: "Maximum files to import this turn. Default 20." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.health.importPending(args);
+      return {
+        text: `Health imports completed: ${Array.isArray(result.imported) ? result.imported.length : 0}.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_daily_state_read",
+    description: "Read the synthesized Daily State for a date. Use before context-sensitive replies about what Jane is likely doing, whether she is currently working/on night shift, what Level A habits are done or missing, night-shift recovery, after-shift fatigue rating, calendar boundaries, energy/body signals, career growth signals, and whether to offer a minimum-version priority reminder.",
+    shortHint: "Read today's synthesized life context.",
+    topics: ["daily-state", "priority", "calendar", "timeline", "health"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional date in YYYY-MM-DD. Default today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.dailyState.analyze(args);
+      const missing = result.levelA.filter((item) => !item.completed).map((item) => item.label);
+      return {
+        text: `Daily State loaded for ${result.date}. Missing Level A: ${missing.join(", ") || "none"}. Mode: ${result.recommendedMode}.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_ledger_read",
+    description: "Read CyberBoss Longitudinal Memory / Pattern Ledger before Daily, Weekly, Monthly, or long-range reviews. Use this to connect today's evidence with patterns accumulated across days, weeks, and months instead of treating each review as isolated.",
+    shortHint: "Read long-term patterns.",
+    topics: ["review", "patterns", "longitudinal-memory", "second-brain"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Optional domain such as energy, night-shift, learning, sport, career, screen-time, emotion, research, dance." },
+        status: { type: "string", description: "Optional status: hypothesis, active, confirmed, retired, contradicted." },
+        tag: { type: "string" },
+        query: { type: "string" },
+        minConfidence: { type: "number" },
+        limit: { type: "integer" },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.patternLedger.read(args);
+      const limited = args.limit ? { ...result, patterns: result.patterns.slice(0, args.limit), count: Math.min(result.count, args.limit) } : result;
+      return {
+        text: `Pattern Ledger loaded: ${limited.count}/${result.totalCount} patterns.`,
+        data: limited,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_ledger_upsert",
+    description: "Create or update one long-term pattern after a review. Use when evidence suggests a recurring pattern, trend, correlation, return point, or self-understanding insight. Upsert by id when known, otherwise by domain + title.",
+    shortHint: "Create or update a long-term pattern.",
+    topics: ["review", "patterns", "longitudinal-memory", "second-brain"],
+    inputSchema: {
+      type: "object",
+      required: ["title"],
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        domain: { type: "string" },
+        status: { type: "string", description: "hypothesis, active, confirmed, retired, or contradicted." },
+        confidence: { type: "number", description: "0 to 1. Keep low when evidence is thin." },
+        summary: { type: "string", description: "Short human-readable pattern summary." },
+        hypothesis: { type: "string", description: "Possible explanation, clearly framed as hypothesis when uncertain." },
+        impact: { type: "string", description: "How this affects Jane's long-term goals, energy, learning, health, or identity." },
+        supportStrategy: { type: "string", description: "How CyberBoss should support Jane when this pattern appears again." },
+        nextObservation: { type: "string", description: "What to watch next to confirm, revise, or retire this pattern." },
+        tags: { type: "array", items: { type: "string" } },
+        evidence: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string" },
+              source: { type: "string", description: "daily-review, weekly-review, monthly-review, timeline, health, calendar, or user-report." },
+              note: { type: "string" },
+              weight: { type: "number" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.patternLedger.upsert(args);
+      return {
+        text: `${result.created ? "Pattern created" : "Pattern updated"}: ${result.pattern.title}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_pattern_ledger_add_evidence",
+    description: "Add evidence to an existing Pattern Ledger item without rewriting the whole pattern.",
+    shortHint: "Add evidence to a long-term pattern.",
+    topics: ["review", "patterns", "longitudinal-memory", "second-brain"],
+    inputSchema: {
+      type: "object",
+      required: ["patternId", "evidence"],
+      properties: {
+        patternId: { type: "string" },
+        confidence: { type: "number" },
+        evidence: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string" },
+              source: { type: "string" },
+              note: { type: "string" },
+              weight: { type: "number" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.patternLedger.addEvidence(args);
+      return {
+        text: `Pattern evidence added: ${result.pattern.title}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_priority_set",
+    description: "Set today's explicit priority-awareness commitments and their shared time boundary. Use this when the user says several things are important before sleep, leaving, work, or another deadline. Include realistic estimatedMinutes when the user gives a duration or when the default would be misleading. A list is unordered unless the user explicitly specifies an order.",
+    shortHint: "Set an unordered priority set with a timezone-aware deadline and realistic duration estimates.",
+    topics: ["priority", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      required: ["priorities", "deadlineAt"],
+      properties: {
+        date: { type: "string", description: "Optional local date in YYYY-MM-DD. Default today." },
+        deadlineAt: { type: "string", description: "Required timezone-aware ISO deadline, such as 2026-06-04T16:00:00+02:00." },
+        deadlineLabel: { type: "string", description: "Human boundary label, such as 补觉, 出门, or 上班." },
+        sourceText: { type: "string", description: "Optional original user wording for traceability." },
+        priorities: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["label"],
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+              level: { type: "string", description: "A, B, or C." },
+              meaning: { type: "string" },
+              estimatedMinutes: { type: "integer", description: "Expected minutes for the full intended version of this priority." },
+              keywords: { type: "array", items: { type: "string" } },
+              categoryPrefixes: { type: "array", items: { type: "string" } },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.priorityAwareness.set(args);
+      return {
+        text: `Priority awareness set for ${result.date}: ${result.priorities.map((item) => item.label).join(", ")}.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_priority_status",
+    description: "Read today's current priority-awareness state before replying about what is complete, still open, postponed, skipped, or cancelled.",
+    shortHint: "Read the current priority-awareness state.",
+    topics: ["priority", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional local date in YYYY-MM-DD. Default today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.priorityAwareness.status(args);
+      return {
+        text: `Priority awareness state for ${result.date}: ${result.priorities.length} priorities.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_priority_update",
+    description: "Update one priority-awareness commitment when the user completes, postpones, consciously skips, cancels, or reopens it.",
+    shortHint: "Update a priority status.",
+    topics: ["priority", "reminder", "timeline"],
+    inputSchema: {
+      type: "object",
+      required: ["status"],
+      properties: {
+        date: { type: "string", description: "Optional local date in YYYY-MM-DD. Default today." },
+        priorityId: { type: "string", description: "Priority id, such as sport, english, or german." },
+        label: { type: "string", description: "Priority label when id is unknown." },
+        status: { type: "string", description: "pending, unknown, completed, postponed, skipped, or cancelled." },
+        note: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.priorityAwareness.update(args);
+      return {
+        text: `Priority awareness updated for ${result.date}.`,
         data: result,
       };
     },
@@ -439,6 +743,10 @@ const PROJECT_TOOLS = [
     async handler({ services, args }) {
       validateTimelineWriteArgs(args);
       const result = await services.timeline.write(args);
+      services.priorityAwareness?.observeEvents({
+        date: args.date,
+        events: args.events,
+      });
       return {
         text: "Timeline write completed.",
         data: result,
@@ -598,7 +906,7 @@ const PROJECT_TOOLS = [
   },
   {
     name: "cyberboss_decision_record",
-    description: "Record an important decision to the Decision Journal. Only call when Jane confirms she wants to record a decision — do not auto-record every mention of plans. Trigger phrases: 我决定, 我选择, 我打算, 我在纠结, 要不要, 暂时不, 我先.",
+    description: "Record an important decision to the Decision Journal. Only call when Jane confirms she wants to record a decision — do not auto-record every mention of plans.",
     shortHint: "Record a decision with context and expected outcome.",
     topics: ["decision"],
     inputSchema: {
@@ -663,104 +971,6 @@ const PROJECT_TOOLS = [
       const result = await services.decisionJournal.list(args);
       return {
         text: `Decision list: ${result.total} results.`,
-        data: result,
-      };
-    },
-  },
-  {
-    name: "cyberboss_pattern_add",
-    description: "Add a new pattern to the Pattern Ledger with the enhanced research schema. Use when you identify a recurring behavioral, energy, or learning pattern worth tracking.",
-    shortHint: "Add a new pattern with observation, hypothesis, confidence, and impact.",
-    topics: ["pattern"],
-    inputSchema: {
-      type: "object",
-      required: ["title", "domain"],
-      properties: {
-        title: { type: "string", description: "Short title for the pattern." },
-        domain: { type: "string", description: "Domain: energy, learning, health, career, recovery, reminder-effectiveness, success-patterns, decision-patterns." },
-        observation: { type: "string", description: "Objective facts observed — do not interpret yet." },
-        hypothesis: { type: "string", description: "Possible explanation, must be labeled as hypothesis/speculation." },
-        confidence: { type: "string", description: "Confidence level: low, medium, or high." },
-        impact: { type: "string", description: "Which areas this pattern affects: health, learning, career, etc." },
-        tags: { type: "array", items: { type: "string" }, description: "Optional tags." },
-        status: { type: "string", description: "Pattern status: hypothesis, active, resolved, archived." },
-      },
-      additionalProperties: false,
-    },
-    async handler({ services, args }) {
-      const result = await services.patternLedger.add(args);
-      return {
-        text: `Pattern added: ${result.id} title="${result.title}"`,
-        data: result,
-      };
-    },
-  },
-  {
-    name: "cyberboss_pattern_add_evidence",
-    description: "Add evidence to an existing pattern. Use when you observe a new data point that supports or challenges the pattern.",
-    shortHint: "Add evidence to an existing pattern by id.",
-    topics: ["pattern"],
-    inputSchema: {
-      type: "object",
-      required: ["id", "note"],
-      properties: {
-        id: { type: "string", description: "Pattern id such as pat_abc1234." },
-        date: { type: "string", description: "Evidence date in YYYY-MM-DD. Defaults to today." },
-        source: { type: "string", description: "Source: daily-review, weekly-review, user-report, wins-ledger, timeline." },
-        note: { type: "string", description: "What was observed." },
-        weight: { type: "integer", description: "Evidence weight 1-3. Default 1." },
-      },
-      additionalProperties: false,
-    },
-    async handler({ services, args }) {
-      const result = await services.patternLedger.addEvidence(args);
-      return {
-        text: `Evidence added to pattern ${args.id}. Total evidence: ${result.evidence?.length || 0}.`,
-        data: result,
-      };
-    },
-  },
-  {
-    name: "cyberboss_pattern_add_intervention",
-    description: "Add an intervention idea to an existing pattern. Use when you have a hypothesis about how to improve the pattern.",
-    shortHint: "Add an intervention idea to a pattern.",
-    topics: ["pattern"],
-    inputSchema: {
-      type: "object",
-      required: ["id", "idea"],
-      properties: {
-        id: { type: "string", description: "Pattern id." },
-        idea: { type: "string", description: "Specific intervention to try, e.g. 'On recovery days, only require 5-minute Sport version for 4 weeks.'" },
-        target_domain: { type: "string", description: "Which domain this intervention targets." },
-      },
-      additionalProperties: false,
-    },
-    async handler({ services, args }) {
-      const result = await services.patternLedger.addIntervention(args);
-      return {
-        text: `Intervention added to pattern ${args.id}.`,
-        data: result,
-      };
-    },
-  },
-  {
-    name: "cyberboss_pattern_list",
-    description: "List patterns from the Pattern Ledger. Use during Weekly/Monthly Review or when building pattern analysis.",
-    shortHint: "List patterns, optionally filtered by domain or status.",
-    topics: ["pattern"],
-    inputSchema: {
-      type: "object",
-      properties: {
-        domain: { type: "string", description: "Filter by domain substring." },
-        status: { type: "string", description: "Filter by status: hypothesis, active, resolved, archived." },
-        limit: { type: "integer", description: "Maximum number of patterns to return." },
-      },
-      additionalProperties: false,
-    },
-    async handler({ services, args }) {
-      const result = await services.patternLedger.list(args);
-      return {
-        text: `Pattern list: ${result.total} results.`,
         data: result,
       };
     },

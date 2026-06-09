@@ -134,18 +134,28 @@ npm install
 ```dotenv
 CYBERBOSS_USER_NAME=你的名字
 CYBERBOSS_USER_GENDER=female
+CYBERBOSS_TIME_ZONE=
+CYBERBOSS_ASK_WHEN_UNCERTAIN=true
 CYBERBOSS_ALLOWED_USER_IDS=你的微信 user id
 CYBERBOSS_WORKSPACE_ROOT=/绝对路径/你的项目目录
+CYBERBOSS_CHANNEL=weixin
+CYBERBOSS_DIARY_BACKEND=local
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
 ```
 
 可选常用项：
 
 ```dotenv
 CYBERBOSS_RUNTIME=codex
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_CHAT_IDS=
+TELEGRAM_API_BASE_URL=https://api.telegram.org
+TELEGRAM_FILE_BASE_URL=https://api.telegram.org
 CYBERBOSS_CODEX_ENDPOINT=ws://127.0.0.1:8765
 CYBERBOSS_CODEX_COMMAND=
 CYBERBOSS_CODEX_MODEL=
 CYBERBOSS_CODEX_MODEL_PROVIDER=
+CYBERBOSS_DAILY_THREAD_ROLLOVER=false
 CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT=
 CYBERBOSS_CLAUDE_COMMAND=claude
 CYBERBOSS_CLAUDE_MODEL=
@@ -161,6 +171,12 @@ CYBERBOSS_VISION_API_KEY=
 CYBERBOSS_VISION_MODEL=
 CYBERBOSS_VISION_TIMEOUT_MS=30000
 CYBERBOSS_ACCOUNT_ID=
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
+CYBERBOSS_DIARY_TIME_ZONE=
+CYBERBOSS_OBSIDIAN_VAULT_DIR=
+CYBERBOSS_OBSIDIAN_DAILY_FOLDER=03. 🔵 Tagebuch/01. 日记
+CYBERBOSS_OBSIDIAN_DAILY_SECTION=## 今日记录
+CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE=
 CYBERBOSS_WEIXIN_MIN_CHUNK_CHARS=20
 CYBERBOSS_WEIXIN_BASE_URL=https://ilinkai.weixin.qq.com
 CYBERBOSS_WEIXIN_CDN_BASE_URL=https://novac2c.cdn.weixin.qq.com/c2c
@@ -180,6 +196,28 @@ CYBERBOSS_LOCATION_BATTERY_HISTORY_LIMIT=100
 
 - `CYBERBOSS_RUNTIME`
   选择 `codex` 或 `claudecode`。两种 runtime 使用同一套命令。
+- `CYBERBOSS_CHANNEL`
+  选择消息入口。当前支持 `weixin` 和 `telegram`。Telegram 使用 Bot API，不需要微信二维码登录。
+- `CYBERBOSS_TIME_ZONE`
+  给模型显示消息时间、格式化主动系统时间时使用的时区。例如：`Europe/Berlin`。
+- `CYBERBOSS_ASK_WHEN_UNCERTAIN`
+  默认 `true`。当日记、时间线、学习统计、运动统计、心情/能量推断或周总结缺少关键信息时，Cyberboss 会短短反问一次，而不是编造缺失内容。设为 `false` 时，不确定字段会保留为 unknown / 未记录。
+- `CYBERBOSS_DIARY_BACKEND`
+  选择 `local` 或 `obsidian`。`local` 写入 `~/.cyberboss/diary`；`obsidian` 会把 diary 直接写进配置好的 Obsidian Daily Note。
+- `CYBERBOSS_DIARY_AUTO_CAPTURE`
+  默认 `false`。设为 `true` 后，每条普通聊天文本会在模型处理前自动追加到 diary backend；斜杠命令不会记录。
+- `CYBERBOSS_DIARY_TIME_ZONE`
+  日记日期和时间戳使用的时区。默认使用系统时区。
+- `CYBERBOSS_OBSIDIAN_VAULT_DIR`
+  当 `CYBERBOSS_DIARY_BACKEND=obsidian` 时使用的 Obsidian vault 根目录。
+- `CYBERBOSS_OBSIDIAN_DAILY_FOLDER`、`CYBERBOSS_OBSIDIAN_DAILY_SECTION`、`CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE`
+  Obsidian 日记目录、写入 section、可选模板文件。模板里可以使用 `{{date}}`。
+- `TELEGRAM_BOT_TOKEN`
+  Telegram bot token。先在 Telegram 里找 `@BotFather` 创建 bot，然后把 token 填到这里。设置 `CYBERBOSS_CHANNEL=telegram` 时必填。
+- `TELEGRAM_ALLOWED_CHAT_IDS`
+  可选的 Telegram chat id 白名单，多个值用逗号分隔。第一次验证可以先留空；bot 能收到消息后，建议填入自己的 chat id。
+- `TELEGRAM_API_BASE_URL` / `TELEGRAM_FILE_BASE_URL`
+  Telegram API 与文件下载地址。默认都是 `https://api.telegram.org`，只有代理或自建 API 网关时才需要改。
 - `CYBERBOSS_CODEX_ENDPOINT`
   复用已有的共享 Codex app-server，而不是新起私有 runtime。
 - `CYBERBOSS_CODEX_COMMAND`
@@ -188,6 +226,8 @@ CYBERBOSS_LOCATION_BATTERY_HISTORY_LIMIT=100
   强制 Codex turn 使用指定模型。留空则使用 Codex 默认模型选择。
 - `CYBERBOSS_CODEX_MODEL_PROVIDER`
   强制 Codex turn 使用指定 provider，例如本地模型可填 `ollama`。留空则使用默认云端 provider。
+- `CYBERBOSS_DAILY_THREAD_ROLLOVER`
+  默认 `false`。启用后，新本地日期的第一条普通渠道消息会创建新的 runtime thread。Daily Inbox 和 Obsidian 记录仍会保留，但旧聊天上下文不会无限增长。
 - `CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT`
   Codex app-server 直传图片能力的可选覆盖。留空时按 model metadata 判断；设为 `true` 可直接测试本地多模态模型，设为 `false` 可强制走 caption fallback。
 - `CYBERBOSS_CLAUDE_COMMAND`
@@ -271,7 +311,7 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 ### 用户自己会用到的终端命令
 
 - `npm run login`
-  扫码登录微信，并把 bot 账号保存到本地
+  登录当前 channel。WeChat 会扫码登录；Telegram 会验证 `TELEGRAM_BOT_TOKEN` 并把 bot 账号保存到本地
 - `npm run accounts`
   查看本地已保存的账号
 - `npm run shared:start`
@@ -291,7 +331,7 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 
 `npm run start` / `npm run start:checkin` 可以用于本地最小链路调试，但不适合观察共享桥的真实行为，也不适合作为共享线程问题的默认排查入口。因此 README 只把共享模式作为默认入口。
 
-### 用户在微信里会用到的命令
+### 用户在消息入口里会用到的命令
 
 - `/bind /绝对路径`
   绑定当前聊天使用的项目目录
@@ -310,7 +350,7 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 - `/checkin <min>-<max>`
   调整当前项目的随机 checkin 区间
 - `/chunk <number>`
-  调整微信短回复的最小合并字符数
+  调整短回复的最小合并字符数
 - `/yes`
   允许当前待处理授权一次
 - `/always`
@@ -322,15 +362,44 @@ model_catalog_json = "/绝对路径/.codex/local-models.json"
 - `/model <id>`
   切换模型
 - `/star`
-  在微信里查看 GitHub star 引导
+  查看 GitHub star 引导
 - `/help`
-  查看微信内命令帮助
+  查看当前 channel 内命令帮助
 
 普通文本消息会直接发送到当前绑定线程。如果当前还没绑定项目，先执行：
 
 ```text
 /bind /绝对路径
 ```
+
+### 使用 Telegram 入口
+
+如果微信二维码提示“不支持”，可以把 channel 切到 Telegram：
+
+```dotenv
+CYBERBOSS_CHANNEL=telegram
+TELEGRAM_BOT_TOKEN=123456:your_bot_token
+TELEGRAM_ALLOWED_CHAT_IDS=
+```
+
+然后运行：
+
+```bash
+npm run login
+npm run shared:start
+```
+
+在 Telegram 里给 bot 发：
+
+```text
+/status
+/bind /绝对路径
+/checkin 30-90
+```
+
+第一次验证时可以先让 `TELEGRAM_ALLOWED_CHAT_IDS` 留空。看到 bot 能收到消息后，把自己的 chat id 加入白名单，再重启 `shared:start`。
+
+Telegram 能覆盖 Cyberboss 的核心能力：文本消息、命令、主动 check-in、提醒、日记、timeline、截图/文件回传。它不包含微信特有的二维码桥接、微信上下文 token、微信侧表情包生态和微信轻应用能力。
 
 ### 双端监控同一条线程
 

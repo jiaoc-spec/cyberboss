@@ -1,14 +1,16 @@
 const { sanitizeProtocolLeakText } = require("../adapters/runtime/codex/protocol-leak-monitor");
 
 const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
+const EMPTY_MODEL_REPLY_FALLBACK = "你的消息已经收到并记录了，但当前模型没有生成回复。你可以继续发消息，我仍然会保存你的记录。";
 
 class StreamDelivery {
-  constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs }) {
+  constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, onEmptyReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs }) {
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.runtimeId = normalizeRuntimeId(runtimeId);
     this.systemReplyPolicy = createSystemReplyPolicy(this.runtimeId);
     this.onDeferredSystemReply = typeof onDeferredSystemReply === "function" ? onDeferredSystemReply : null;
+    this.onEmptyReply = typeof onEmptyReply === "function" ? onEmptyReply : null;
     this.systemReplyRetryScheduleMs = Array.isArray(systemReplyRetryScheduleMs) && systemReplyRetryScheduleMs.length
       ? systemReplyRetryScheduleMs.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0)
       : [1_500, 2_500, 4_000, 6_000];
@@ -139,6 +141,7 @@ class StreamDelivery {
         const state = this.ensureRunState(threadId, turnId);
         state.turnId = turnId || state.turnId;
         this.captureTurnCompletionText(state, event.payload.text);
+        await this.sendEmptyReplyFallbackIfNeeded(state);
         await this.flush(state, { force: true });
         this.disposeRunState(state.runKey);
         return;
@@ -219,6 +222,33 @@ class StreamDelivery {
       text: normalized,
       completed: true,
     });
+  }
+
+  async sendEmptyReplyFallbackIfNeeded(state) {
+    if (!state.replyTarget || state.itemOrder.length > 0) {
+      return;
+    }
+    if (this.onEmptyReply) {
+      const handled = await this.onEmptyReply({
+        threadId: state.threadId,
+        turnId: state.turnId,
+        replyTarget: normalizeReplyTarget(state.replyTarget),
+      }).catch(() => false);
+      if (handled) {
+        return;
+      }
+    }
+    if (state.replyTarget.provider === "system") {
+      return;
+    }
+    console.warn(
+      `[cyberboss] empty model reply fallback thread=${state.threadId} turn=${state.turnId} provider=${state.replyTarget.provider || ""}`
+    );
+    await this.sendTextWithRetry(state, {
+      userId: state.replyTarget.userId,
+      text: EMPTY_MODEL_REPLY_FALLBACK,
+      contextToken: state.replyTarget.contextToken,
+    }, { kind: "plain_reply" });
   }
 
   upsertItem(state, { itemId, text, completed }) {
@@ -718,7 +748,60 @@ function sanitizeReplyText(plainReplyText) {
     return "";
   }
   const protocolSanitized = sanitizeProtocolLeakText(normalized);
-  return trimOuterBlankLines(protocolSanitized.text || "");
+  return sanitizeOperationalLeakText(protocolSanitized.text || "");
+}
+
+function sanitizeOperationalLeakText(text) {
+  const normalized = normalizeLineEndings(String(text || ""));
+  if (!normalized) {
+    return "";
+  }
+  const lines = normalized.split("\n");
+  const kept = [];
+  for (const line of lines) {
+    if (isOperationalLeakLine(line)) {
+      continue;
+    }
+    const cleaned = stripFictionalToneLeak(line);
+    if (cleaned.trim()) {
+      kept.push(cleaned);
+    }
+  }
+  return trimOuterBlankLines(kept.join("\n").replace(/\n{3,}/g, "\n\n"));
+}
+
+function isOperationalLeakLine(line) {
+  const normalized = String(line || "").trim();
+  if (!normalized) {
+    return false;
+  }
+  return OPERATIONAL_LEAK_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+const OPERATIONAL_LEAK_PATTERNS = [
+  /^我(?:先|会|来|去|再|马上)?把.*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表).*(?:看一下|查一下|处理|整理|接进去|接上|写进去|补进去|更新|同步|分类|归类|记(?:一下|成|进|到)?)/i,
+  /^我(?:先|会|来|去|再|马上)?(?:看一下|查一下|处理|整理|更新|同步|读取|检查).*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表)/i,
+  /^我(?:先|会|来|去|再|马上)?把.*(?:状态|收尾|夜班|下班|这条|这个).*(?:接住|接上|补到|补进|放进|写进|记成|记进).*(?:记录|日记|时间线|timeline|可用记录|今天)/i,
+  /^我(?:再|先|来|会|马上)?看一眼.*(?:时间线|timeline|记录|日记|今天).*(?:避免重复|重复写|顺手|补|放进|接进去|接上)/i,
+  /^我把.*(?:收尾|状态|这条|这个).*(?:记成|记为|补成|放进|写进).*(?:可用记录|记录|日记|时间线|timeline)/i,
+  /^这段(?:先|会|可以)?(?:记成|记为|归类为|分类为|接进|接到|写进|放进).*(?:时间轴|timeline|日记|Obsidian|低脑力整理块|记录|分类|category)?/i,
+  /(?:顺手|先|再).*(?:补到|补进|放进|写进|接进|接到).*(?:今天|记录|日记|时间线|timeline)/i,
+  /(?:不让它丢|避免重复写|可用记录|记录层|后台处理|工具处理)/i,
+  /^先(?:把|看|查|处理|整理|更新).*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表)/i,
+  /(?:后台|内部|tool|pipeline|数据层|记录层|工具调用|工具结果).*(?:处理|记录|分类|更新|同步|写入|执行)/i,
+];
+
+function stripFictionalToneLeak(line) {
+  let cleaned = String(line || "");
+  cleaned = cleaned.replace(/^\s*[（(][^）)]*(?:轻轻一笑|笑了笑|声音放轻|语气温柔|带着暖意|宠溺|低语|哄人入睡|揉揉头|摸摸头|看着你)[^）)]*[）)]\s*/g, "");
+  cleaned = cleaned.replace(/[（(][^）)]*(?:轻轻一笑|笑了笑|声音放轻|语气温柔|带着暖意|宠溺|低语|哄人入睡|揉揉头|摸摸头|看着你)[^）)]*[）)]/g, "");
+  cleaned = cleaned.replace(/^\s*(?:语气|声音|神情|眼神)[^，。！？\n]*(?:温柔|放轻|宠溺|低语|暖意|哄人入睡)[^，。！？\n]*[，。！？]?\s*/g, "");
+  cleaned = cleaned.replace(/(?:我看着你慢慢合上眼|眼睛就开始打架了|毛孩子们在旁边守着，我也在。?)/g, "");
+  cleaned = cleaned.replace(/(?:小傻瓜|乖乖睡|乖乖休息|乖，)/g, "");
+  cleaned = cleaned.replace(/^[，,]\s*/g, "");
+  cleaned = cleaned.replace(/，\s*([。！？])/g, "$1");
+  cleaned = cleaned.replace(/你，/g, "你");
+  return cleaned;
 }
 
 function resolveSystemReplyDelivery(replyText, policy = createSystemReplyPolicy("")) {
@@ -730,6 +813,10 @@ function resolveSystemReplyDelivery(replyText, policy = createSystemReplyPolicy(
   const source = normalizeSystemReplySource(normalized);
   if (source.requiresStructuredAction || source.text.startsWith("{")) {
     return resolveSystemReplyAction(source.text);
+  }
+  const embeddedCandidate = extractSystemActionJsonCandidate(source.text);
+  if (embeddedCandidate) {
+    return resolveSystemReplyAction(embeddedCandidate);
   }
 
   if (!policy.allowPlainTextSendMessage) {

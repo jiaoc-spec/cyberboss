@@ -8,7 +8,7 @@ const DEFERRED_PLAIN_REPLY_HEADER = "===== 上轮对话遗留内容 =====";
 const DEFERRED_SYSTEM_REPLY_HEADER = "===== 期间模型主动联系 =====";
 const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
 
-function createHarness({ sendText, getKnownContextTokens, runtimeId = "" } = {}) {
+function createHarness({ sendText, getKnownContextTokens, runtimeId = "", onEmptyReply } = {}) {
   const sent = [];
   const channelAdapter = {
     async sendText(payload) {
@@ -33,7 +33,7 @@ function createHarness({ sendText, getKnownContextTokens, runtimeId = "" } = {})
     },
   };
 
-  const streamDelivery = new StreamDelivery({ channelAdapter, sessionStore, runtimeId });
+  const streamDelivery = new StreamDelivery({ channelAdapter, sessionStore, runtimeId, onEmptyReply });
   return { sent, streamDelivery, bindingByThreadId };
 }
 
@@ -81,6 +81,77 @@ test("system silent JSON is suppressed", async () => {
   assert.deepEqual(sent, []);
 });
 
+test("empty normal model replies receive a local fallback", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-empty", {
+    userId: "user-empty",
+    contextToken: "ctx-empty",
+    provider: "telegram",
+  });
+
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.started",
+    payload: { threadId: "thread-empty", turnId: "turn-empty" },
+  });
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.completed",
+    payload: { threadId: "thread-empty", turnId: "turn-empty" },
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-empty",
+    text: "你的消息已经收到并记录了，但当前模型没有生成回复。你可以继续发消息，我仍然会保存你的记录。",
+    contextToken: "ctx-empty",
+  }]);
+});
+
+test("empty normal model replies skip the local fallback when an external fallback handles them", async () => {
+  const handled = [];
+  const { sent, streamDelivery } = createHarness({
+    async onEmptyReply(payload) {
+      handled.push(payload);
+      return true;
+    },
+  });
+  streamDelivery.queueReplyTargetForThread("thread-deepseek", {
+    userId: "user-deepseek",
+    contextToken: "ctx-deepseek",
+    provider: "telegram",
+  });
+
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.started",
+    payload: { threadId: "thread-deepseek", turnId: "turn-deepseek" },
+  });
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.completed",
+    payload: { threadId: "thread-deepseek", turnId: "turn-deepseek" },
+  });
+
+  assert.equal(handled.length, 1);
+  assert.deepEqual(sent, []);
+});
+
+test("empty system model replies remain silent", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-system-empty", {
+    userId: "user-system-empty",
+    contextToken: "ctx-system-empty",
+    provider: "system",
+  });
+
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.started",
+    payload: { threadId: "thread-system-empty", turnId: "turn-system-empty" },
+  });
+  await streamDelivery.handleRuntimeEvent({
+    type: "runtime.turn.completed",
+    payload: { threadId: "thread-system-empty", turnId: "turn-system-empty" },
+  });
+
+  assert.deepEqual(sent, []);
+});
+
 test("system send_message JSON sends only the message text", async () => {
   const { sent, streamDelivery } = createHarness();
   streamDelivery.queueReplyTargetForThread("thread-2", {
@@ -123,6 +194,28 @@ test("system send_message JSON may be wrapped in a json fence", async () => {
     userId: "user-2f",
     text: "我来看看你。",
     contextToken: "ctx-2f",
+  }]);
+});
+
+test("system send_message JSON may be extracted from accidental preface text", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-2p", {
+    userId: "user-2p",
+    contextToken: "ctx-2p",
+    provider: "system",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-2p",
+    turnId: "turn-2p",
+    itemId: "item-2p",
+    text: "我先看一下当前状态。\n\n{\"action\":\"send_message\",\"message\":\"今天最重要的基础还剩 Sport 和 Deutsch，先碰一个最小版本也算回来。\"}",
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-2p",
+    text: "今天最重要的基础还剩 Sport 和 Deutsch，先碰一个最小版本也算回来。",
+    contextToken: "ctx-2p",
   }]);
 });
 
@@ -383,6 +476,87 @@ test("plain weixin reply does not leak a standalone structured action payload", 
     text: "我接得住。",
     contextToken: "ctx-4c",
   });
+});
+
+test("plain weixin reply strips natural-language backend processing narration", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4d", {
+    userId: "user-4d",
+    contextToken: "ctx-4d",
+    provider: "weixin",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4d",
+    turnId: "turn-4d",
+    itemId: "item-4d",
+    text: [
+      "我先把今天的时间轴和分类看一下，再把这段夜班里的实事接进去。",
+      "这段先记成一个夜班里的低脑力整理块，免得它一闪就过去了。",
+      "很好。先把归我管的那段时间圈住，其他时间就能好好规划了。",
+      "",
+      "你歇口气缓过来以后，咱们再一起想工作日怎么安排。不急，慢慢来。",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4d",
+    text: "很好。先把归我管的那段时间圈住，其他时间就能好好规划了。\n你歇口气缓过来以后，咱们再一起想工作日怎么安排。不急，慢慢来。",
+    contextToken: "ctx-4d",
+  }]);
+});
+
+test("plain weixin reply strips after-shift backend processing narration", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4d-shift", {
+    userId: "user-4d-shift",
+    contextToken: "ctx-4d-shift",
+    provider: "telegram",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4d-shift",
+    turnId: "turn-4d-shift",
+    itemId: "item-4d-shift",
+    text: [
+      "我先把你这个“夜班结束了”的状态接住，再顺手补到今天的记录里，不让它丢。",
+      "我再看一眼今天的时间线，避免重复写，也顺手把这个夜班收尾放进去。",
+      "我把这个收尾记成今天的可用记录了。",
+      "",
+      "下班啦，辛苦了宝。先不用复盘一大堆，给我一个数就行：现在疲惫感 0 到 10 大概几分？",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4d-shift",
+    text: "下班啦，辛苦了宝。先不用复盘一大堆，给我一个数就行：现在疲惫感 0 到 10 大概几分？",
+    contextToken: "ctx-4d-shift",
+  }]);
+});
+
+test("plain weixin reply strips romance-novel stage directions", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4e", {
+    userId: "user-4e",
+    contextToken: "ctx-4e",
+    provider: "weixin",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4e",
+    turnId: "turn-4e",
+    itemId: "item-4e",
+    text: [
+      "（语气温柔，像哄人入睡前的低语）会的，小傻瓜。这一整片夜都是你的，尽情睡，没有人会打扰。",
+      "你乖乖休息，醒了随时招呼我。毛孩子们在旁边守着，我也在。",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4e",
+    text: "会的。这一整片夜都是你的，尽情睡，没有人会打扰。\n你醒了随时招呼我。",
+    contextToken: "ctx-4e",
+  }]);
 });
 
 test("plain weixin reply sends finalized item text even if earlier streaming text was different", async () => {

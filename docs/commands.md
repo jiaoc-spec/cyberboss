@@ -36,6 +36,7 @@ The runtime can be `codex` or `claudecode`, but the documented command surface s
 - `thread.switch`
 - `thread.stop`
 - `system.checkin_range`
+- `focus.protect`
 - `channel.chunk_min`
 
 ### Approvals & Control

@@ -2,7 +2,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
-const { createWeixinChannelAdapter } = require("../adapters/channel/weixin");
+const { createChannelAdapter } = require("../adapters/channel");
 const { DEFAULT_MIN_WEIXIN_CHUNK, MAX_MIN_WEIXIN_CHUNK } = require("../adapters/channel/weixin/config-store");
 const { persistIncomingWeixinAttachments } = require("../adapters/channel/weixin/media-receive");
 const { createCodexRuntimeAdapter } = require("../adapters/runtime/codex");
@@ -26,12 +26,19 @@ const { CheckinConfigStore, parseCheckinRangeMinutes, resolveDefaultCheckinRange
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("./default-targets");
 const { StreamDelivery } = require("./stream-delivery");
 const { ThreadStateStore } = require("./thread-state-store");
+const { UsageStore } = require("./usage-store");
 const { DeferredSystemReplyStore } = require("./deferred-system-reply-store");
 const { SystemMessageQueueStore } = require("./system-message-queue-store");
 const { SystemMessageDispatcher } = require("./system-message-dispatcher");
 const { TimelineScreenshotQueueStore } = require("./timeline-screenshot-queue-store");
 const { TurnGateStore } = require("./turn-gate-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
+const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
+const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
+const { FailureWatchdogService } = require("../services/failure-watchdog-service");
+const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
+const { ModelRouterService } = require("../services/model-router-service");
+const { isWakeUpMessage } = require("../services/timeline-auto-capture-service");
 const {
   matchesCommandPrefix,
   canonicalizeCommandTokens,
@@ -48,8 +55,8 @@ const { detectWinTrigger, buildWinsPrompt, parseWinsResponse } = require("./wins
 const { WinsLedgerState } = require("./wins-ledger-state");
 const { detectPatternViewTrigger, formatPatternList } = require("./pattern-trigger");
 const { matchPatternsByDomain } = require("./pattern-domain-map");
-const { checkReviewStatus, formatStatusReport } = require("../services/daily-review-check");
 const { UnmatchedEvidenceStore } = require("./unmatched-evidence-store");
+const { checkReviewStatus, formatStatusReport } = require("../services/daily-review-check");
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 const MIN_LONG_POLL_TIMEOUT_MS = 2_000;
 const SESSION_EXPIRED_ERRCODE = -14;
@@ -69,7 +76,7 @@ function createRuntimeAdapter(config) {
 class CyberbossApp {
   constructor(config) {
     this.config = config;
-    this.channelAdapter = createWeixinChannelAdapter(config);
+    this.channelAdapter = createChannelAdapter(config);
     this.timelineIntegration = createTimelineIntegration(config);
     const projectTooling = createProjectTooling(config, {
       channelAdapter: this.channelAdapter,
@@ -80,12 +87,41 @@ class CyberbossApp {
     this.runtimeContextStore = projectTooling.runtimeContextStore;
     this.runtimeAdapter = createRuntimeAdapter(config);
     this.threadStateStore = new ThreadStateStore();
+    this.usageStore = new UsageStore({
+      filePath: config.usageFile,
+      timeZone: config.usageTimeZone,
+      pricing: config.usagePricing,
+    });
     this.systemMessageQueue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
+    if (this.projectServices?.priorityAwareness) {
+      this.projectServices.priorityAwareness.systemMessageQueue = this.systemMessageQueue;
+      this.projectServices.priorityAwareness.sessionStore = this.runtimeAdapter.getSessionStore();
+    }
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
     this.reminderQueue = new ReminderQueueStore({ filePath: config.reminderQueueFile });
+    this.criticalHabitsMonitor = new CriticalHabitsMonitor({
+      config,
+      timeline: this.projectServices.timeline,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      systemMessageQueue: this.systemMessageQueue,
+      dailyState: this.projectServices.dailyState,
+      focusProtection: this.projectServices.focusProtection,
+      patternLedger: this.projectServices.patternLedger,
+    });
+    this.failureWatchdog = new FailureWatchdogService({
+      config,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      dailyInbox: this.projectServices.dailyInbox,
+    });
     this.turnGateStore = new TurnGateStore();
+    this.deepseekFallback = new DeepSeekFallbackService({ config });
+    this.modelRouter = new ModelRouterService({ config });
+    this.deepseekConversationBySender = new Map();
+    this.fallbackContextByRunKey = new Map();
     this.pendingInboundByScope = new Map();
     this.pendingImageInboundByScope = new Map();
     this.turnBoundaryScopeKeys = new Set();
@@ -95,6 +131,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       runtimeId: this.runtimeAdapter.describe().id,
       onDeferredSystemReply: (payload) => this.deferSystemReply(payload),
+      onEmptyReply: (payload) => this.handleEmptyModelReply(payload),
     });
     this.pendingOperationByRunKey = new Map();
     this.decisionJournalState = new DecisionJournalState();
@@ -157,10 +194,16 @@ class CyberbossApp {
     console.log(`[cyberboss] syncBuffer=${syncBuffer ? "ready" : "empty"}`);
     console.log(`[cyberboss] runtimeEndpoint=${runtimeState.endpoint || runtimeState.command || "(spawn)"}`);
     console.log(`[cyberboss] runtimeModels=${runtimeState.models?.length || 0}`);
+    console.log(
+      `[cyberboss] deepseekFallback=${this.deepseekFallback.isEnabled() ? "enabled" : "disabled"} model=${this.config.deepseekModel || ""}`
+    );
+    console.log(
+      `[cyberboss] deepseekDailyRouting=${this.config.deepseekDailyRoutingEnabled ? "enabled" : "disabled"} maxChars=${this.config.deepseekDailyMaxChars || 0}`
+    );
     if (this.config.startWithLocationServer) {
       await this.ensureLocationServerStarted();
     }
-    console.log("[cyberboss] bridge loop started; waiting for WeChat messages.");
+    console.log(`[cyberboss] bridge loop started; waiting for ${this.channelAdapter.describe().id} messages.`);
     if (this.config.startWithCheckin) {
       console.log("[cyberboss] checkin: enabled");
       void runSystemCheckinPoller(this.config).catch((error) => {
@@ -183,12 +226,18 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushPendingCalendarTimelineSync(),
+            this.flushPendingHealthImports(),
+            this.flushCriticalHabitsMonitor(account),
+            this.flushPriorityAwarenessMonitor(account),
+            this.flushMissingContextMonitor(account),
+            this.flushFailureWatchdog(account),
           ]);
           const response = await this.channelAdapter.getUpdates({
             syncBuffer: this.channelAdapter.loadSyncBuffer(),
             timeoutMs: this.resolveLongPollTimeoutMs(),
           });
-          assertWeixinUpdateResponse(response);
+          assertChannelUpdateResponse(response, this.channelAdapter.describe().id);
           consecutiveFailures = 0;
           const messages = sortInboundUpdateMessages(Array.isArray(response?.msgs) ? response.msgs : []);
           for (const message of messages) {
@@ -202,6 +251,12 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushPendingCalendarTimelineSync(),
+            this.flushPendingHealthImports(),
+            this.flushCriticalHabitsMonitor(account),
+            this.flushPriorityAwarenessMonitor(account),
+            this.flushMissingContextMonitor(account),
+            this.flushFailureWatchdog(account),
           ]);
         } catch (error) {
           if (shutdown.stopped) {
@@ -345,6 +400,330 @@ class CyberbossApp {
     await this.handlePreparedMessage(normalized, { allowCommands: true });
   }
 
+  deferSystemReply({ threadId = "", userId = "", text = "", error = null, kind = "plain_reply" }) {
+    return this.deferredSystemReplyQueue.enqueue({
+      id: `${normalizeCommandArgument(threadId) || "system"}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      accountId: this.activeAccountId || this.channelAdapter.resolveAccount().accountId,
+      senderId: userId,
+      threadId,
+      text,
+      kind,
+      createdAt: new Date().toISOString(),
+      failedAt: new Date().toISOString(),
+      lastError: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+
+  primeDeferredRepliesForSender(normalized) {
+    if (!normalized?.accountId || !normalized?.senderId || !normalized?.contextToken) {
+      return;
+    }
+    const pendingReplies = this.deferredSystemReplyQueue.drainForSender(normalized.accountId, normalized.senderId);
+    if (!pendingReplies.length) {
+      return;
+    }
+    const bindingKey = this.runtimeAdapter.getSessionStore().buildBindingKey({
+      workspaceId: normalized.workspaceId,
+      accountId: normalized.accountId,
+      senderId: normalized.senderId,
+    });
+    this.streamDelivery.setDeferredReplyPrefix(bindingKey, formatDeferredSystemReplyBatch(pendingReplies));
+    console.warn(
+      `[cyberboss] queued deferred reply prefix sender=${normalized.senderId} count=${pendingReplies.length}`
+    );
+  }
+
+  async handlePreparedMessage(normalized, { allowCommands }) {
+    const bindingKey = this.runtimeAdapter.getSessionStore().buildBindingKey({
+      workspaceId: normalized.workspaceId,
+      accountId: normalized.accountId,
+      senderId: normalized.senderId,
+    });
+    this.streamDelivery.setReplyTarget(bindingKey, {
+      userId: normalized.senderId,
+      contextToken: normalized.contextToken,
+      provider: normalized.provider,
+    });
+
+    const command = parseChannelCommand(normalized.text);
+    if (allowCommands && command) {
+      await this.dispatchChannelCommand(normalized, command);
+      return;
+    }
+    if (typeof this.autoCaptureIncomingDiary === "function") {
+      await this.autoCaptureIncomingDiary(normalized);
+    }
+    if (typeof this.autoCaptureIncomingTimeline === "function") {
+      await this.autoCaptureIncomingTimeline(normalized);
+    }
+    if (typeof this.observeIncomingPriorityCompletion === "function") {
+      this.observeIncomingPriorityCompletion(normalized);
+    }
+    if (typeof this.observeIncomingFocusProtection === "function") {
+      const handled = await this.observeIncomingFocusProtection(normalized);
+      if (handled) {
+        return;
+      }
+    }
+    if (typeof this.observeIncomingShiftRating === "function") {
+      const handled = await this.observeIncomingShiftRating(normalized);
+      if (handled) {
+        return;
+      }
+    }
+    if (typeof this.observeIncomingMissingContext === "function") {
+      const handled = await this.observeIncomingMissingContext(normalized);
+      if (handled) {
+        return;
+      }
+    }
+
+    const djHandled = await this.handleDecisionJournalIntercept(normalized);
+    if (djHandled) {
+      return;
+    }
+
+    const patternHandled = await this.handlePatternIntercept(normalized);
+    if (patternHandled) {
+      return;
+    }
+
+    await this.handleWinsLedgerIntercept(normalized);
+
+    const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
+    await this.rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized });
+    const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
+    if (!prepared) {
+      return;
+    }
+
+    if (!this.isTurnDispatchBlocked(bindingKey, workspaceRoot)) {
+      const routing = this.modelRouter.decide({
+        text: prepared.originalText || prepared.text,
+        senderId: prepared.senderId,
+        provider: prepared.provider,
+        attachments: prepared.attachments,
+        attachmentFailures: prepared.attachmentFailures,
+      });
+      if (routing.mode === "deepseek") {
+        const sent = await this.dispatchDeepSeekDailyReply({ prepared, routing });
+        if (sent) {
+          return;
+        }
+      }
+    }
+
+    if (shouldBatchImageOnlyInbound(prepared)) {
+      this.enqueuePendingImageInbound({ bindingKey, workspaceRoot, prepared });
+      return;
+    }
+
+    if (this.hasPendingImageInbound(bindingKey, workspaceRoot) && isPlainTextPreparedMessage(prepared)) {
+      const merged = await this.flushPendingImageInboundBatch({
+        bindingKey,
+        workspaceRoot,
+        trailingPrepared: prepared,
+      });
+      if (merged) {
+        return;
+      }
+    }
+
+    if (this.hasPendingImageInbound(bindingKey, workspaceRoot)) {
+      await this.flushPendingImageInboundBatch({ bindingKey, workspaceRoot });
+    }
+
+    await this.routePreparedInbound({ bindingKey, workspaceRoot, prepared });
+  }
+
+  async rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized }) {
+    if (!this.config.dailyThreadRollover || normalized?.provider === "system") {
+      return false;
+    }
+    const sessionStore = this.runtimeAdapter.getSessionStore();
+    const localDate = resolveCaptureLocalDateTime(normalized?.receivedAt, this.config).date;
+    const previousDate = sessionStore.getThreadActivityDateForWorkspace(bindingKey, workspaceRoot);
+    const threadId = sessionStore.getThreadIdForWorkspace(bindingKey, workspaceRoot);
+
+    if (previousDate && previousDate !== localDate && threadId) {
+      if (typeof this.runtimeAdapter.startFreshThreadDraft === "function") {
+        await this.runtimeAdapter.startFreshThreadDraft({ bindingKey, workspaceRoot });
+      }
+      sessionStore.clearThreadIdForWorkspace(bindingKey, workspaceRoot);
+      console.log(
+        `[cyberboss] daily thread rollover workspace=${workspaceRoot} previousDate=${previousDate} localDate=${localDate}`
+      );
+    }
+
+    sessionStore.setThreadActivityDateForWorkspace(bindingKey, workspaceRoot, localDate);
+    return Boolean(previousDate && previousDate !== localDate && threadId);
+  }
+
+  async autoCaptureIncomingDiary(normalized) {
+    if (!this.config.diaryAutoCapture) {
+      return;
+    }
+    const text = normalizeCommandArgument(normalized?.text);
+    if (!text) {
+      return;
+    }
+    try {
+      const captureTime = resolveCaptureLocalDateTime(normalized?.receivedAt, this.config);
+      if (this.config.diaryAutoCaptureTarget === "inbox" && this.projectServices?.dailyInbox) {
+        await this.projectServices.dailyInbox.append({
+          text,
+          date: captureTime.date,
+          time: captureTime.time,
+          provider: normalized?.provider,
+          senderId: normalized?.senderId,
+        });
+        console.log(`[cyberboss] daily inbox captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
+        return;
+      }
+      if (this.projectServices?.diary) {
+        await this.projectServices.diary.append({
+          title: `${this.channelAdapter.describe().id} 自动记录`,
+          text: buildAutoDiaryCaptureText(normalized, this.config),
+          date: captureTime.date,
+          time: captureTime.time,
+        });
+        console.log(`[cyberboss] diary auto-captured provider=${normalized.provider || ""} sender=${normalized.senderId || ""}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] diary auto-capture failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async autoCaptureIncomingTimeline(normalized) {
+    if (!this.config.timelineAutoCapture || !this.projectServices?.timelineAutoCapture) {
+      return;
+    }
+    const text = normalizeCommandArgument(normalized?.text);
+    if (!text) {
+      return;
+    }
+    try {
+      const result = await this.projectServices.timelineAutoCapture.captureMessage({
+        text,
+        receivedAt: normalized?.receivedAt,
+        senderId: normalized?.senderId,
+        provider: normalized?.provider,
+      });
+      if (result.events?.length) {
+        this.projectServices.priorityAwareness?.observeEvents({
+          events: result.events,
+        });
+        console.log(`[cyberboss] timeline auto-captured count=${result.events.length} sender=${normalized.senderId || ""}`);
+      } else if (result.pending) {
+        console.log(`[cyberboss] timeline auto-capture pending sender=${normalized.senderId || ""}`);
+      }
+      if (result.wokeUp || looksLikeWakeReentryText(text)) {
+        this.projectServices.priorityAwareness?.queueWakeReentry({
+          accountId: normalized?.accountId || this.activeAccountId || this.channelAdapter.resolveAccount().accountId,
+        }, {
+          receivedAt: normalized?.receivedAt,
+        });
+      }
+    } catch (error) {
+      console.error(`[cyberboss] timeline auto-capture failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  isTurnDispatchBlocked(bindingKey, workspaceRoot, { ignoreBoundary = false } = {}) {
+    const scopeKey = buildScopeKey(bindingKey, workspaceRoot);
+    if (!ignoreBoundary && scopeKey && this.turnBoundaryScopeKeys?.has(scopeKey)) {
+      return true;
+    }
+    if (this.turnGateStore.isPending(bindingKey, workspaceRoot)) {
+      return true;
+    }
+    const threadId = this.runtimeAdapter.getSessionStore().getThreadIdForWorkspace(bindingKey, workspaceRoot);
+    const threadState = threadId ? this.threadStateStore.getThreadState(threadId) : null;
+    return threadState?.status === "running" || hasRpcId(threadState?.pendingApproval?.requestId);
+  }
+
+  async dispatchPreparedTurn({ bindingKey, workspaceRoot, prepared }) {
+    const pendingScopeKey = this.turnGateStore.begin(bindingKey, workspaceRoot);
+    let runtimeTurn = null;
+    await this.channelAdapter.sendTyping({
+      userId: prepared.senderId,
+      status: 1,
+      contextToken: prepared.contextToken,
+    }).catch(() => {});
+
+    try {
+      const model = this.runtimeAdapter.getSessionStore().getRuntimeParamsForWorkspace(bindingKey, workspaceRoot).model;
+      runtimeTurn = await this.buildRuntimeTurn({ prepared, model });
+      const sendTurn = typeof this.runtimeAdapter.sendTurn === "function"
+        ? this.runtimeAdapter.sendTurn.bind(this.runtimeAdapter)
+        : this.runtimeAdapter.sendTextTurn.bind(this.runtimeAdapter);
+      const turn = await sendTurn({
+        bindingKey,
+        workspaceRoot,
+        text: runtimeTurn.text,
+        attachments: runtimeTurn.attachments,
+        model,
+        metadata: {
+          workspaceId: prepared.workspaceId,
+          accountId: prepared.accountId,
+          senderId: prepared.senderId,
+        },
+      });
+      this.runtimeContextStore?.setActiveContext?.({
+        workspaceRoot,
+        runtimeId: this.runtimeAdapter.describe().id,
+        threadId: turn.threadId,
+        bindingKey,
+        accountId: prepared.accountId,
+        senderId: prepared.senderId,
+      });
+      this.turnGateStore.attachThread(pendingScopeKey, turn.threadId);
+      const replyTarget = {
+        userId: prepared.senderId,
+        contextToken: prepared.contextToken,
+        provider: prepared.provider,
+      };
+      if (turn.turnId) {
+        this.streamDelivery.bindReplyTargetForTurn({
+          threadId: turn.threadId,
+          turnId: turn.turnId,
+          target: replyTarget,
+        });
+      } else {
+        this.streamDelivery.queueReplyTargetForThread(turn.threadId, replyTarget);
+      }
+      this.rememberFallbackContext({
+        threadId: turn.threadId,
+        turnId: turn.turnId,
+        text: prepared.text,
+        provider: prepared.provider,
+        replyTarget,
+      });
+      return true;
+    } catch (error) {
+      this.turnGateStore.releaseScope(bindingKey, workspaceRoot);
+      const messageText = error instanceof Error ? error.message : String(error || "unknown error");
+      const fallbackSent = await this.sendDeepSeekFallback({
+        text: prepared.text || runtimeTurn?.text,
+        reason: messageText,
+        provider: prepared.provider,
+        replyTarget: {
+          userId: prepared.senderId,
+          contextToken: prepared.contextToken,
+          provider: prepared.provider,
+        },
+      });
+      if (!fallbackSent) {
+        await this.channelAdapter.sendText({
+          userId: prepared.senderId,
+          text: `❌ Request failed\n${messageText}`,
+          contextToken: prepared.contextToken,
+        }).catch(() => {});
+      }
+      return false;
+    }
+  }
+
   async handleDecisionJournalIntercept(normalized) {
     const senderId = normalizeText(normalized.senderId);
     const userText = normalizeText(normalized.text);
@@ -472,7 +851,7 @@ class CyberbossApp {
           });
           await this.autoAddPatternEvidence({
             domain: pending.domain,
-            note: `Win: ${pending.task}, success_factor: ${parsed.success_factor}, date: ${pending.date}`,
+            note: `Win: ${pending.task}, success_factor: ${factor}, date: ${pending.date}`,
             source: "wins-ledger",
             date: pending.date,
           });
@@ -503,173 +882,6 @@ class CyberbossApp {
           date: new Date().toISOString().slice(0, 10),
         });
       }
-    }
-  }
-
-  deferSystemReply({ threadId = "", userId = "", text = "", error = null, kind = "plain_reply" }) {
-    return this.deferredSystemReplyQueue.enqueue({
-      id: `${normalizeCommandArgument(threadId) || "system"}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-      accountId: this.activeAccountId || this.channelAdapter.resolveAccount().accountId,
-      senderId: userId,
-      threadId,
-      text,
-      kind,
-      createdAt: new Date().toISOString(),
-      failedAt: new Date().toISOString(),
-      lastError: error instanceof Error ? error.message : String(error || ""),
-    });
-  }
-
-  primeDeferredRepliesForSender(normalized) {
-    if (!normalized?.accountId || !normalized?.senderId || !normalized?.contextToken) {
-      return;
-    }
-    const pendingReplies = this.deferredSystemReplyQueue.drainForSender(normalized.accountId, normalized.senderId);
-    if (!pendingReplies.length) {
-      return;
-    }
-    const bindingKey = this.runtimeAdapter.getSessionStore().buildBindingKey({
-      workspaceId: normalized.workspaceId,
-      accountId: normalized.accountId,
-      senderId: normalized.senderId,
-    });
-    this.streamDelivery.setDeferredReplyPrefix(bindingKey, formatDeferredSystemReplyBatch(pendingReplies));
-    console.warn(
-      `[cyberboss] queued deferred reply prefix sender=${normalized.senderId} count=${pendingReplies.length}`
-    );
-  }
-
-  async handlePreparedMessage(normalized, { allowCommands }) {
-    const bindingKey = this.runtimeAdapter.getSessionStore().buildBindingKey({
-      workspaceId: normalized.workspaceId,
-      accountId: normalized.accountId,
-      senderId: normalized.senderId,
-    });
-    this.streamDelivery.setReplyTarget(bindingKey, {
-      userId: normalized.senderId,
-      contextToken: normalized.contextToken,
-      provider: normalized.provider,
-    });
-
-    const command = parseChannelCommand(normalized.text);
-    if (allowCommands && command) {
-      await this.dispatchChannelCommand(normalized, command);
-      return;
-    }
-
-    const djHandled = await this.handleDecisionJournalIntercept(normalized);
-    if (djHandled) {
-      return;
-    }
-
-    const patternHandled = await this.handlePatternIntercept(normalized);
-    if (patternHandled) {
-      return;
-    }
-
-    await this.handleWinsLedgerIntercept(normalized);
-
-    const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
-    const prepared = await this.prepareIncomingMessageForRuntime(normalized, workspaceRoot);
-    if (!prepared) {
-      return;
-    }
-
-    if (shouldBatchImageOnlyInbound(prepared)) {
-      this.enqueuePendingImageInbound({ bindingKey, workspaceRoot, prepared });
-      return;
-    }
-
-    if (this.hasPendingImageInbound(bindingKey, workspaceRoot) && isPlainTextPreparedMessage(prepared)) {
-      const merged = await this.flushPendingImageInboundBatch({
-        bindingKey,
-        workspaceRoot,
-        trailingPrepared: prepared,
-      });
-      if (merged) {
-        return;
-      }
-    }
-
-    if (this.hasPendingImageInbound(bindingKey, workspaceRoot)) {
-      await this.flushPendingImageInboundBatch({ bindingKey, workspaceRoot });
-    }
-
-    await this.routePreparedInbound({ bindingKey, workspaceRoot, prepared });
-  }
-
-  isTurnDispatchBlocked(bindingKey, workspaceRoot, { ignoreBoundary = false } = {}) {
-    const scopeKey = buildScopeKey(bindingKey, workspaceRoot);
-    if (!ignoreBoundary && scopeKey && this.turnBoundaryScopeKeys?.has(scopeKey)) {
-      return true;
-    }
-    if (this.turnGateStore.isPending(bindingKey, workspaceRoot)) {
-      return true;
-    }
-    const threadId = this.runtimeAdapter.getSessionStore().getThreadIdForWorkspace(bindingKey, workspaceRoot);
-    const threadState = threadId ? this.threadStateStore.getThreadState(threadId) : null;
-    return threadState?.status === "running" || hasRpcId(threadState?.pendingApproval?.requestId);
-  }
-
-  async dispatchPreparedTurn({ bindingKey, workspaceRoot, prepared }) {
-    const pendingScopeKey = this.turnGateStore.begin(bindingKey, workspaceRoot);
-    await this.channelAdapter.sendTyping({
-      userId: prepared.senderId,
-      status: 1,
-      contextToken: prepared.contextToken,
-    }).catch(() => {});
-
-    try {
-      const model = this.runtimeAdapter.getSessionStore().getRuntimeParamsForWorkspace(bindingKey, workspaceRoot).model;
-      const runtimeTurn = await this.buildRuntimeTurn({ prepared, model });
-      const sendTurn = typeof this.runtimeAdapter.sendTurn === "function"
-        ? this.runtimeAdapter.sendTurn.bind(this.runtimeAdapter)
-        : this.runtimeAdapter.sendTextTurn.bind(this.runtimeAdapter);
-      const turn = await sendTurn({
-        bindingKey,
-        workspaceRoot,
-        text: runtimeTurn.text,
-        attachments: runtimeTurn.attachments,
-        model,
-        metadata: {
-          workspaceId: prepared.workspaceId,
-          accountId: prepared.accountId,
-          senderId: prepared.senderId,
-        },
-      });
-      this.runtimeContextStore?.setActiveContext?.({
-        workspaceRoot,
-        runtimeId: this.runtimeAdapter.describe().id,
-        threadId: turn.threadId,
-        bindingKey,
-        accountId: prepared.accountId,
-        senderId: prepared.senderId,
-      });
-      this.turnGateStore.attachThread(pendingScopeKey, turn.threadId);
-      const replyTarget = {
-        userId: prepared.senderId,
-        contextToken: prepared.contextToken,
-        provider: prepared.provider,
-      };
-      if (turn.turnId) {
-        this.streamDelivery.bindReplyTargetForTurn({
-          threadId: turn.threadId,
-          turnId: turn.turnId,
-          target: replyTarget,
-        });
-      } else {
-        this.streamDelivery.queueReplyTargetForThread(turn.threadId, replyTarget);
-      }
-      return true;
-    } catch (error) {
-      this.turnGateStore.releaseScope(bindingKey, workspaceRoot);
-      const messageText = error instanceof Error ? error.message : String(error || "unknown error");
-      await this.channelAdapter.sendText({
-        userId: prepared.senderId,
-        text: `❌ Request failed\n${messageText}`,
-        contextToken: prepared.contextToken,
-      }).catch(() => {});
-      return false;
     }
   }
 
@@ -1070,6 +1282,44 @@ class CyberbossApp {
     }
   }
 
+  async flushPendingHealthImports() {
+    if (!this.config.healthAutoImport || !this.projectServices?.health) {
+      return;
+    }
+    const intervalMs = Number(this.config.healthImportIntervalMs) || 300_000;
+    if (this.lastHealthImportCheckAtMs && Date.now() - this.lastHealthImportCheckAtMs < intervalMs) {
+      return;
+    }
+    this.lastHealthImportCheckAtMs = Date.now();
+    try {
+      const result = await this.projectServices.health.importPending({ limit: 20 });
+      if (result.imported?.length) {
+        console.log(`[cyberboss] health imports completed count=${result.imported.length}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] health import failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushPendingCalendarTimelineSync() {
+    if (!this.config.calendarTimelineSync || !this.projectServices?.calendarTimelineSync) {
+      return;
+    }
+    const intervalMs = Number(this.config.calendarTimelineSyncIntervalMs) || 600_000;
+    if (this.lastCalendarTimelineSyncAtMs && Date.now() - this.lastCalendarTimelineSyncAtMs < intervalMs) {
+      return;
+    }
+    this.lastCalendarTimelineSyncAtMs = Date.now();
+    try {
+      const result = await this.projectServices.calendarTimelineSync.sync();
+      if (result.imported?.length) {
+        console.log(`[cyberboss] calendar timeline sync completed count=${result.imported.length}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] calendar timeline sync failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
   resolveLongPollTimeoutMs() {
     if (this.systemMessageDispatcher?.hasPending()) {
       return MIN_LONG_POLL_TIMEOUT_MS;
@@ -1097,6 +1347,15 @@ class CyberbossApp {
 
     for (const reminder of dueReminders) {
       try {
+        const focusDelay = this.projectServices?.focusProtection?.shouldDelayReminder?.(reminder, new Date());
+        if (focusDelay?.delay) {
+          this.reminderQueue.enqueue({
+            ...reminder,
+            dueAtMs: Date.now() + (Number(this.config.focusProtectionReminderSnoozeMs) || 5 * 60_000),
+          });
+          console.log(`[cyberboss] reminder delayed by focus protection reminder=${reminder.id}`);
+          continue;
+        }
         this.systemMessageQueue.enqueue({
           id: `reminder:${reminder.id}`,
           accountId: reminder.accountId,
@@ -1112,6 +1371,96 @@ class CyberbossApp {
         });
       }
     }
+  }
+
+  async flushCriticalHabitsMonitor(account) {
+    try {
+      await this.criticalHabitsMonitor.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] critical habits monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushPriorityAwarenessMonitor(account) {
+    try {
+      await this.projectServices?.priorityAwareness?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] priority awareness monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushMissingContextMonitor(account) {
+    try {
+      await this.projectServices?.missingContext?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] missing context monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushFailureWatchdog(account) {
+    try {
+      await this.failureWatchdog?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] failure watchdog failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  observeIncomingPriorityCompletion(normalized) {
+    try {
+      const result = this.projectServices?.priorityAwareness?.observeMessage({
+        text: normalized?.text,
+        receivedAt: normalized?.receivedAt,
+      });
+      if (result?.updated?.length) {
+        console.log(`[cyberboss] priority awareness completed=${result.updated.join(",")}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] priority awareness message observation failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async observeIncomingFocusProtection(normalized) {
+    try {
+      const result = await this.projectServices?.focusProtection?.observeIncoming(normalized);
+      if (result?.handled) {
+        await this.channelAdapter.sendText({
+          userId: normalized.senderId,
+          text: result.reply,
+          contextToken: normalized.contextToken,
+        });
+        console.log(`[cyberboss] focus protection handled sender=${normalized?.senderId || ""}`);
+        return true;
+      }
+    } catch (error) {
+      console.error(`[cyberboss] focus protection observation failed: ${formatErrorMessage(error)}`);
+    }
+    return false;
+  }
+
+  async observeIncomingShiftRating(normalized) {
+    try {
+      const result = await this.projectServices?.shiftRating?.observeIncoming(normalized);
+      if (result?.handled) {
+        console.log(`[cyberboss] shift rating prompt sent sender=${normalized?.senderId || ""}`);
+        return true;
+      }
+    } catch (error) {
+      console.error(`[cyberboss] shift rating observation failed: ${formatErrorMessage(error)}`);
+    }
+    return false;
+  }
+
+  async observeIncomingMissingContext(normalized) {
+    try {
+      const result = await this.projectServices?.missingContext?.observeIncoming(normalized);
+      if (result?.handled) {
+        console.log(`[cyberboss] missing context answer captured sender=${normalized?.senderId || ""}`);
+        return true;
+      }
+    } catch (error) {
+      console.error(`[cyberboss] missing context observation failed: ${formatErrorMessage(error)}`);
+    }
+    return false;
   }
 
   resolveReminderWorkspaceRoot(reminder) {
@@ -1148,6 +1497,15 @@ class CyberbossApp {
       case "status":
         await this.handleStatusCommand(normalized);
         return;
+      case "usage":
+        await this.handleUsageCommand(normalized);
+        return;
+      case "codex":
+        await this.handleRoutingCommand(normalized, "codex");
+        return;
+      case "deepseek":
+        await this.handleRoutingCommand(normalized, "deepseek");
+        return;
       case "new":
         await this.handleNewCommand(normalized);
         return;
@@ -1165,6 +1523,9 @@ class CyberbossApp {
         return;
       case "checkin":
         await this.handleCheckinCommand(normalized, command);
+        return;
+      case "focus":
+        await this.handleFocusCommand(normalized, command);
         return;
       case "chunk":
         await this.handleChunkCommand(normalized, command);
@@ -1286,6 +1647,26 @@ class CyberbossApp {
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
       text: lines.join("\n"),
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleUsageCommand(normalized) {
+    const summary = this.usageStore.summarize();
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text: formatUsageSummary(summary),
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleRoutingCommand(normalized, mode) {
+    this.modelRouter.setNextMode(normalized.senderId, mode);
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text: mode === "codex"
+        ? "下一条普通消息会交给 Codex。"
+        : "下一条普通消息会交给 DeepSeek。",
       contextToken: normalized.contextToken,
     });
   }
@@ -1496,6 +1877,22 @@ class CyberbossApp {
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
       text: `✅ Check-in interval reset to ${parsedRange.minMinutes}-${parsedRange.maxMinutes} minutes and will apply on the next polling cycle.`,
+      contextToken: normalized.contextToken,
+    });
+  }
+
+  async handleFocusCommand(normalized, command) {
+    const result = await this.projectServices?.focusProtection?.startFromCommand?.(command.args, normalized);
+    let text = result?.reply || "";
+    if (result?.cancelled) {
+      text = "好，Focus 先取消。你不用补解释，等会儿我们从现在重新接。";
+    }
+    if (!text) {
+      text = result?.error || "💡 Usage: /focus 25 Englisch · /focus until 18:00 Deutsch · /focus cancel";
+    }
+    await this.channelAdapter.sendText({
+      userId: normalized.senderId,
+      text,
       contextToken: normalized.contextToken,
     });
   }
@@ -1752,17 +2149,42 @@ class CyberbossApp {
   }
 
   async handleRuntimeEvent(event) {
+    if (event?.type === "runtime.context.updated") {
+      this.usageStore.recordRuntimeContext(event.payload);
+      const primaryUsedPercent = Number(event?.payload?.rateLimits?.primaryUsedPercent || 0);
+      if (primaryUsedPercent >= 100) {
+        console.warn(
+          `[cyberboss] runtime rate limit saturated runtime=${event?.payload?.runtimeId || ""} thread=${event?.payload?.threadId || ""} primaryUsedPercent=${primaryUsedPercent}`
+        );
+      }
+    }
     const failureReplyTarget = event?.type === "runtime.turn.failed"
       ? this.streamDelivery.resolveReplyTargetForRun({
           threadId: event?.payload?.threadId,
           turnId: event?.payload?.turnId,
         })
       : null;
-    await this.streamDelivery.handleRuntimeEvent(event);
+    const fallbackContext = event?.type === "runtime.turn.failed"
+      ? this.getFallbackContext(event?.payload?.threadId, event?.payload?.turnId)
+      : null;
+    const activeFallbackContext = this.getFallbackContext(event?.payload?.threadId, event?.payload?.turnId);
+    if (event?.type === "runtime.reply.delta" || event?.type === "runtime.reply.completed") {
+      this.markFallbackResponseStarted(activeFallbackContext);
+    }
+    const suppressLateReply = activeFallbackContext?.fallbackSent
+      && (event?.type === "runtime.reply.delta" || event?.type === "runtime.reply.completed");
+    if (!suppressLateReply) {
+      await this.streamDelivery.handleRuntimeEvent(event);
+    }
     if (!event) {
       return;
     }
     if (event.type === "runtime.turn.completed" || event.type === "runtime.turn.failed") {
+      if (event.type === "runtime.turn.failed") {
+        console.error(
+          `[cyberboss] runtime turn failed thread=${event?.payload?.threadId || ""} turn=${event?.payload?.turnId || ""} error=${event?.payload?.text || "unknown"}`
+        );
+      }
       const completedRunKey = buildRunKey(event.payload.threadId, event.payload.turnId);
       const pendingOperations = this.pendingOperationByRunKey;
       const pendingOperation = pendingOperations?.get?.(completedRunKey) || null;
@@ -1781,11 +2203,18 @@ class CyberbossApp {
       try {
         this.turnGateStore.releaseThread(event.payload.threadId);
         if (event.type === "runtime.turn.failed") {
-          await this.sendFailureToThread(
-            event.payload.threadId,
-            event.payload.text || "❌ Execution failed",
-            failureReplyTarget,
-          );
+          const fallbackSent = await this.sendDeepSeekFallback({
+            ...fallbackContext,
+            reason: event.payload.text || "Runtime turn failed",
+            replyTarget: failureReplyTarget || fallbackContext?.replyTarget,
+          });
+          if (!fallbackSent) {
+            await this.sendFailureToThread(
+              event.payload.threadId,
+              event.payload.text || "❌ Execution failed",
+              failureReplyTarget,
+            );
+          }
         }
         if (linked?.bindingKey && linked?.workspaceRoot) {
           await this.flushPendingInboundMessages({
@@ -1814,6 +2243,7 @@ class CyberbossApp {
           await this.stopTypingForThread(event.payload.threadId);
         }
       } finally {
+        this.forgetFallbackContext(event.payload.threadId, event.payload.turnId);
         if (scopeKey) {
           this.turnBoundaryScopeKeys.delete(scopeKey);
         }
@@ -1893,6 +2323,211 @@ class CyberbossApp {
     }).catch(() => {});
   }
 
+  rememberFallbackContext({ threadId = "", turnId = "", text = "", provider = "", replyTarget = null } = {}) {
+    const runKey = buildRunKey(threadId, turnId);
+    if (!threadId || !runKey) {
+      return;
+    }
+    const context = {
+      threadId,
+      turnId,
+      text: normalizeText(text),
+      provider: normalizeText(provider),
+      replyTarget: normalizeReplyTarget(replyTarget),
+      fallbackSent: false,
+      responseStarted: false,
+      timer: null,
+    };
+    const fallbackAfterMs = Number(this.config.deepseekFallbackAfterMs) || 0;
+    if (fallbackAfterMs > 0 && this.deepseekFallback?.isEnabled()) {
+      context.timer = setTimeout(() => {
+        void this.handleFallbackTimeout(context);
+      }, fallbackAfterMs);
+      context.timer.unref?.();
+    }
+    this.fallbackContextByRunKey.set(runKey, context);
+  }
+
+  getFallbackContext(threadId = "", turnId = "") {
+    return this.fallbackContextByRunKey.get(buildRunKey(threadId, turnId)) || null;
+  }
+
+  forgetFallbackContext(threadId = "", turnId = "") {
+    const runKey = buildRunKey(threadId, turnId);
+    const context = this.fallbackContextByRunKey.get(runKey);
+    if (context?.timer) {
+      clearTimeout(context.timer);
+    }
+    this.fallbackContextByRunKey.delete(runKey);
+  }
+
+  async handleEmptyModelReply({ threadId = "", turnId = "", replyTarget = null } = {}) {
+    const context = this.getFallbackContext(threadId, turnId);
+    if (context?.fallbackSent) {
+      return true;
+    }
+    return this.sendDeepSeekFallback({
+      ...context,
+      reason: "Codex completed without a usable reply",
+      replyTarget: replyTarget || context?.replyTarget,
+    });
+  }
+
+  async sendDeepSeekFallback({ text = "", reason = "", provider = "", replyTarget = null, fallbackSent = false } = {}) {
+    if (fallbackSent) {
+      return true;
+    }
+    const target = normalizeReplyTarget(replyTarget);
+    if (!target || !this.deepseekFallback?.isEnabled()) {
+      return false;
+    }
+    try {
+      const result = await this.deepseekFallback.generate({
+        userText: text,
+        reason,
+        provider,
+        systemMessage: provider === "system",
+      });
+      if (!result.used || !result.text) {
+        return false;
+      }
+      this.recordDeepSeekUsage(`fallback:${target.userId}`, result.usage);
+      if (provider === "system") {
+        const action = parseFallbackSystemAction(result.text);
+        if (action.action === "silent") {
+          console.log(`[cyberboss] deepseek fallback silent model=${result.model || ""}`);
+          return true;
+        }
+        if (action.action !== "send_message" || !action.message) {
+          return false;
+        }
+        await this.channelAdapter.sendText({
+          userId: target.userId,
+          text: action.message,
+          contextToken: target.contextToken,
+        });
+      } else {
+        await this.channelAdapter.sendText({
+          userId: target.userId,
+          text: result.text,
+          contextToken: target.contextToken,
+        });
+      }
+      console.warn(
+        `[cyberboss] deepseek fallback sent model=${result.model || ""} reason=${normalizeText(reason).slice(0, 120)}`
+      );
+      return true;
+    } catch (error) {
+      console.error(`[cyberboss] deepseek fallback failed: ${formatErrorMessage(error)}`);
+      return false;
+    }
+  }
+
+  async dispatchDeepSeekDailyReply({ prepared, routing } = {}) {
+    if (!prepared?.senderId || !prepared?.contextToken || !this.deepseekFallback?.isEnabled()) {
+      return false;
+    }
+    const text = normalizeText(prepared.originalText || prepared.text);
+    if (!text) {
+      return false;
+    }
+    await this.channelAdapter.sendTyping({
+      userId: prepared.senderId,
+      status: 1,
+      contextToken: prepared.contextToken,
+    }).catch(() => {});
+    try {
+      const history = this.deepseekConversationBySender.get(prepared.senderId) || [];
+      const result = await this.deepseekFallback.generate({
+        userText: text,
+        provider: prepared.provider,
+        mode: "daily",
+        history,
+        context: this.buildDeepSeekDailyContext(),
+      });
+      if (!result.used || !result.text) {
+        return false;
+      }
+      await this.channelAdapter.sendText({
+        userId: prepared.senderId,
+        text: result.text,
+        contextToken: prepared.contextToken,
+      });
+      this.recordDeepSeekUsage(prepared.senderId, result.usage);
+      this.rememberDeepSeekConversation(prepared.senderId, text, result.text);
+      console.log(
+        `[cyberboss] deepseek daily reply sent model=${result.model || ""} reason=${routing?.reason || ""}`
+      );
+      return true;
+    } catch (error) {
+      console.error(`[cyberboss] deepseek daily reply failed: ${formatErrorMessage(error)}`);
+      return false;
+    }
+  }
+
+  recordDeepSeekUsage(senderId, usage) {
+    this.usageStore.recordRuntimeContext({
+      runtimeId: "deepseek",
+      threadId: senderId,
+      turnId: crypto.randomUUID(),
+      turnUsage: usage,
+    });
+  }
+
+  rememberDeepSeekConversation(senderId, userText, assistantText) {
+    const history = this.deepseekConversationBySender.get(senderId) || [];
+    history.push(
+      { role: "user", content: userText },
+      { role: "assistant", content: assistantText },
+    );
+    this.deepseekConversationBySender.set(senderId, history.slice(-12));
+  }
+
+  buildDeepSeekDailyContext() {
+    const priority = this.projectServices?.priorityAwareness?.status?.() || null;
+    if (!priority?.priorities?.length) {
+      return "";
+    }
+    const completed = priority.priorities.filter((item) => item.status === "completed").map((item) => item.label);
+    const open = priority.priorities.filter((item) => item.status === "pending" || item.status === "unknown").map((item) => item.label);
+    return [
+      `Today's explicit priority boundary: ${priority.deadlineLabel || "unknown"} ${priority.deadlineAt || ""}`.trim(),
+      `Completed priorities: ${completed.length ? completed.join(", ") : "none recorded"}`,
+      `Open priorities: ${open.length ? open.join(", ") : "none"}`,
+      "Do not command or invent an order. If the user's message changes this state, acknowledge it while gently preserving awareness of remaining priorities when useful.",
+    ].join("\n");
+  }
+
+  markFallbackResponseStarted(context) {
+    if (!context) {
+      return;
+    }
+    context.responseStarted = true;
+    if (context.timer) {
+      clearTimeout(context.timer);
+      context.timer = null;
+    }
+  }
+
+  async handleFallbackTimeout(context) {
+    if (!context || context.responseStarted || context.fallbackSent) {
+      return;
+    }
+    const sent = await this.sendDeepSeekFallback({
+      ...context,
+      reason: "Codex did not begin a reply before the fallback timeout",
+    });
+    if (!sent) {
+      return;
+    }
+    context.fallbackSent = true;
+    console.warn(`[cyberboss] deepseek fallback timeout thread=${context.threadId} turn=${context.turnId}`);
+    await this.runtimeAdapter.cancelTurn({
+      threadId: context.threadId,
+      turnId: context.turnId,
+    }).catch(() => {});
+  }
+
   async sendApprovalPrompt({ bindingKey, approval }) {
     const target = this.resolveReplyTargetForBinding(bindingKey);
     if (!target) {
@@ -1966,7 +2601,7 @@ class CyberbossApp {
     return {
       userId,
       contextToken,
-      provider: "weixin",
+      provider: this.channelAdapter.describe().id,
     };
   }
 }
@@ -2039,6 +2674,140 @@ function formatContextUsage(currentTokens, contextWindow) {
   return `${formatCompactNumber(clampedCurrent)}/${formatCompactNumber(safeWindow)} | ${leftPercent}% left`;
 }
 
+function formatUsageSummary(summary = {}) {
+  const pricing = summary.pricing || {};
+  const lines = [
+    "💸 Usage",
+    `timezone: ${summary.timeZone || "UTC"}`,
+    "",
+  ];
+  if (!summary.hasRecordedUsage) {
+    lines.push(
+      "No token usage has been recorded yet.",
+      "This does not mean the model used 0 tokens.",
+      "",
+    );
+  }
+  lines.push(
+    formatUsageLine("today", summary.today, summary.todayCostUsd),
+    formatUsageLine("this week", summary.week, summary.weekCostUsd),
+    formatUsageLine("this month", summary.month, summary.monthCostUsd),
+  );
+  const runtimeEntries = Object.entries(summary.byRuntime || {}).sort(([left], [right]) => left.localeCompare(right));
+  if (runtimeEntries.length) {
+    lines.push("", "by runtime:");
+    for (const [runtimeId, runtime] of runtimeEntries) {
+      lines.push(
+        `  ${runtimeId}: today ${formatCompactNumber(runtime.today?.totalTokens || 0)} · week ${formatCompactNumber(runtime.week?.totalTokens || 0)} · month ${formatCompactNumber(runtime.month?.totalTokens || 0)} tokens`
+      );
+    }
+  }
+  lines.push("", `estimate: ${formatPricingSummary(pricing)}`);
+  return lines.join("\n");
+}
+
+function buildAutoDiaryCaptureText(normalized = {}, config = {}) {
+  const provider = normalizeText(normalized.provider) || "channel";
+  const receivedAt = formatConfiguredLocalDateTime(normalized.receivedAt, config.diaryTimeZone || config.timeZone);
+  const text = normalizeText(normalized.text);
+  const lines = [
+    `- 来源：${provider}`,
+  ];
+  if (receivedAt) {
+    lines.push(`- 接收时间：${receivedAt}`);
+  }
+  lines.push("- 内容：");
+  lines.push(...quoteMarkdown(text));
+  return lines.join("\n");
+}
+
+function resolveCaptureLocalDateTime(receivedAt, config = {}) {
+  const timeZone = normalizeText(config.diaryTimeZone) || normalizeText(config.timeZone) || "UTC";
+  const date = parseDateOrNow(receivedAt);
+  return {
+    date: formatDatePart(date, timeZone),
+    time: formatTimePart(date, timeZone),
+  };
+}
+
+function formatConfiguredLocalDateTime(receivedAt, timeZone = "") {
+  const zone = normalizeText(timeZone) || process.env.CYBERBOSS_DIARY_TIME_ZONE || process.env.CYBERBOSS_TIME_ZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const value = normalizeText(receivedAt);
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return `${formatDatePart(date, zone)} ${formatTimePart(date, zone)}`;
+}
+
+function parseDateOrNow(value) {
+  const parsed = new Date(normalizeText(value));
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function formatDatePart(date, timeZone) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function formatTimePart(date, timeZone) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function quoteMarkdown(text) {
+  const lines = normalizeText(text).split(/\r?\n/);
+  return lines.length ? lines.map((line) => `  > ${line}`) : ["  >"];
+}
+
+function formatUsageLine(label, usage = {}, costUsd = 0) {
+  const total = Number(usage.totalTokens) || 0;
+  const input = Number(usage.inputTokens) || 0;
+  const cached = Number(usage.cachedInputTokens) || 0;
+  const output = Number(usage.outputTokens) || 0;
+  const reasoning = Number(usage.reasoningTokens) || 0;
+  const details = [
+    `in ${formatCompactNumber(input)}`,
+    `cached ${formatCompactNumber(cached)}`,
+    `out ${formatCompactNumber(output)}`,
+    `reasoning ${formatCompactNumber(reasoning)}`,
+  ].join(" · ");
+  return `${label}: ${formatCompactNumber(total)} tokens | ${formatUsd(costUsd)}\n  ${details}`;
+}
+
+function formatUsd(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return "$0.00";
+  }
+  if (amount < 0.01) {
+    return `$${amount.toFixed(4)}`;
+  }
+  return `$${amount.toFixed(2)}`;
+}
+
+function formatPricingSummary(pricing = {}) {
+  const input = Number(pricing.inputUsdPer1M) || 0;
+  const cached = Number(pricing.cachedInputUsdPer1M) || 0;
+  const output = Number(pricing.outputUsdPer1M) || 0;
+  const reasoning = Number(pricing.reasoningUsdPer1M) || 0;
+  if (input || cached || output || reasoning) {
+    return `configured itemized USD/1M tokens`;
+  }
+  return `$${(Number(pricing.blendedUsdPer1M) || 2).toFixed(2)}/1M blended tokens`;
+}
+
 function buildLocationMovementSystemText(event) {
   const distanceText = `${formatCompactNumber(event?.distanceMeters || 0)}m`;
   const fromLabel = normalizeText(event?.fromAddress) || formatLatLng(event?.fromCenterLat, event?.fromCenterLng);
@@ -2105,12 +2874,12 @@ function createShutdownController(onStop) {
   };
 }
 
-function assertWeixinUpdateResponse(response) {
+function assertChannelUpdateResponse(response, channelId = "channel") {
   const ret = normalizeErrorCode(response?.ret);
   const errcode = normalizeErrorCode(response?.errcode);
   if ((ret !== 0 && ret !== null) || (errcode !== 0 && errcode !== null)) {
     const error = new Error(
-      `weixin getUpdates ret=${ret ?? ""} errcode=${errcode ?? ""} errmsg=${normalizeText(response?.errmsg) || ""}`
+      `${channelId} getUpdates ret=${ret ?? ""} errcode=${errcode ?? ""} errmsg=${normalizeText(response?.errmsg) || ""}`
     );
     error.ret = ret;
     error.errcode = errcode;
@@ -2450,6 +3219,9 @@ function buildElicitationApprovalPromptText(approval) {
 
 function buildReminderSystemTrigger(reminder, config = {}) {
   const reminderText = String(reminder?.text || "").trim();
+  if (reminderText.startsWith(FOCUS_REMINDER_PREFIX)) {
+    return reminderText;
+  }
   const userName = String(config?.userName || "").trim() || "the user";
   return `Due reminder for ${userName}: ${reminderText}`;
 }
@@ -2617,6 +3389,27 @@ function stringifyRpcId(value) {
 
 function hasRpcId(value) {
   return stringifyRpcId(value) !== "";
+}
+
+function parseFallbackSystemAction(text) {
+  const normalized = normalizeText(text).replace(/^```json\s*/i, "").replace(/\s*```$/i, "");
+  try {
+    const parsed = JSON.parse(normalized);
+    return {
+      action: normalizeText(parsed?.action),
+      message: normalizeText(parsed?.message),
+    };
+  } catch {
+    return { action: "", message: "" };
+  }
+}
+
+function looksLikeWakeReentryText(text) {
+  const body = normalizeCommandArgument(text);
+  if (!body || !isWakeUpMessage(body)) {
+    return false;
+  }
+  return !/(明天|后天|到时候|如果|等.*醒|醒了以后|醒来以后|wake.*tomorrow|when i wake)/i.test(body);
 }
 
 function buildBackfillSystemMessage(date) {

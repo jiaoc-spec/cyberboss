@@ -196,6 +196,37 @@ class SessionStore {
     return this.updateBinding(bindingKey, nextBinding);
   }
 
+  getThreadActivityDateForWorkspace(bindingKey, workspaceRoot, runtimeId = this.runtimeId) {
+    const normalizedWorkspaceRoot = normalizeValue(workspaceRoot);
+    const normalizedRuntimeId = normalizeValue(runtimeId);
+    if (!normalizedWorkspaceRoot || !normalizedRuntimeId) {
+      return "";
+    }
+    const current = this.getBinding(bindingKey) || {};
+    return normalizeValue(getThreadActivityDateMapForRuntime(current, normalizedRuntimeId)[normalizedWorkspaceRoot]);
+  }
+
+  setThreadActivityDateForWorkspace(bindingKey, workspaceRoot, date, runtimeId = this.runtimeId) {
+    const normalizedWorkspaceRoot = normalizeValue(workspaceRoot);
+    const normalizedRuntimeId = normalizeValue(runtimeId);
+    const normalizedDate = normalizeValue(date);
+    if (!normalizedWorkspaceRoot || !normalizedRuntimeId || !normalizedDate) {
+      return this.getBinding(bindingKey);
+    }
+    const current = this.getBinding(bindingKey) || {};
+    const nextBinding = {
+      ...current,
+      threadActivityDateByWorkspaceRootByRuntime: {
+        ...getThreadActivityDateRuntimeMap(current),
+        [normalizedRuntimeId]: {
+          ...getThreadActivityDateMapForRuntime(current, normalizedRuntimeId),
+          [normalizedWorkspaceRoot]: normalizedDate,
+        },
+      },
+    };
+    return this.updateBinding(bindingKey, nextBinding);
+  }
+
   setActiveWorkspaceRoot(bindingKey, workspaceRoot) {
     const normalizedWorkspaceRoot = normalizeValue(workspaceRoot);
     if (!normalizedWorkspaceRoot) {
@@ -381,6 +412,22 @@ function getThreadMapForRuntime(binding, runtimeId) {
     return {};
   }
   const scoped = runtimeMap[normalizedRuntimeId];
+  return scoped && typeof scoped === "object" ? scoped : {};
+}
+
+function getThreadActivityDateRuntimeMap(binding) {
+  return binding?.threadActivityDateByWorkspaceRootByRuntime
+    && typeof binding.threadActivityDateByWorkspaceRootByRuntime === "object"
+    ? binding.threadActivityDateByWorkspaceRootByRuntime
+    : {};
+}
+
+function getThreadActivityDateMapForRuntime(binding, runtimeId) {
+  const normalizedRuntimeId = normalizeValue(runtimeId);
+  if (!normalizedRuntimeId) {
+    return {};
+  }
+  const scoped = getThreadActivityDateRuntimeMap(binding)[normalizedRuntimeId];
   return scoped && typeof scoped === "object" ? scoped : {};
 }
 

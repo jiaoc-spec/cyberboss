@@ -29,6 +29,13 @@ function mapCodexMessageToRuntimeEvent(message) {
     return null;
   }
 
+  if (method === "thread/tokenUsage/updated") {
+    return {
+      type: "runtime.context.updated",
+      payload: normalizeTokenUsagePayload(params),
+    };
+  }
+
   if (method === "turn/started" || method === "turn/start") {
     return {
       type: "runtime.turn.started",
@@ -114,6 +121,30 @@ function mapCodexMessageToRuntimeEvent(message) {
   return null;
 }
 
+function normalizeTokenUsagePayload(params = {}) {
+  const usage = params?.tokenUsage || {};
+  const total = usage?.total || {};
+  const last = usage?.last || {};
+  return {
+    runtimeId: "codex",
+    threadId: normalizeString(params?.threadId),
+    turnId: normalizeString(params?.turnId),
+    inputTokens: numberOrZero(total.inputTokens),
+    cachedInputTokens: numberOrZero(total.cachedInputTokens),
+    outputTokens: numberOrZero(total.outputTokens),
+    reasoningTokens: numberOrZero(total.reasoningOutputTokens),
+    currentTokens: numberOrZero(total.totalTokens),
+    contextWindow: numberOrZero(usage?.modelContextWindow),
+    turnUsage: {
+      inputTokens: numberOrZero(last.inputTokens),
+      cachedInputTokens: numberOrZero(last.cachedInputTokens),
+      outputTokens: numberOrZero(last.outputTokens),
+      reasoningTokens: numberOrZero(last.reasoningOutputTokens),
+      totalTokens: numberOrZero(last.totalTokens),
+    },
+  };
+}
+
 function normalizeContextPayload(message) {
   const payload = message?.payload || {};
   const info = payload?.info || {};
@@ -127,6 +158,20 @@ function normalizeContextPayload(message) {
     reasoningTokens: numberOrZero(total.reasoning_output_tokens),
     currentTokens: numberOrZero(total.total_tokens),
     contextWindow: numberOrZero(info?.model_context_window),
+    rateLimits: normalizeRateLimits(payload?.rate_limits),
+  };
+}
+
+function normalizeRateLimits(value = {}) {
+  const primary = value?.primary || {};
+  const secondary = value?.secondary || {};
+  return {
+    limitId: normalizeString(value?.limit_id),
+    reachedType: normalizeString(value?.rate_limit_reached_type),
+    primaryUsedPercent: numberOrZero(primary?.used_percent),
+    primaryResetsAt: numberOrZero(primary?.resets_at),
+    secondaryUsedPercent: numberOrZero(secondary?.used_percent),
+    secondaryResetsAt: numberOrZero(secondary?.resets_at),
   };
 }
 

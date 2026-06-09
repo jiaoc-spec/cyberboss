@@ -129,19 +129,52 @@ Before running the first command, set at least:
 ```dotenv
 CYBERBOSS_USER_NAME=YourName
 CYBERBOSS_USER_GENDER=female
+CYBERBOSS_TIME_ZONE=
+CYBERBOSS_ASK_WHEN_UNCERTAIN=true
 CYBERBOSS_ALLOWED_USER_IDS=your_wechat_user_id
 CYBERBOSS_WORKSPACE_ROOT=/absolute/path/to/your/project
+CYBERBOSS_CHANNEL=weixin
+CYBERBOSS_DIARY_BACKEND=local
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
+CYBERBOSS_CALENDAR_PROVIDER=apple
+CYBERBOSS_HEALTH_AUTO_IMPORT=true
 ```
 
 Common optional variables:
 
 ```dotenv
 CYBERBOSS_RUNTIME=codex
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_CHAT_IDS=
+TELEGRAM_API_BASE_URL=https://api.telegram.org
+TELEGRAM_FILE_BASE_URL=https://api.telegram.org
 CYBERBOSS_CODEX_ENDPOINT=ws://127.0.0.1:8765
 CYBERBOSS_CODEX_COMMAND=
 CYBERBOSS_CODEX_MODEL=
 CYBERBOSS_CODEX_MODEL_PROVIDER=
+DEEPSEEK_API_KEY=
+CYBERBOSS_DEEPSEEK_FALLBACK_ENABLED=false
+CYBERBOSS_DEEPSEEK_MODEL=deepseek-v4-flash
+CYBERBOSS_DEEPSEEK_API_BASE_URL=https://api.deepseek.com
+CYBERBOSS_DEEPSEEK_TIMEOUT_MS=30000
+CYBERBOSS_DEEPSEEK_MAX_OUTPUT_TOKENS=1200
+CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS=90000
+CYBERBOSS_DEEPSEEK_DAILY_ROUTING_ENABLED=false
+CYBERBOSS_DEEPSEEK_DAILY_MAX_CHARS=800
+CYBERBOSS_DAILY_THREAD_ROLLOVER=false
+CYBERBOSS_PRIORITY_AWARENESS_ENABLED=true
+CYBERBOSS_PRIORITY_AWARENESS_CHECK_INTERVAL_MS=300000
+CYBERBOSS_PRIORITY_AWARENESS_COOLDOWN_MS=3600000
+CYBERBOSS_PRIORITY_AWARENESS_CHECKPOINT_MINUTES=120,45
+CYBERBOSS_PRIORITY_AWARENESS_BOUNDARY_BUFFER_MINUTES=30
+CYBERBOSS_FOCUS_PROTECTION_ENABLED=true
+CYBERBOSS_FOCUS_PROTECTION_REMINDER_SNOOZE_MS=300000
+CYBERBOSS_MISSING_CONTEXT_ENABLED=true
+CYBERBOSS_MISSING_CONTEXT_DAILY_MAX_QUESTIONS=3
 CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT=
+CYBERBOSS_APPLE_CALENDAR_SCRIPT_FILE=
+CYBERBOSS_HEALTH_INBOX_DIR=
+CYBERBOSS_HEALTH_IMPORT_INTERVAL_MS=300000
 CYBERBOSS_CLAUDE_COMMAND=claude
 CYBERBOSS_CLAUDE_MODEL=
 CYBERBOSS_CLAUDE_CONTEXT_WINDOW=
@@ -156,6 +189,12 @@ CYBERBOSS_VISION_API_KEY=
 CYBERBOSS_VISION_MODEL=
 CYBERBOSS_VISION_TIMEOUT_MS=30000
 CYBERBOSS_ACCOUNT_ID=
+CYBERBOSS_DIARY_AUTO_CAPTURE=false
+CYBERBOSS_DIARY_TIME_ZONE=
+CYBERBOSS_OBSIDIAN_VAULT_DIR=
+CYBERBOSS_OBSIDIAN_DAILY_FOLDER=03. 🔵 Tagebuch/01. 日记
+CYBERBOSS_OBSIDIAN_DAILY_SECTION=## 今日记录
+CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE=
 CYBERBOSS_WEIXIN_MIN_CHUNK_CHARS=20
 CYBERBOSS_WEIXIN_BASE_URL=https://ilinkai.weixin.qq.com
 CYBERBOSS_WEIXIN_CDN_BASE_URL=https://novac2c.cdn.weixin.qq.com/c2c
@@ -175,14 +214,60 @@ What these do:
 
 - `CYBERBOSS_RUNTIME`
   Choose `codex` or `claudecode`. The command set stays the same.
+- `CYBERBOSS_CHANNEL`
+  Choose the message channel. Current values are `weixin` and `telegram`. Telegram uses the Bot API and does not require WeChat QR login.
+- `CYBERBOSS_TIME_ZONE`
+  Time zone used when showing incoming message timestamps to the model and formatting proactive system times. Example: `Europe/Berlin`.
+- `CYBERBOSS_ASK_WHEN_UNCERTAIN`
+  Default `true`. When diary, timeline, study stats, workout stats, mood/energy inference, or weekly review data is unclear, Cyberboss asks one concise follow-up question instead of inventing missing details. Set `false` to mark unclear fields as unknown without asking.
+- `CYBERBOSS_PRIORITY_AWARENESS_*`
+  Enables deadline-aware, unordered daily priority tracking. Cyberboss combines explicit priorities, realistic duration estimates, a preparation buffer, Timeline completion evidence, and Future Events so it can gently restore awareness while the full plan is still feasible. See `docs/priority-awareness.md`.
+- `CYBERBOSS_FOCUS_PROTECTION_*`
+  Protects an active focus window from non-urgent reminders, random check-ins, Critical Habits, and ordinary Priority Awareness prompts. See `docs/focus-protection.md`.
+- `CYBERBOSS_MISSING_CONTEXT_*`
+  Asks at most a few short multiple-choice questions when Daily Review or Pattern Ledger would otherwise lack important context. Answers are stored as structured evidence and exposed through the Daily State Engine. See `docs/missing-context-queue.md`.
+- `CYBERBOSS_CRITICAL_HABITS_*`
+  Enables Level A/B/C long-term value protection. Level A can now use the Daily State Engine to remind earlier on night-shift or recovery days instead of waiting for a fixed evening check. Defaults include a 180-minute night-shift lead time and a 15:00 recovery-day check.
+- `CYBERBOSS_SHIFT_RATING_*`
+  Captures the after-shift 0-10 fatigue score and feeds it into Daily State, Critical Habits minimum mode, reviews, and Pattern Ledger evidence. See `docs/shift-rating-state.md`.
+- `CYBERBOSS_FAILURE_WATCHDOG_*`
+  Checks after midnight whether the previous day's Daily Review, Daily Inbox archive, and Obsidian note look complete. If the automation appears stuck, Cyberboss notifies Jane in Telegram.
+- `CYBERBOSS_PATTERN_LEDGER_FILE`
+  Longitudinal Memory / Pattern Ledger JSON file. Reviews read and update this file so Daily, Weekly, and Monthly insights remain connected over time instead of becoming isolated summaries.
+- `docs/second-brain-operations.md`
+  Describes the current Second Brain workflow: Telegram as inbox, timeline as structured evidence, Obsidian as output, and reviews focused on growth rather than backend noise.
+- `CYBERBOSS_DIARY_BACKEND`
+  Choose `local` or `obsidian`. `local` writes to `~/.cyberboss/diary`; `obsidian` writes diary entries into the configured Obsidian Daily Note.
+- `CYBERBOSS_DIARY_AUTO_CAPTURE`
+  Default `false`. Set `true` to automatically append every normal incoming chat text to the diary backend before the model turn. Slash commands are skipped.
+- `CYBERBOSS_DIARY_TIME_ZONE`
+  Time zone for diary dates and timestamps. Defaults to the system time zone.
+- `CYBERBOSS_OBSIDIAN_VAULT_DIR`
+  Obsidian vault root used when `CYBERBOSS_DIARY_BACKEND=obsidian`.
+- `CYBERBOSS_OBSIDIAN_DAILY_FOLDER`, `CYBERBOSS_OBSIDIAN_DAILY_SECTION`, `CYBERBOSS_OBSIDIAN_DAILY_TEMPLATE_FILE`
+  Obsidian Daily Note folder, insertion section, and optional template file. The template can contain `{{date}}`.
+- `TELEGRAM_BOT_TOKEN`
+  Telegram bot token. Create a bot with `@BotFather`, then set this value. Required when `CYBERBOSS_CHANNEL=telegram`.
+- `TELEGRAM_ALLOWED_CHAT_IDS`
+  Optional comma-separated Telegram chat id allowlist. Leave empty for first validation, then add your own chat id once the bot is working.
+- `TELEGRAM_API_BASE_URL` / `TELEGRAM_FILE_BASE_URL`
+  Telegram API and file download base URLs. Defaults to `https://api.telegram.org`; override only for proxies or custom gateways.
 - `CYBERBOSS_CODEX_ENDPOINT`
   Reuse an existing shared Codex app-server instead of spawning a private runtime.
 - `CYBERBOSS_CODEX_COMMAND`
   Override the Codex launcher when `codex` is not directly on your `PATH`.
 - `CYBERBOSS_CODEX_MODEL`
   Force Codex turns to use a specific model. Leave empty to use Codex's default model selection.
+- `CYBERBOSS_DEEPSEEK_FALLBACK_ENABLED`
+  Default `false`. When enabled with `DEEPSEEK_API_KEY`, Cyberboss uses DeepSeek as an independent text fallback when the primary runtime fails synchronously or completes a normal user turn without a usable reply. DeepSeek does not execute local Cyberboss tools, so tool-heavy requests may still need to be retried when the primary runtime is available.
+- `CYBERBOSS_DEEPSEEK_MODEL`, `CYBERBOSS_DEEPSEEK_API_BASE_URL`, `CYBERBOSS_DEEPSEEK_TIMEOUT_MS`, `CYBERBOSS_DEEPSEEK_MAX_OUTPUT_TOKENS`, `CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS`
+  Configure the DeepSeek fallback model and request limits. The recommended model is `deepseek-v4-flash`. When Codex has not begun producing a reply before `CYBERBOSS_DEEPSEEK_FALLBACK_AFTER_MS`, Cyberboss sends the text fallback and cancels the stalled primary turn.
+- `CYBERBOSS_DEEPSEEK_DAILY_ROUTING_ENABLED`, `CYBERBOSS_DEEPSEEK_DAILY_MAX_CHARS`
+  Default `false`. When enabled, ordinary short Telegram text conversations use DeepSeek first, while messages that may need local tools, files, reminders, calendar access, Obsidian, Timeline, analysis, research, or code stay on Codex. Use `/codex` or `/deepseek` to force the next normal message to a specific model.
 - `CYBERBOSS_CODEX_MODEL_PROVIDER`
   Force Codex turns to use a specific provider, such as `ollama` for local models. Leave empty for the default cloud provider.
+- `CYBERBOSS_DAILY_THREAD_ROLLOVER`
+  Default `false`. When enabled, the first normal channel message on a new local day starts a fresh runtime thread. Daily Inbox and Obsidian records remain available, while old chat context no longer grows without limit.
 - `CYBERBOSS_CODEX_NATIVE_IMAGE_INPUT`
   Optional override for direct image input through the Codex app-server path. Leave empty to infer from model metadata; set `true` to test a local multimodal model directly, or `false` to force caption fallback.
 - `CYBERBOSS_CLAUDE_COMMAND`
@@ -263,7 +348,7 @@ When `CYBERBOSS_RUNTIME=claudecode`, Cyberboss also upserts a workspace-local `.
 ### Terminal commands for end users
 
 - `npm run login`
-  Log into WeChat and save the bot account locally
+  Log in to the current channel. WeChat scans a QR code; Telegram validates `TELEGRAM_BOT_TOKEN` and saves the bot account locally
 - `npm run accounts`
   List saved local accounts
 - `npm run shared:start`
@@ -283,7 +368,7 @@ Switch the runtime with `CYBERBOSS_RUNTIME`. You do not need a different command
 
 `npm run start` and `npm run start:checkin` are still useful for minimal local debugging, but they are not the recommended way to observe or debug the real shared bridge workflow.
 
-### WeChat commands for end users
+### Chat commands for end users
 
 - `/bind /absolute/path`
   Bind the current chat to a project workspace
@@ -301,8 +386,10 @@ Switch the runtime with `CYBERBOSS_RUNTIME`. You do not need a different command
   Stop the current running turn
 - `/checkin <min>-<max>`
   Update the proactive random check-in range for the current project
+- `/focus 25 Englisch`, `/focus until 18:00 Deutsch`, `/focus cancel`
+  Start or cancel Focus Protection Mode for the current chat
 - `/chunk <number>`
-  Adjust the minimum merge size for short WeChat reply chunks
+  Adjust the minimum merge size for short reply chunks
 - `/yes`
   Allow the current approval once
 - `/always`
@@ -314,9 +401,9 @@ Switch the runtime with `CYBERBOSS_RUNTIME`. You do not need a different command
 - `/model <id>`
   Switch model
 - `/star`
-  Show the GitHub star guide inside WeChat
+  Show the GitHub star guide
 - `/help`
-  Show WeChat command help
+  Show current channel command help
 
 Plain text messages go directly to the bound thread. If nothing is bound yet, bind a workspace first:
 
@@ -324,7 +411,36 @@ Plain text messages go directly to the bound thread. If nothing is bound yet, bi
 /bind /absolute/path
 ```
 
-### Observe the same thread from WeChat and terminal
+### Use Telegram as the channel
+
+If WeChat QR login is not available for your account, switch to Telegram:
+
+```dotenv
+CYBERBOSS_CHANNEL=telegram
+TELEGRAM_BOT_TOKEN=123456:your_bot_token
+TELEGRAM_ALLOWED_CHAT_IDS=
+```
+
+Then run:
+
+```bash
+npm run login
+npm run shared:start
+```
+
+Send these commands to the bot in Telegram:
+
+```text
+/status
+/bind /absolute/path
+/checkin 30-90
+```
+
+For the first validation, leave `TELEGRAM_ALLOWED_CHAT_IDS` empty. After the bot receives your message, add your chat id to the allowlist and restart `shared:start`.
+
+Telegram covers Cyberboss's core bridge features: text messages, commands, active check-ins, reminders, diary, timeline, screenshots, and file delivery. It does not provide WeChat-specific QR bridge behavior, WeChat context tokens, WeChat sticker semantics, or WeChat mini-app capabilities.
+
+### Observe the same thread from chat and terminal
 
 If you want WeChat and your local terminal to stay attached to the same shared thread, use shared mode:
 
@@ -437,6 +553,10 @@ Agent-facing Cyberboss capabilities are project-native structured tools.
 
 - `cyberboss_reminder_create`
 - `cyberboss_diary_append`
+- `cyberboss_daily_state_read`
+- `cyberboss_pattern_ledger_read`
+- `cyberboss_pattern_ledger_upsert`
+- `cyberboss_pattern_ledger_add_evidence`
 - `cyberboss_timeline_write`
 - `cyberboss_timeline_build`
 - `cyberboss_timeline_serve`

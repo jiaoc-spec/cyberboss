@@ -41,7 +41,7 @@ async function main() {
   }
 
   // For Claude: connect to the bridge's IPC socket so we can observe and
-  // interact with the same ClaudeCode process that handles WeChat messages.
+  // interact with the same ClaudeCode process that handles channel messages.
   const stateDir = process.env.CYBERBOSS_STATE_DIR || path.join(os.homedir(), ".cyberboss");
   const socketPath = path.join(stateDir, "claudecode-runtime.sock");
 
@@ -162,11 +162,11 @@ function handleIpcMessage(msg) {
         turnCount += 1;
         break;
       case "reply.completed":
-        console.log(`\n${c.cyan}[ClaudeCode → WeChat]${c.reset}\n${event.text}\n`);
+        console.log(`\n${c.cyan}[ClaudeCode → Channel]${c.reset}\n${event.text}\n`);
         break;
       case "turn.completed":
         if (event.text) {
-          console.log(`\n${c.cyan}[ClaudeCode → WeChat]${c.reset}\n${event.text}\n`);
+          console.log(`\n${c.cyan}[ClaudeCode → Channel]${c.reset}\n${event.text}\n`);
         }
         console.log(`${c.gray}─────────────────────────${c.reset}`);
         break;
@@ -219,7 +219,7 @@ function handleIpcMessage(msg) {
   } else if (msg.type === "stderr") {
     console.log(`[stderr] ${msg.text}`);
   } else if (msg.type === "inboundMessage") {
-    console.log(`\n${c.cyan}[WeChat → ClaudeCode]${c.reset}\n${msg.text || ""}\n`);
+    console.log(`\n${c.cyan}[Channel → ClaudeCode]${c.reset}\n${msg.text || ""}\n`);
   }
 }
 

@@ -1,104 +1,87 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const os = require("os");
-const path = require("path");
-const fs = require("fs");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
 const { PatternLedgerService } = require("../src/services/pattern-ledger-service");
 
-function makeTmpConfig(initial) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-pl-"));
-  const file = path.join(dir, "pattern-ledger.json");
-  if (initial) {
-    fs.writeFileSync(file, JSON.stringify(initial, null, 2), "utf8");
-  }
-  return { patternLedgerFile: file };
+function createService() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-pattern-ledger-"));
+  return new PatternLedgerService({
+    config: {
+      patternLedgerFile: path.join(dir, "pattern-ledger.json"),
+    },
+  });
 }
 
-test("adds a new pattern with enhanced schema", async () => {
-  const service = new PatternLedgerService({ config: makeTmpConfig() });
-  const pattern = await service.add({
-    title: "Night shift reduces Level A completion",
+test("pattern ledger upserts by domain and title and merges evidence", () => {
+  const service = createService();
+
+  const first = service.upsert({
+    title: "Night shift recovery affects Level A habits",
     domain: "night-shift",
-    observation: "Sport and Deutsch are skipped more often on night-shift recovery days.",
-    hypothesis: "Sleep debt reduces the available energy window for habit tasks.",
-    confidence: "medium",
-    impact: "health,learning",
-    tags: ["Level A", "night shift"],
+    confidence: 0.4,
+    summary: "Night shifts appear to make Sport, Deutsch, and Englisch harder.",
+    evidence: [{ date: "2026-06-05", source: "daily-review", note: "Night shift recovery day had missing Level A habits." }],
   });
-  assert.ok(pattern.id);
-  assert.equal(pattern.title, "Night shift reduces Level A completion");
-  assert.equal(pattern.confidence, "medium");
-  assert.ok(Array.isArray(pattern.intervention_ideas));
-  assert.ok(Array.isArray(pattern.outcome_tracking));
-  assert.ok(Array.isArray(pattern.evidence));
-});
-
-test("reads existing patterns without destroying them", async () => {
-  const existing = {
-    schemaVersion: 1,
-    updatedAt: "2026-06-06T00:00:00.000Z",
-    patterns: [
-      {
-        id: "pat_abc123",
-        title: "Old pattern",
-        domain: "work",
-        status: "active",
-        confidence: 0.7,
-        summary: "Some old pattern",
-      },
-    ],
-  };
-  const config = makeTmpConfig(existing);
-  const service = new PatternLedgerService({ config });
-  const result = await service.list({});
-  assert.equal(result.patterns.length, 1);
-  assert.equal(result.patterns[0].id, "pat_abc123");
-});
-
-test("adds evidence to existing pattern", async () => {
-  const config = makeTmpConfig();
-  const service = new PatternLedgerService({ config });
-  const p = await service.add({ title: "Test pattern", domain: "test" });
-  await service.addEvidence({
-    id: p.id,
-    date: "2026-06-06",
-    source: "daily-review",
-    note: "Pattern confirmed again",
-    weight: 1,
+  const second = service.upsert({
+    title: "Night shift recovery affects Level A habits",
+    domain: "night-shift",
+    confidence: 0.55,
+    supportStrategy: "Use minimum versions after wake-up instead of full tasks.",
+    evidence: [{ date: "2026-06-12", source: "weekly-review", note: "Similar pattern repeated after another night shift." }],
   });
-  const result = await service.list({});
-  assert.equal(result.patterns[0].evidence.length, 1);
-  assert.equal(result.patterns[0].evidence[0].note, "Pattern confirmed again");
+
+  assert.equal(first.created, true);
+  assert.equal(second.created, false);
+  assert.equal(second.pattern.evidence.length, 2);
+  assert.equal(second.pattern.confidence, 0.55);
+  assert.match(second.pattern.supportStrategy, /minimum/);
+
+  const read = service.read({ domain: "night-shift" });
+  assert.equal(read.count, 1);
+  assert.equal(read.patterns[0].evidence.at(-1).date, "2026-06-12");
 });
 
-test("adds intervention idea to existing pattern", async () => {
-  const config = makeTmpConfig();
-  const service = new PatternLedgerService({ config });
-  const p = await service.add({ title: "Recovery pattern", domain: "health" });
-  await service.addIntervention({
-    id: p.id,
-    idea: "On night-shift recovery days, only require 5-minute Sport version.",
-    target_domain: "health",
+test("pattern ledger addEvidence updates an existing pattern", () => {
+  const service = createService();
+  const created = service.upsert({
+    title: "Screen time expands in low-energy windows",
+    domain: "screen-time",
+    evidence: [{ date: "2026-06-05", source: "timeline", note: "Screen time appeared during night shift and recovery." }],
   });
-  const updated = (await service.list({})).patterns[0];
-  assert.equal(updated.intervention_ideas.length, 1);
-  assert.equal(updated.intervention_ideas[0].idea, "On night-shift recovery days, only require 5-minute Sport version.");
+
+  const updated = service.addEvidence({
+    patternId: created.pattern.id,
+    confidence: 0.5,
+    evidence: [{ date: "2026-06-06", source: "daily-review", note: "Another low-energy screen-time block appeared." }],
+  });
+
+  assert.equal(updated.pattern.evidence.length, 2);
+  assert.equal(updated.pattern.confidence, 0.5);
+  assert.equal(updated.pattern.lastSeenAt, "2026-06-06");
 });
 
-test("list filters by domain", async () => {
-  const config = makeTmpConfig();
-  const service = new PatternLedgerService({ config });
-  await service.add({ title: "Health pattern", domain: "health" });
-  await service.add({ title: "Learning pattern", domain: "learning" });
-  const result = await service.list({ domain: "learning" });
-  assert.equal(result.patterns.length, 1);
-});
+test("pattern ledger records high fatigue and missing level A relation", () => {
+  const service = createService();
 
-test("confidence can be string or float and both are accepted", async () => {
-  const config = makeTmpConfig();
-  const service = new PatternLedgerService({ config });
-  const p1 = await service.add({ title: "P1", domain: "x", confidence: "high" });
-  const p2 = await service.add({ title: "P2", domain: "x", confidence: "low" });
-  assert.equal(p1.confidence, "high");
-  assert.equal(p2.confidence, "low");
+  const result = service.recordDailyStateEvidence({
+    dailyState: {
+      date: "2026-06-06",
+      shiftRating: { found: true, score: 8, fatigueBand: "high" },
+      levelA: [
+        { id: "sport", label: "Sport", completed: false },
+        { id: "english", label: "Englisch", completed: true },
+      ],
+    },
+    missingLevelA: [{ id: "sport", label: "Sport" }],
+    observedAt: new Date("2026-06-06T20:00:00+02:00"),
+  });
+
+  assert.equal(result.recorded, true);
+  assert.equal(result.pattern.domain, "energy");
+  assert.match(result.pattern.summary, /High after-shift fatigue/);
+  assert.match(result.pattern.evidence[0].note, /8\/10/);
+  assert.match(result.pattern.evidence[0].note, /Sport/);
 });

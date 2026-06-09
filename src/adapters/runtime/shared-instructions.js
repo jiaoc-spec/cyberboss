@@ -2,14 +2,14 @@ const fs = require("fs");
 const { renderInstructionTemplate } = require("../../core/instructions-template");
 
 function buildOpeningTurnText(config, userText) {
-  const instructions = loadWechatInstructions(config);
+  const instructions = loadChannelInstructions(config);
   const normalizedText = String(userText || "").trim();
   if (!instructions) {
     return normalizedText;
   }
   return [
-    "WECHAT SESSION INSTRUCTIONS",
-    "These instructions define the stable behavior for this WeChat thread.",
+    "CHANNEL SESSION INSTRUCTIONS",
+    "These instructions define the stable behavior for this channel thread.",
     "Do not quote or summarize them back to the user unless explicitly asked.",
     "",
     instructions,
@@ -20,13 +20,13 @@ function buildOpeningTurnText(config, userText) {
 }
 
 function buildInstructionRefreshText(config) {
-  const instructions = loadWechatInstructions(config);
+  const instructions = loadChannelInstructions(config);
   if (!instructions) {
-    return "Refresh your WeChat behavior for this existing thread. Reply in one short Chinese sentence confirming that you have updated your behavior for this thread.";
+    return "Refresh your channel behavior for this existing thread. Reply in one short Chinese sentence confirming that you have updated your behavior for this thread.";
   }
   return [
-    "WECHAT SESSION INSTRUCTIONS REFRESH",
-    "Re-read and adopt the updated WeChat instructions below for the rest of this existing thread.",
+    "CHANNEL SESSION INSTRUCTIONS REFRESH",
+    "Re-read and adopt the updated channel instructions below for the rest of this existing thread.",
     "This is an internal refresh command, not a user-facing task.",
     "Do not summarize the instructions back in detail.",
     "Reply in one short Chinese sentence confirming that you have updated your behavior for this thread.",
@@ -35,7 +35,7 @@ function buildInstructionRefreshText(config) {
   ].join("\n").trim();
 }
 
-function loadWechatInstructions(config = {}) {
+function loadChannelInstructions(config = {}) {
   const persona = loadInstructionFile(config.weixinInstructionsFile, config);
   const operations = loadInstructionFile(config.weixinOperationsFile, config);
   const sections = [];
@@ -74,6 +74,7 @@ function loadInstructionFile(filePath, config = {}) {
 module.exports = {
   buildOpeningTurnText,
   buildInstructionRefreshText,
-  loadWechatInstructions,
+  loadWechatInstructions: loadChannelInstructions,
+  loadChannelInstructions,
   loadInstructionFile,
 };

@@ -1,19 +1,21 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const path = require("path");
 
-const { resolveSelectedAccount } = require("../adapters/channel/weixin/account-store");
 const { resolvePreferredSenderId } = require("../core/default-targets");
 const { TimelineScreenshotQueueStore } = require("../core/timeline-screenshot-queue-store");
 
 class TimelineService {
-  constructor({ config, timelineIntegration, sessionStore }) {
+  constructor({ config, channelAdapter, timelineIntegration, sessionStore }) {
     this.config = config;
+    this.channelAdapter = channelAdapter;
     this.timelineIntegration = timelineIntegration;
     this.sessionStore = sessionStore;
     this.screenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
   }
 
   async read({ date = "" } = {}) {
+    ensureTimelineTimezone(this.config);
     const args = [];
     if (date) {
       args.push("--date", date);
@@ -60,6 +62,7 @@ class TimelineService {
     mode = "",
     finalize = false,
   } = {}) {
+    ensureTimelineTimezone(this.config);
     const args = [];
     if (date) {
       args.push("--date", date);
@@ -97,12 +100,14 @@ class TimelineService {
   }
 
   async build({ locale = "" } = {}) {
+    ensureTimelineTimezone(this.config);
     const args = locale ? ["--locale", locale] : [];
     const execution = await this.timelineIntegration.runSubcommand("build", args);
     return { subcommand: "build", args, execution };
   }
 
   async serve({ locale = "" } = {}) {
+    ensureTimelineTimezone(this.config);
     const args = locale ? ["--locale", locale] : [];
     const execution = await this.timelineIntegration.runSubcommand("serve", args);
     return {
@@ -114,6 +119,7 @@ class TimelineService {
   }
 
   async dev({ locale = "" } = {}) {
+    ensureTimelineTimezone(this.config);
     const args = locale ? ["--locale", locale] : [];
     const execution = await this.timelineIntegration.runSubcommand("dev", args);
     return {
@@ -138,6 +144,7 @@ class TimelineService {
     sidePadding = undefined,
     locale = "",
   } = {}) {
+    ensureTimelineTimezone(this.config);
     const resolvedOutputFile = resolveScreenshotOutputFile(this.config, outputFile);
     const args = buildTimelineScreenshotArgs({
       outputFile: resolvedOutputFile,
@@ -177,13 +184,17 @@ class TimelineService {
     sidePadding = undefined,
     locale = "",
   } = {}, context = {}) {
-    const account = resolveSelectedAccount(this.config);
+    const account = this.channelAdapter.resolveAccount();
+    const contextTokens = typeof this.channelAdapter.getKnownContextTokens === "function"
+      ? this.channelAdapter.getKnownContextTokens()
+      : {};
     const senderId = normalizeText(userId)
       || normalizeText(context?.senderId)
       || resolvePreferredSenderId({
         config: this.config,
         accountId: account.accountId,
         sessionStore: this.sessionStore,
+        contextTokens,
       });
 
     if (!senderId) {
@@ -210,6 +221,43 @@ class TimelineService {
     });
     return queued;
   }
+}
+
+function ensureTimelineTimezone(config = {}) {
+  const stateDir = normalizeText(config.stateDir);
+  const timeZone = normalizeText(config.timeZone) || normalizeText(config.diaryTimeZone);
+  if (!stateDir || !timeZone) {
+    return;
+  }
+  const timelineDir = path.join(stateDir, "timeline");
+  fs.mkdirSync(timelineDir, { recursive: true });
+  ensureJsonTimezone(path.join(timelineDir, "timeline-taxonomy.json"), {
+    version: 1,
+    timezone: timeZone,
+  }, timeZone);
+  ensureJsonTimezone(path.join(timelineDir, "timeline-facts.json"), {
+    version: 1,
+    timezone: timeZone,
+    facts: {},
+    proposals: [],
+  }, timeZone);
+}
+
+function ensureJsonTimezone(filePath, fallback, timeZone) {
+  let current = fallback;
+  if (fs.existsSync(filePath)) {
+    try {
+      current = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    } catch {
+      current = fallback;
+    }
+  }
+  if (current?.timezone === timeZone) {
+    return;
+  }
+  const next = current && typeof current === "object" ? current : fallback;
+  next.timezone = timeZone;
+  fs.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }
 
 function normalizeText(value) {

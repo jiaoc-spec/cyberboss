@@ -87,6 +87,27 @@ const COMMAND_GROUPS = [
         status: "active",
       },
       {
+        action: "usage.summary",
+        summary: "Show token usage and estimated cost for today, this week, and this month",
+        terminal: [],
+        weixin: ["/usage"],
+        status: "active",
+      },
+      {
+        action: "routing.codex_next",
+        summary: "Force the next normal message to use Codex",
+        terminal: [],
+        weixin: ["/codex"],
+        status: "active",
+      },
+      {
+        action: "routing.deepseek_next",
+        summary: "Force the next normal message to use DeepSeek",
+        terminal: [],
+        weixin: ["/deepseek"],
+        status: "active",
+      },
+      {
         action: "thread.new",
         summary: "Switch to a fresh thread draft",
         terminal: [],
@@ -126,6 +147,13 @@ const COMMAND_GROUPS = [
         summary: "Reset the proactive check-in range in minutes",
         terminal: [],
         weixin: ["/checkin <min>-<max>"],
+        status: "active",
+      },
+      {
+        action: "focus.protect",
+        summary: "Start or cancel Focus Protection Mode",
+        terminal: [],
+        weixin: ["/focus 25 Englisch", "/focus until 18:00 Deutsch", "/focus cancel"],
         status: "active",
       },
       {
@@ -337,6 +365,9 @@ function actionEmoji(action) {
   switch (action.action) {
     case "workspace.bind": return "📍";
     case "workspace.status": return "📊";
+    case "usage.summary": return "💸";
+    case "routing.codex_next":
+    case "routing.deepseek_next": return "🔀";
     case "thread.new": return "🆕";
     case "thread.reread": return "🔄";
     case "thread.compact": return "🗜️";

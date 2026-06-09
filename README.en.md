@@ -141,6 +141,7 @@ CYBERBOSS_CODEX_ENDPOINT=ws://127.0.0.1:8765
 CYBERBOSS_CODEX_COMMAND=
 CYBERBOSS_CODEX_MODEL=
 CYBERBOSS_CODEX_MODEL_PROVIDER=
+CYBERBOSS_DAILY_THREAD_ROLLOVER=false
 CYBERBOSS_CLAUDE_COMMAND=claude
 CYBERBOSS_CLAUDE_MODEL=
 CYBERBOSS_CLAUDE_CONTEXT_WINDOW=
@@ -176,6 +177,8 @@ What these do:
   Force Codex turns to use a specific model. Leave empty to use Codex's default model selection.
 - `CYBERBOSS_CODEX_MODEL_PROVIDER`
   Force Codex turns to use a specific provider, such as `ollama` for local models. Leave empty for the default cloud provider.
+- `CYBERBOSS_DAILY_THREAD_ROLLOVER`
+  Default `false`. When enabled, the first normal channel message on a new local day starts a fresh runtime thread. Daily Inbox and Obsidian records remain available, while old chat context no longer grows without limit.
 - `CYBERBOSS_CLAUDE_COMMAND`
   Override the Claude launcher. Default is `claude`.
 - `CYBERBOSS_CLAUDE_MODEL`
