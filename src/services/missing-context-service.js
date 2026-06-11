@@ -86,9 +86,6 @@ class MissingContextService {
     }
 
     const local = localDateParts(now, this.timeZone());
-    if (local.hour < this.firstPromptHour()) {
-      return { prompted: [] };
-    }
 
     const state = this.loadState();
     const day = ensureDay(state, local.date);
@@ -107,6 +104,10 @@ class MissingContextService {
     }
 
     const analysis = await this.dailyState.analyze({ date: local.date, now });
+    if (!isContextQuestionDue(analysis, local, this.config)) {
+      this.saveState(state);
+      return { prompted: [] };
+    }
     const question = chooseQuestion({ day, analysis, now, config: this.config });
     if (!question) {
       this.saveState(state);
@@ -172,11 +173,6 @@ class MissingContextService {
   dailyMaxQuestions() {
     const value = Number(this.config.missingContextDailyMaxQuestions);
     return Number.isFinite(value) && value > 0 ? Math.min(3, Math.floor(value)) : 3;
-  }
-
-  firstPromptHour() {
-    const value = Number(this.config.missingContextFirstPromptHour);
-    return Number.isFinite(value) && value >= 0 && value <= 23 ? Math.floor(value) : 12;
   }
 
   responseWindowMs() {
@@ -281,6 +277,21 @@ function chooseQuestion({ day, analysis }) {
   }
 
   return null;
+}
+
+function isContextQuestionDue(analysis, local, config = {}) {
+  const timing = analysis?.contextQuestionTiming;
+  if (timing && typeof timing === "object") {
+    return Boolean(timing.isDue);
+  }
+  const fallbackHour = readHourConfig(config, "missingContextDefaultHour", readHourConfig(config, "missingContextFirstPromptHour", 20));
+  const localMinutes = (Number(local.hour) || 0) * 60 + (Number(local.minute) || 0);
+  return localMinutes >= fallbackHour * 60;
+}
+
+function readHourConfig(config, key, fallback) {
+  const value = Number(config?.[key]);
+  return Number.isFinite(value) && value >= 0 && value <= 23 ? Math.floor(value) : fallback;
 }
 
 function needsRecoveryQuestion(analysis) {

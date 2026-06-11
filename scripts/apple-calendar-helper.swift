@@ -91,8 +91,8 @@ final class CalendarHelperApp: NSObject, NSApplicationDelegate {
     }
     let calendar = Calendar.current
     let now = Date()
-    let start = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now))!
-    let end = calendar.date(byAdding: .day, value: 31, to: start)!
+    let start = calendar.date(byAdding: .day, value: -14, to: calendar.startOfDay(for: now))!
+    let end = calendar.date(byAdding: .day, value: 45, to: start)!
     let calendars = store.calendars(for: .event)
     let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
     let events = store.events(matching: predicate)

@@ -126,6 +126,63 @@ test("missing context skips when shift rating answer is still pending", async ()
   assert.equal(sent.length, 0);
 });
 
+test("missing context respects daily-state timing window", async () => {
+  const { service, sent } = createService({
+    dailyState: {
+      async analyze() {
+        return {
+          signals: { hasEarlyShift: true },
+          contextQuestionTiming: {
+            dueAt: "18:00",
+            isDue: false,
+            reason: "early_shift_after_work",
+          },
+          priorityTiming: { isDue: true },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: false },
+            { id: "german", label: "Deutsch", completed: false },
+          ],
+        };
+      },
+    },
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-10T12:05:00+02:00"));
+
+  assert.equal(result.prompted.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test("missing context asks after active class defers early-shift window", async () => {
+  const { service, sent } = createService({
+    dailyState: {
+      async analyze() {
+        return {
+          signals: { hasEarlyShift: true },
+          contextQuestionTiming: {
+            dueAt: "19:45",
+            isDue: true,
+            reason: "early_shift_after_work",
+            blockingEvent: { title: "Blickpunkt Wunde", start: "16:00", end: "19:30" },
+          },
+          priorityTiming: { isDue: true },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: false },
+            { id: "german", label: "Deutsch", completed: false },
+          ],
+        };
+      },
+    },
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-10T19:46:00+02:00"));
+
+  assert.equal(result.prompted.length, 1);
+  assert.equal(sent.length, 1);
+});
+
 test("parseAnswer accepts numeric choices and skip", () => {
   const question = {
     options: [

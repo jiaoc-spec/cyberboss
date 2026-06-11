@@ -186,3 +186,82 @@ test("daily state reads high shift fatigue and recommends minimum mode", async (
   assert.equal(state.signals.highAfterShiftFatigue, true);
   assert.equal(state.recommendedMode, "minimum");
 });
+
+test("daily state schedules context questions by shift type and blocks active classes", async () => {
+  const service = new DailyStateService({
+    config: { timeZone: "Europe/Berlin" },
+    dailyInbox: {
+      read() {
+        return {
+          exists: true,
+          filePath: "/tmp/2026-06-10.md",
+          text: "### 05:13\n> 待会儿早班\n### 16:01\n> 我现在在上今天下午的网课，16:00到19:30",
+        };
+      },
+    },
+    timeline: {
+      async read() {
+        return { data: { events: [] } };
+      },
+    },
+    calendar: {
+      async read() {
+        return {
+          events: [
+            {
+              title: "Blickpunkt Wunde",
+              start: "2026-06-10T16:00:00+02:00",
+              end: "2026-06-10T19:30:00+02:00",
+              calendar: "Arbeit",
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const duringClass = await service.analyze({
+    date: "2026-06-10",
+    now: new Date("2026-06-10T18:05:00+02:00"),
+  });
+  assert.equal(duringClass.signals.hasEarlyShift, true);
+  assert.equal(duringClass.contextQuestionTiming.baseDueAt, "18:00");
+  assert.equal(duringClass.contextQuestionTiming.dueAt, "19:45");
+  assert.equal(duringClass.contextQuestionTiming.isDue, false);
+  assert.equal(duringClass.temporalContext.currentEvent.title, "Blickpunkt Wunde");
+
+  const afterClass = await service.analyze({
+    date: "2026-06-10",
+    now: new Date("2026-06-10T19:46:00+02:00"),
+  });
+  assert.equal(afterClass.contextQuestionTiming.isDue, true);
+});
+
+test("daily state uses late-shift and night-shift question windows", async () => {
+  const create = (text) => new DailyStateService({
+    config: { timeZone: "Europe/Berlin" },
+    dailyInbox: { read: () => ({ exists: true, filePath: "/tmp/day.md", text }) },
+    timeline: { async read() { return { data: { events: [] } }; } },
+    calendar: { async read() { return { events: [] }; } },
+  });
+
+  const late = await create("今天晚班").analyze({
+    date: "2026-06-10",
+    now: new Date("2026-06-10T22:30:00+02:00"),
+  });
+  assert.equal(late.contextQuestionTiming.dueAt, "23:00");
+  assert.equal(late.contextQuestionTiming.isDue, false);
+
+  const lateDue = await create("今天晚班").analyze({
+    date: "2026-06-10",
+    now: new Date("2026-06-10T23:01:00+02:00"),
+  });
+  assert.equal(lateDue.contextQuestionTiming.isDue, true);
+
+  const night = await create("今天夜班").analyze({
+    date: "2026-06-10",
+    now: new Date("2026-06-10T20:01:00+02:00"),
+  });
+  assert.equal(night.contextQuestionTiming.dueAt, "20:00");
+  assert.equal(night.contextQuestionTiming.isDue, true);
+});

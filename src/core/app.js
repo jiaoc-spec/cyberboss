@@ -924,6 +924,12 @@ class CyberbossApp {
       config: this.config,
       visionContext,
     });
+    const temporalContext = typeof this.buildRuntimeTemporalContext === "function"
+      ? await this.buildRuntimeTemporalContext(prepared)
+      : "";
+    if (temporalContext) {
+      text = `${text}\n\n---\nTemporal context for this reply:\n${temporalContext}`;
+    }
     const originalText = String(prepared?.originalText || prepared?.text || "").trim();
     if (detectDecisionTrigger(originalText)) {
       text = text + "\n\n" + buildDecisionTriggerAnnotation();
@@ -933,6 +939,89 @@ class CyberbossApp {
       attachments: Array.isArray(visionContext.runtimeAttachments) ? visionContext.runtimeAttachments : [],
       visionContext,
     };
+  }
+
+  async buildRuntimeTemporalContext(prepared) {
+    const dailyState = this.projectServices?.dailyState;
+    if (!dailyState || typeof dailyState.analyze !== "function") {
+      return "";
+    }
+    try {
+      const receivedAt = parseDateOrNow(prepared?.receivedAt);
+      const local = resolveCaptureLocalDateTime(receivedAt.toISOString(), this.config);
+      const analysis = await dailyState.analyze({ date: local.date, now: receivedAt });
+      const ctx = analysis?.temporalContext || {};
+      const tomorrowMorning = await this.readTomorrowMorningCalendarContext(local.date);
+      const lines = [
+        `Local now: ${ctx.localNow || `${local.date} ${local.time}`}`,
+        `Day type / schedule mode: ${ctx.dayType || "unknown"}`,
+      ];
+      if (ctx.currentEvent) {
+        lines.push(`Currently in calendar event: ${formatTemporalCalendarEvent(ctx.currentEvent)}`);
+      } else {
+        lines.push("Currently in calendar event: none known");
+      }
+      const remaining = Array.isArray(ctx.remainingEventsToday) ? ctx.remainingEventsToday : [];
+      if (remaining.length) {
+        lines.push("Remaining known events today:");
+        for (const event of remaining.slice(0, 5)) {
+          lines.push(`- ${formatTemporalCalendarEvent(event)}`);
+        }
+      } else {
+        lines.push("Remaining known events today: none known");
+      }
+      if (tomorrowMorning.length) {
+        lines.push("Known events tomorrow morning:");
+        for (const event of tomorrowMorning.slice(0, 5)) {
+          lines.push(`- ${formatTemporalCalendarEvent(event)}`);
+        }
+      } else {
+        lines.push("Known events tomorrow morning: none known");
+      }
+      if (ctx.contextQuestionTiming) {
+        const blocking = ctx.contextQuestionTiming.blockingEvent
+          ? `; blocked by ${formatTemporalCalendarEvent(ctx.contextQuestionTiming.blockingEvent)}`
+          : "";
+        lines.push(`Daily energy/mood question timing: ${ctx.contextQuestionTiming.dueAt} (${ctx.contextQuestionTiming.reason || "unknown"}${blocking})`);
+      }
+      lines.push("Use this context to reason about today/tonight/tomorrow. Do not treat past calendar events as future tasks. If the user explicitly states a current state, it overrides older assumptions.");
+      return lines.join("\n");
+    } catch (error) {
+      console.error(`[cyberboss] temporal context build failed: ${formatErrorMessage(error)}`);
+      return "";
+    }
+  }
+
+  async readTomorrowMorningCalendarContext(localDate) {
+    const calendar = this.projectServices?.calendar;
+    if (!calendar || typeof calendar.read !== "function") {
+      return [];
+    }
+    const tomorrow = addDaysDateText(localDate, 1);
+    try {
+      const result = await calendar.read({
+        start: `${tomorrow}T00:00:00`,
+        end: `${tomorrow}T12:00:00`,
+        includeNotes: false,
+      });
+      const zone = this.config.timeZone || this.config.diaryTimeZone || "UTC";
+      return (Array.isArray(result?.events) ? result.events : [])
+        .filter((event) => !event?.isAllDay)
+        .map((event) => {
+          const start = parseDateOrNow(event.start);
+          const end = parseDateOrNow(event.end);
+          return {
+            title: normalizeCommandArgument(event.title) || "(untitled)",
+            calendar: normalizeCommandArgument(event.calendar),
+            start: formatTimePart(start, zone),
+            end: formatTimePart(end, zone),
+          };
+        })
+        .sort((left, right) => left.start.localeCompare(right.start));
+    } catch (error) {
+      console.error(`[cyberboss] tomorrow calendar context failed: ${formatErrorMessage(error)}`);
+      return [];
+    }
   }
 
   async routePreparedInbound({ bindingKey, workspaceRoot, prepared }) {
@@ -2485,7 +2574,7 @@ class CyberbossApp {
         provider: prepared.provider,
         mode: "daily",
         history,
-        context: this.buildDeepSeekDailyContext(),
+        context: await this.buildDeepSeekDailyContext(prepared),
       });
       if (!result.used || !result.text) {
         return false;
@@ -2525,19 +2614,27 @@ class CyberbossApp {
     this.deepseekConversationBySender.set(senderId, history.slice(-12));
   }
 
-  buildDeepSeekDailyContext() {
+  async buildDeepSeekDailyContext(prepared = null) {
     const priority = this.projectServices?.priorityAwareness?.status?.() || null;
-    if (!priority?.priorities?.length) {
-      return "";
+    const lines = [];
+    if (priority?.priorities?.length) {
+      const completed = priority.priorities.filter((item) => item.status === "completed").map((item) => item.label);
+      const open = priority.priorities.filter((item) => item.status === "pending" || item.status === "unknown").map((item) => item.label);
+      lines.push(
+        `Today's explicit priority boundary: ${priority.deadlineLabel || "unknown"} ${priority.deadlineAt || ""}`.trim(),
+        `Completed priorities: ${completed.length ? completed.join(", ") : "none recorded"}`,
+        `Open priorities: ${open.length ? open.join(", ") : "none"}`,
+        "Do not command or invent an order. If the user's message changes this state, acknowledge it while gently preserving awareness of remaining priorities when useful.",
+      );
     }
-    const completed = priority.priorities.filter((item) => item.status === "completed").map((item) => item.label);
-    const open = priority.priorities.filter((item) => item.status === "pending" || item.status === "unknown").map((item) => item.label);
-    return [
-      `Today's explicit priority boundary: ${priority.deadlineLabel || "unknown"} ${priority.deadlineAt || ""}`.trim(),
-      `Completed priorities: ${completed.length ? completed.join(", ") : "none recorded"}`,
-      `Open priorities: ${open.length ? open.join(", ") : "none"}`,
-      "Do not command or invent an order. If the user's message changes this state, acknowledge it while gently preserving awareness of remaining priorities when useful.",
-    ].join("\n");
+    if (prepared) {
+      const temporal = await this.buildRuntimeTemporalContext(prepared);
+      if (temporal) {
+        if (lines.length) lines.push("");
+        lines.push("Temporal context:", temporal);
+      }
+    }
+    return lines.join("\n");
   }
 
   markFallbackResponseStarted(context) {
@@ -2794,6 +2891,23 @@ function formatConfiguredLocalDateTime(receivedAt, timeZone = "") {
     return value;
   }
   return `${formatDatePart(date, zone)} ${formatTimePart(date, zone)}`;
+}
+
+function formatTemporalCalendarEvent(event = {}) {
+  const title = normalizeText(event.title) || "(untitled)";
+  const start = normalizeText(event.start) || "??:??";
+  const end = normalizeText(event.end) || "??:??";
+  const calendar = normalizeText(event.calendar);
+  return `${start}-${end} ${title}${calendar ? ` [${calendar}]` : ""}`;
+}
+
+function addDaysDateText(dateText, days) {
+  const parsed = new Date(`${normalizeText(dateText)}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return normalizeText(dateText);
+  }
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
 }
 
 function parseDateOrNow(value) {

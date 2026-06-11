@@ -12,6 +12,8 @@ const { readShiftRatingForDate } = require("./shift-rating-service");
 
 const NIGHT_SHIFT_PATTERN = /(night\s*shift|nachtdienst|nachtwache|夜班)/i;
 const EARLY_SHIFT_PATTERN = /(frühdienst|fruehdienst|early\s*shift|早班)/i;
+const LATE_SHIFT_PATTERN = /(spätdienst|spaetdienst|late\s*shift|晚班)/i;
+const OFF_DAY_PATTERN = /(\bfrei\b|休息|休假|不上班|urlaub|vacation|holiday)/i;
 const PHONE_PATTERN = /(screen\s*time|bildschirmzeit|刷手机|看手机|手机时间|手机使用|scroll)/i;
 const COMMUTE_PATTERN = /(commute|通勤|出门|到家|回家|去上班|下班|路上|fahrt|weg)/i;
 const SLEEP_PATTERN = /(sleep|睡觉|睡眠|补觉|躺床|休息|nap|schlaf)/i;
@@ -48,15 +50,20 @@ class DailyStateService {
     const levelC = analyzeHabits(DEFAULT_LEVEL_C, timelineEvents, allText);
     const nightShiftEvents = calendarEvents.filter(isNightShiftCalendarEvent);
     const earlyShiftEvents = calendarEvents.filter(isEarlyShiftCalendarEvent);
+    const lateShiftEvents = calendarEvents.filter(isLateShiftCalendarEvent);
+    const offDayEvents = calendarEvents.filter(isOffDayCalendarEvent);
     const phoneUseEvents = timelineEvents.filter((event) => PHONE_PATTERN.test(eventToText(event)));
     const commuteEvents = timelineEvents.filter((event) => COMMUTE_PATTERN.test(eventToText(event)));
     const sleepEvents = timelineEvents.filter((event) => SLEEP_PATTERN.test(eventToText(event)));
     // Calendar is authoritative: if it says early shift, don't let text pattern matches override it
     const calendarSaysEarlyShift = earlyShiftEvents.length > 0;
     const calendarSaysNightShift = nightShiftEvents.length > 0;
+    const calendarSaysLateShift = lateShiftEvents.length > 0;
     const signals = {
       hasNightShift: calendarSaysNightShift || (!calendarSaysEarlyShift && NIGHT_SHIFT_PATTERN.test(allText)),
       hasEarlyShift: calendarSaysEarlyShift || EARLY_SHIFT_PATTERN.test(allText),
+      hasLateShift: calendarSaysLateShift || LATE_SHIFT_PATTERN.test(allText),
+      hasOffDay: offDayEvents.length > 0 || OFF_DAY_PATTERN.test(allText),
       hasPhoneUse: phoneUseEvents.length > 0 || PHONE_PATTERN.test(allText),
       hasCommute: commuteEvents.length > 0 || COMMUTE_PATTERN.test(allText),
       hasSleepOrRest: sleepEvents.length > 0 || SLEEP_PATTERN.test(allText),
@@ -102,6 +109,22 @@ class DailyStateService {
       levelA,
       config: this.config,
     });
+    const contextQuestionTiming = buildContextQuestionTiming({
+      now,
+      timeZone,
+      targetDate,
+      calendarEvents,
+      signals,
+      config: this.config,
+    });
+    const temporalContext = buildTemporalContext({
+      now,
+      timeZone,
+      targetDate,
+      calendarEvents,
+      signals,
+      contextQuestionTiming,
+    });
 
     return {
       date: targetDate,
@@ -119,6 +142,8 @@ class DailyStateService {
       signals,
       recommendedMode,
       priorityTiming,
+      contextQuestionTiming,
+      temporalContext,
       levelA,
       levelB,
       levelC,
@@ -224,6 +249,96 @@ function buildPriorityTiming({ now, timeZone, targetDate, calendarEvents, signal
   };
 }
 
+function buildContextQuestionTiming({ now, timeZone, targetDate, calendarEvents, signals, config }) {
+  const local = localDateParts(now, timeZone);
+  const baseMinutes = resolveContextQuestionBaseMinutes(signals, config);
+  const blockingEvent = findBlockingEvent(calendarEvents, now);
+  const blockedUntilMinutes = blockingEvent ? localMinutesForDate(parseDate(blockingEvent.end), timeZone, targetDate) + 15 : null;
+  const dueAtMinutes = blockedUntilMinutes !== null
+    ? Math.max(baseMinutes, blockedUntilMinutes)
+    : baseMinutes;
+  const localMinutes = local.hour * 60 + local.minute;
+  return {
+    localDate: local.date,
+    isToday: local.date === targetDate,
+    baseDueAt: formatMinutes(baseMinutes),
+    dueAtMinutes,
+    dueAt: formatMinutes(dueAtMinutes),
+    isDue: local.date === targetDate && localMinutes >= dueAtMinutes,
+    reason: resolveContextQuestionReason(signals),
+    blockingEvent: blockingEvent ? summarizeCalendarEvent(blockingEvent, timeZone) : null,
+  };
+}
+
+function resolveContextQuestionBaseMinutes(signals, config) {
+  if (signals.hasEarlyShift) {
+    return readHourConfig(config, "missingContextEarlyShiftHour", 18) * 60;
+  }
+  if (signals.hasLateShift) {
+    return readHourConfig(config, "missingContextLateShiftHour", 23) * 60;
+  }
+  if (signals.hasNightShift) {
+    return readHourConfig(config, "missingContextNightShiftHour", 20) * 60;
+  }
+  if (signals.hasOffDay) {
+    return readHourConfig(config, "missingContextOffDayHour", 20) * 60;
+  }
+  return readHourConfig(config, "missingContextDefaultHour", readHourConfig(config, "missingContextFirstPromptHour", 20)) * 60;
+}
+
+function resolveContextQuestionReason(signals) {
+  if (signals.hasEarlyShift) return "early_shift_after_work";
+  if (signals.hasLateShift) return "late_shift_after_work";
+  if (signals.hasNightShift) return "night_shift_pre_shift";
+  if (signals.hasOffDay) return "off_day_evening";
+  return "default_evening";
+}
+
+function readHourConfig(config, key, fallback) {
+  const value = Number(config?.[key]);
+  return Number.isFinite(value) && value >= 0 && value <= 23 ? Math.floor(value) : fallback;
+}
+
+function findBlockingEvent(events, now) {
+  const nowMs = now.getTime();
+  return (events || [])
+    .filter((event) => !event?.isAllDay)
+    .filter((event) => {
+      const start = parseDate(event.start);
+      const end = parseDate(event.end);
+      if (!start || !end) return false;
+      return start.getTime() <= nowMs && nowMs < end.getTime();
+    })
+    .sort((left, right) => Date.parse(left.end || "") - Date.parse(right.end || ""))[0] || null;
+}
+
+function localMinutesForDate(date, timeZone, targetDate) {
+  if (!date) return 0;
+  const local = localDateParts(date, timeZone);
+  const minutes = local.hour * 60 + local.minute;
+  if (local.date > targetDate) return 24 * 60 - 1;
+  if (local.date < targetDate) return 0;
+  return minutes;
+}
+
+function buildTemporalContext({ now, timeZone, targetDate, calendarEvents, signals, contextQuestionTiming }) {
+  const todayEvents = (calendarEvents || [])
+    .filter((event) => event && !event.isAllDay)
+    .map((event) => summarizeCalendarEvent(event, timeZone))
+    .filter(Boolean)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const current = findBlockingEvent(calendarEvents, now);
+  const nextEvents = todayEvents.filter((event) => event.end >= formatLocalTime(now, timeZone)).slice(0, 5);
+  return {
+    date: targetDate,
+    localNow: formatLocalDateTime(now, timeZone),
+    dayType: resolveContextQuestionReason(signals),
+    currentEvent: current ? summarizeCalendarEvent(current, timeZone) : null,
+    remainingEventsToday: nextEvents,
+    contextQuestionTiming,
+  };
+}
+
 function findNightShiftStart(events, date, timeZone) {
   const candidates = events
     .filter(isNightShiftCalendarEvent)
@@ -246,6 +361,27 @@ function isNightShiftCalendarEvent(event) {
 
 function isEarlyShiftCalendarEvent(event) {
   return EARLY_SHIFT_PATTERN.test(calendarEventToText(event));
+}
+
+function isLateShiftCalendarEvent(event) {
+  return LATE_SHIFT_PATTERN.test(calendarEventToText(event));
+}
+
+function isOffDayCalendarEvent(event) {
+  return Boolean(event?.isAllDay) && OFF_DAY_PATTERN.test(calendarEventToText(event));
+}
+
+function summarizeCalendarEvent(event, timeZone) {
+  const start = parseDate(event?.start);
+  const end = parseDate(event?.end);
+  if (!start || !end) return null;
+  return {
+    title: normalizeText(event.title) || "(untitled)",
+    calendar: normalizeText(event.calendar),
+    start: formatLocalTime(start, timeZone),
+    end: formatLocalTime(end, timeZone),
+    isAllDay: Boolean(event.isAllDay),
+  };
 }
 
 function eventToText(event) {
@@ -307,6 +443,21 @@ function localDateParts(date, timeZone) {
   };
 }
 
+function formatLocalDateTime(date, timeZone) {
+  const parts = localDateParts(date, timeZone);
+  return `${parts.date} ${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+}
+
+function formatLocalTime(date, timeZone) {
+  const parts = localDateParts(date, timeZone);
+  return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+}
+
+function formatMinutes(minutes) {
+  const bounded = Math.max(0, Math.min(24 * 60 - 1, Number(minutes) || 0));
+  return `${String(Math.floor(bounded / 60)).padStart(2, "0")}:${String(bounded % 60).padStart(2, "0")}`;
+}
+
 function addDaysText(dateText, days) {
   const date = new Date(`${dateText}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -352,6 +503,7 @@ module.exports = {
   DAILY_REVIEW_SECTION_PATTERN,
   DAILY_REVIEW_PENDING_PATTERN,
   buildPriorityTiming,
+  buildContextQuestionTiming,
   dailyReviewExists,
   defaultObsidianDailyNotePath,
 };
