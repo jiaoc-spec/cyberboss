@@ -36,6 +36,7 @@ const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queu
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
 const { DailyReviewPipelineService } = require("../services/daily-review-pipeline-service");
+const { PeriodicReviewPipelineService } = require("../services/periodic-review-pipeline-service");
 const { DecisionReviewMonitor } = require("../services/decision-review-monitor");
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
 const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
@@ -112,6 +113,8 @@ class CyberbossApp {
       dailyState: this.projectServices.dailyState,
       focusProtection: this.projectServices.focusProtection,
       patternLedger: this.projectServices.patternLedger,
+      currentState: this.projectServices.currentState,
+      campaign: this.projectServices.campaign,
     });
     this.dailyReviewPipeline = new DailyReviewPipelineService({
       config,
@@ -126,6 +129,12 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       dailyInbox: this.projectServices.dailyInbox,
       reviewPipeline: this.dailyReviewPipeline,
+    });
+    this.periodicReviewPipeline = new PeriodicReviewPipelineService({
+      config,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      systemMessageQueue: this.systemMessageQueue,
     });
     this.decisionReviewMonitor = new DecisionReviewMonitor({
       config,
@@ -249,6 +258,7 @@ class CyberbossApp {
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
             this.flushDailyReviewPipeline(account),
+            this.flushPeriodicReviewPipeline(account),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -276,6 +286,7 @@ class CyberbossApp {
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
             this.flushDailyReviewPipeline(account),
+            this.flushPeriodicReviewPipeline(account),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -479,6 +490,9 @@ class CyberbossApp {
     }
     if (typeof this.observeIncomingPriorityCompletion === "function") {
       this.observeIncomingPriorityCompletion(normalized);
+    }
+    if (typeof this.observeIncomingCurrentState === "function") {
+      this.observeIncomingCurrentState(normalized);
     }
     if (typeof this.observeIncomingFocusProtection === "function") {
       const handled = await this.observeIncomingFocusProtection(normalized);
@@ -984,12 +998,44 @@ class CyberbossApp {
           : "";
         lines.push(`Daily energy/mood question timing: ${ctx.contextQuestionTiming.dueAt} (${ctx.contextQuestionTiming.reason || "unknown"}${blocking})`);
       }
+      lines.push(...this.buildCurrentStateContextLines(receivedAt));
       lines.push("Use this context to reason about today/tonight/tomorrow. Do not treat past calendar events as future tasks. If the user explicitly states a current state, it overrides older assumptions.");
       return lines.join("\n");
     } catch (error) {
       console.error(`[cyberboss] temporal context build failed: ${formatErrorMessage(error)}`);
       return "";
     }
+  }
+
+  buildCurrentStateContextLines(now = new Date()) {
+    const currentState = this.projectServices?.currentState;
+    if (!currentState) {
+      return [];
+    }
+    const lines = [];
+    try {
+      const current = currentState.current({ now });
+      if (current && current.fresh) {
+        lines.push(
+          `Latest explicit state from ${this.config.userName || "the user"}: ${current.label} (${current.state}) — she said "${current.sourceText}" ${current.ageMinutes} minutes ago.`,
+        );
+        if (["commuting_to_work", "at_work", "commuting_home"].includes(current.state)) {
+          lines.push("HARD RULE: she is up and out. This overrides every sleep/rest/wake-up assumption from calendar or older messages. Never suggest staying in bed, getting up slowly, going back to sleep, or napping right now. Support what she is actually doing.");
+        }
+        if (current.state === "going_to_sleep") {
+          lines.push("She said she is going to sleep. Do not ask questions or send non-urgent reminders until she speaks again.");
+        }
+      }
+      const sleep = currentState.lastSleep({ now });
+      if (sleep && sleep.approxHours !== null && sleep.approxHours !== undefined) {
+        lines.push(
+          `Last night per her own report: fell asleep around ${formatHourText(sleep.sleptAtHour)}, up around ${formatHourText(sleep.wokeAtHour)} (~${sleep.approxHours}h sleep). If this is short, acknowledge it practically; do not give bedtime advice while she is out or working.`,
+        );
+      }
+    } catch (error) {
+      console.error(`[cyberboss] current state context failed: ${formatErrorMessage(error)}`);
+    }
+    return lines;
   }
 
   async readTomorrowMorningCalendarContext(localDate) {
@@ -1523,11 +1569,32 @@ class CyberbossApp {
     }
   }
 
+  async flushPeriodicReviewPipeline(account) {
+    try {
+      await this.periodicReviewPipeline?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] periodic review pipeline failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
   async flushDecisionReviewMonitor(account) {
     try {
       await this.decisionReviewMonitor?.check(account);
     } catch (error) {
       console.error(`[cyberboss] decision review monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  observeIncomingCurrentState(normalized) {
+    try {
+      this.projectServices?.currentState?.observeMessage({
+        text: normalized?.text,
+        receivedAt: normalized?.receivedAt,
+        provider: normalized?.provider,
+        senderId: normalized?.senderId,
+      });
+    } catch (error) {
+      console.error(`[cyberboss] current state observation failed: ${formatErrorMessage(error)}`);
     }
   }
 
@@ -2758,6 +2825,15 @@ function normalizeReplyTarget(target) {
     contextToken: String(target.contextToken).trim(),
     provider: normalizeText(target.provider),
   };
+}
+
+function formatHourText(hour) {
+  if (hour === null || hour === undefined || !Number.isFinite(Number(hour))) {
+    return "unknown";
+  }
+  const whole = Math.floor(hour);
+  const minutes = Math.round((hour - whole) * 60);
+  return `${String(whole).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 function systemTriggerRequiresDelivery(preparedText = "") {
