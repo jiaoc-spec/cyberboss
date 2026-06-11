@@ -158,3 +158,66 @@ test("high after-shift fatigue changes level A reminder to minimum mode and reco
   assert.equal(patternCalls.length, 1);
   assert.deepEqual(patternCalls[0].missingLevelA.map((item) => item.id), ["sport", "german"]);
 });
+
+test("collectSupportStrategies surfaces matching pattern strategies", () => {
+  const { CriticalHabitsMonitor } = require("../src/services/critical-habits-monitor");
+  const monitor = new CriticalHabitsMonitor({
+    config: {},
+    patternLedger: {
+      read() {
+        return {
+          patterns: [
+            {
+              id: "pat_1",
+              title: "Night shift recovery weakens Level A",
+              domain: "night-shift",
+              status: "hypothesis",
+              confidence: 0.45,
+              tags: ["night shift"],
+              supportStrategy: "恢复日先看身体状态，再给 5-10 分钟版本。",
+            },
+            {
+              id: "pat_2",
+              title: "Low confidence pattern",
+              domain: "night-shift",
+              status: "hypothesis",
+              confidence: 0.2,
+              tags: [],
+              supportStrategy: "不该出现。",
+            },
+            {
+              id: "pat_3",
+              title: "Unrelated domain",
+              domain: "screen-time",
+              status: "active",
+              confidence: 0.7,
+              tags: [],
+              supportStrategy: "也不该出现。",
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const strategies = monitor.collectSupportStrategies({
+    signals: { hasNightShift: true },
+  });
+
+  assert.equal(strategies.length, 1);
+  assert.equal(strategies[0].id, "pat_1");
+
+  const none = monitor.collectSupportStrategies({ signals: {} });
+  assert.equal(none.length, 0);
+});
+
+test("buildLevelADirectMessage includes support strategies", () => {
+  const { buildLevelADirectMessage, DEFAULT_LEVEL_A } = require("../src/services/critical-habits-monitor");
+  const text = buildLevelADirectMessage(
+    [DEFAULT_LEVEL_A[0]],
+    { recommendedMode: "minimum", levelA: [] },
+    [{ id: "pat_1", title: "t", supportStrategy: "恢复日先给 5-10 分钟版本。" }],
+  );
+  assert.match(text, /恢复日先给 5-10 分钟版本/);
+  assert.match(text, /我们之前观察到的规律/);
+});

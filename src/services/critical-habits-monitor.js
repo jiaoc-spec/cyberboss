@@ -23,6 +23,13 @@ const DEFAULT_LEVEL_C = [
   habit("forschung", "Forschung", ["forschung", "research", "研究"], [], "未来研究者、护理科学家和教授身份", 30),
 ];
 
+const PATTERN_CONTEXT_RULES = [
+  { signal: "hasNightShift", domains: ["night-shift"], tags: ["night shift", "night-shift", "夜班"] },
+  { signal: "highAfterShiftFatigue", domains: ["energy"], tags: ["fatigue", "energy", "疲惫", "level-a"] },
+  { signal: "lowEnergy", domains: ["energy"], tags: ["fatigue", "energy", "low-energy"] },
+  { signal: "periodOrBodyDiscomfort", domains: ["health"], tags: ["menstrual", "period", "生理期", "body"] },
+];
+
 class CriticalHabitsMonitor {
   constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, focusProtection, patternLedger }) {
     this.config = config || {};
@@ -153,6 +160,41 @@ class CriticalHabitsMonitor {
     }
   }
 
+  collectSupportStrategies(dailyState, limit = 2) {
+    if (!this.patternLedger || typeof this.patternLedger.read !== "function") {
+      return [];
+    }
+    const signals = dailyState?.signals || {};
+    const contextDomains = new Set();
+    const contextTags = new Set();
+    for (const rule of PATTERN_CONTEXT_RULES) {
+      if (signals[rule.signal]) {
+        rule.domains.forEach((domain) => contextDomains.add(domain));
+        rule.tags.forEach((tag) => contextTags.add(tag.toLowerCase()));
+      }
+    }
+    if (dailyState?.priorityTiming?.reason === "night_shift_recovery") {
+      contextDomains.add("night-shift");
+    }
+    if (!contextDomains.size && !contextTags.size) {
+      return [];
+    }
+    try {
+      const ledger = this.patternLedger.read({});
+      return (ledger.patterns || [])
+        .filter((pattern) => ["active", "confirmed", "hypothesis"].includes(pattern.status)
+          && pattern.supportStrategy
+          && (pattern.status !== "hypothesis" || pattern.confidence >= 0.4)
+          && (contextDomains.has(pattern.domain)
+            || (pattern.tags || []).some((tag) => contextTags.has(String(tag).toLowerCase()))))
+        .slice(0, limit)
+        .map((pattern) => ({ id: pattern.id, title: pattern.title, supportStrategy: pattern.supportStrategy }));
+    } catch (error) {
+      console.error(`[cyberboss] critical habits pattern lookup failed: ${error.message}`);
+      return [];
+    }
+  }
+
   recordPatternEvidence({ dailyState, missing, now }) {
     if (!this.patternLedger || typeof this.patternLedger.recordDailyStateEvidence !== "function") {
       return;
@@ -186,7 +228,8 @@ class CriticalHabitsMonitor {
 
   async deliverLevelAMessage({ account, target, missing, now, dailyState }) {
     const items = missing.map(({ item }) => item);
-    const text = buildLevelADirectMessage(items, dailyState);
+    const supportStrategies = this.collectSupportStrategies(dailyState);
+    const text = buildLevelADirectMessage(items, dailyState, supportStrategies);
     if (typeof this.channelAdapter?.sendText === "function") {
       try {
         await this.channelAdapter.sendText({
@@ -208,16 +251,22 @@ class CriticalHabitsMonitor {
         console.error(`[cyberboss] critical habit direct send failed: ${error.message}`);
       }
     }
-    return this.enqueueLevelAMessage({ account, target, missing, now });
+    return this.enqueueLevelAMessage({ account, target, missing, now, supportStrategies });
   }
 
-  enqueueLevelAMessage({ account, target, missing, now }) {
+  enqueueLevelAMessage({ account, target, missing, now, supportStrategies = [] }) {
     const items = missing.map(({ item }) => item);
     const text = [
       "Critical Habits Monitor: DELIVERY REQUIRED. Level A daily guardian trigger.",
       `Today still has no recorded Level A activity for: ${items.map((item) => item.label).join(", ")}.`,
       "These are not ordinary tasks. They are the foundation habits Jane already chose for her future self.",
       ...items.map((item) => `${item.label}: ${item.meaning || "她已经选择的长期成长方向"}.`),
+      ...(supportStrategies.length
+        ? [
+          "Pattern Ledger support strategies that match today's context (use them to shape the suggestion, do not quote them verbatim):",
+          ...supportStrategies.map((entry) => `- [${entry.id}] ${entry.title}: ${entry.supportStrategy}`),
+        ]
+        : []),
       "Return send_message, not silent. Send one concise, natural, warm-but-grounded message that restores priority awareness without guilt.",
       "Do not supervise, command, scold, or make it sound like a checklist app.",
       "Offer a realistic choice: one minimum version now, postpone, or consciously rest/skip today.",
@@ -255,7 +304,7 @@ function habit(id, label, keywords, categoryPrefixes, meaning = "", estimatedMin
   return { id, label, keywords, categoryPrefixes, meaning, estimatedMinutes };
 }
 
-function buildLevelADirectMessage(items, dailyState = null) {
+function buildLevelADirectMessage(items, dailyState = null, supportStrategies = []) {
   const labels = items.map((item) => item.label).join("、");
   const meanings = items
     .map((item) => item.meaning)
@@ -269,14 +318,18 @@ function buildLevelADirectMessage(items, dailyState = null) {
   const timingReason = dailyState?.priorityTiming?.reason || "";
   const boundaryLabel = dailyState?.priorityTiming?.boundaryLabel || "";
   const intro = buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue });
+  const strategyText = supportStrategies.length
+    ? `我们之前观察到的规律也支持这一点：${supportStrategies.map((entry) => entry.supportStrategy).join(" ")}`
+    : "";
   return [
     intro,
     meanings ? `它们不是打卡，是你给未来自己的地基：${meanings}。` : "它们不是打卡，是你给未来自己的地基。",
     mode === "minimum"
       ? "今天如果身体和脑子都在省电，就做最小版本：运动 10 分钟、英语 5 分钟、德语 5 到 10 分钟，挑一个碰一下也算回来。"
       : "如果现在还来得及，挑一个最小版本碰一下就好；如果今天真的不合适，也可以明确延期或休息。",
+    strategyText,
     "重点不是完美，是回来。",
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue }) {

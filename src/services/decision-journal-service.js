@@ -22,15 +22,17 @@ class DecisionJournalService {
     }
 
     const now = new Date();
+    const entryDate = date || formatDate(now, this._timeZone());
+    const defaultReviewDays = Number(this.config?.decisionReviewDefaultDays) || 14;
     const entry = {
       id: `dec_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`,
-      date: date || formatDate(now),
+      date: entryDate,
       decision: String(decision).trim(),
       context: String(context || "").trim(),
       reasons: String(reasons || "").trim(),
       expected_outcome: String(expected_outcome || "").trim(),
       risks: String(risks || "").trim(),
-      review_date: String(review_date || "").trim(),
+      review_date: String(review_date || "").trim() || addDaysText(entryDate, defaultReviewDays),
       later_outcome: "",
       reflection: "",
       createdAt: now.toISOString(),
@@ -63,6 +65,39 @@ class DecisionJournalService {
     };
     this._save(journal);
     return journal.decisions[index];
+  }
+
+  async listDueForReview({ date = "" } = {}) {
+    const today = String(date || "").trim() || formatDate(new Date(), this._timeZone());
+    const journal = this._load();
+    return journal.decisions.filter((entry) =>
+      String(entry.review_date || "").trim()
+      && entry.review_date <= today
+      && !String(entry.later_outcome || "").trim()
+      && !String(entry.reviewRequestedAt || "").trim());
+  }
+
+  async markReviewRequested({ id = "", at = new Date() } = {}) {
+    const normalizedId = String(id || "").trim();
+    if (!normalizedId) {
+      throw new Error("decision_review: id is required.");
+    }
+    const journal = this._load();
+    const index = journal.decisions.findIndex((d) => d.id === normalizedId);
+    if (index === -1) {
+      throw new Error(`decision_review: decision ${normalizedId} not found.`);
+    }
+    journal.decisions[index] = {
+      ...journal.decisions[index],
+      reviewRequestedAt: at instanceof Date ? at.toISOString() : String(at),
+      updatedAt: new Date().toISOString(),
+    };
+    this._save(journal);
+    return journal.decisions[index];
+  }
+
+  _timeZone() {
+    return this.config?.timeZone || this.config?.diaryTimeZone || "Asia/Shanghai";
   }
 
   async list({ pending_review_only = false, limit = 0 } = {}) {
@@ -100,13 +135,19 @@ class DecisionJournalService {
   }
 }
 
-function formatDate(date) {
+function formatDate(date, timeZone = "Asia/Shanghai") {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(date);
+}
+
+function addDaysText(dateText, days) {
+  const date = new Date(`${dateText}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 module.exports = { DecisionJournalService };
