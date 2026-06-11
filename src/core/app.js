@@ -39,6 +39,7 @@ const { DailyReviewPipelineService } = require("../services/daily-review-pipelin
 const { buildPlaybookTrigger, ANCHOR_LABELS: PLAYBOOK_ANCHOR_LABELS } = require("../services/playbook-service");
 const { PeriodicReviewPipelineService } = require("../services/periodic-review-pipeline-service");
 const { StateBackupService } = require("../services/state-backup-service");
+const { KnowledgeResurfaceService } = require("../services/knowledge-resurface-service");
 const { DecisionReviewMonitor } = require("../services/decision-review-monitor");
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
 const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
@@ -139,6 +140,13 @@ class CyberbossApp {
       systemMessageQueue: this.systemMessageQueue,
     });
     this.stateBackup = new StateBackupService({ config });
+    this.knowledgeResurface = new KnowledgeResurfaceService({
+      config,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      systemMessageQueue: this.systemMessageQueue,
+      currentState: this.projectServices.currentState,
+    });
     this.decisionReviewMonitor = new DecisionReviewMonitor({
       config,
       channelAdapter: this.channelAdapter,
@@ -263,6 +271,7 @@ class CyberbossApp {
             this.flushDailyReviewPipeline(account),
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
+            this.flushKnowledgeResurface(account),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -292,6 +301,7 @@ class CyberbossApp {
             this.flushDailyReviewPipeline(account),
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
+            this.flushKnowledgeResurface(account),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -363,6 +373,24 @@ class CyberbossApp {
     });
     if (!senderId || !workspaceRoot) {
       return;
+    }
+
+    if (normalizeText(point?.trigger) === "arrive_home") {
+      try {
+        const at = normalizeIsoTime(point?.receivedAt) || normalizeIsoTime(point?.timestamp) || new Date().toISOString();
+        this.projectServices?.currentState?.recordAssertion({
+          state: "arrived_home",
+          sourceText: "定位：到家了",
+          at,
+        });
+        this.maybeQueuePlaybookTrigger({
+          senderId,
+          provider: this.channelAdapter.describe().id,
+          receivedAt: at,
+        }, "arrived_home");
+      } catch (error) {
+        console.error(`[cyberboss] location anchor handling failed: ${formatErrorMessage(error)}`);
+      }
     }
 
     if (triggerText && point?.id) {
@@ -1598,6 +1626,14 @@ class CyberbossApp {
       await this.stateBackup?.check();
     } catch (error) {
       console.error(`[cyberboss] state backup check failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushKnowledgeResurface(account) {
+    try {
+      await this.knowledgeResurface?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] knowledge resurface failed: ${formatErrorMessage(error)}`);
     }
   }
 

@@ -100,6 +100,27 @@ class CurrentStateService {
     return { stateUpdated: updated, state: matched?.state || "" };
   }
 
+  // Programmatic assertion for non-text sources (location triggers etc.).
+  recordAssertion({ state = "", label = "", sourceText = "", at = new Date() } = {}) {
+    const rule = STATE_RULES.find((item) => item.state === state);
+    if (!rule) {
+      return { recorded: false };
+    }
+    const atDate = at instanceof Date ? at : new Date(at);
+    const stateData = this.loadState();
+    stateData.assertions.push({
+      state,
+      label: label || rule.label,
+      assertedAt: (Number.isNaN(atDate.getTime()) ? new Date() : atDate).toISOString(),
+      sourceText: String(sourceText || "").slice(0, 120),
+      senderKey: "system:location",
+    });
+    stateData.assertions = stateData.assertions.slice(-MAX_ASSERTIONS);
+    this.saveState(stateData);
+    console.log(`[cyberboss] current state asserted state=${state} source=location`);
+    return { recorded: true };
+  }
+
   current({ now = new Date() } = {}) {
     const state = this.loadState();
     const latest = state.assertions[state.assertions.length - 1];

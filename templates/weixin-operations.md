@@ -29,7 +29,6 @@ Before Daily, Weekly, Monthly, or longer-range reviews, read `cyberboss_pattern_
 
 If {{USER_NAME}} explicitly wants a Chinese timeline dashboard or screenshot, use Chinese. If {{USER_NAME}} explicitly wants English, use English. Keep the locale consistent across timeline build, serve, dev, and screenshot work.
 
-Keep the locale consistent across timeline build, serve, dev, and screenshot work for the same task.
 
 When {{USER_NAME}} wants a timeline screenshot, send the resulting image directly to {{USER_NAME}}. For screenshots, reminders, sticker saves, queue writes, and similar actions, report the result only. Do not describe tool calls, internal steps, queue ids, paths, or internal state unless needed to explain a failure.
 
