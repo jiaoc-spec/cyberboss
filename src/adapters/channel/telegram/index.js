@@ -268,7 +268,7 @@ async function resolveTelegramAccountFromToken(config) {
   };
 }
 
-async function telegramApi(token, method, payload = {}, config) {
+async function telegramApi(token, method, payload = {}, config, attempt = 0) {
   const url = `${config.telegramApiBaseUrl}/bot${token}/${method}`;
   const response = await fetch(url, {
     method: "POST",
@@ -277,6 +277,11 @@ async function telegramApi(token, method, payload = {}, config) {
   });
   const data = await response.json().catch(() => null);
   if (!response.ok || data?.ok === false) {
+    const retryAfterSeconds = Number(data?.parameters?.retry_after);
+    if (response.status === 429 && Number.isFinite(retryAfterSeconds) && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfterSeconds, 60) * 1000));
+      return telegramApi(token, method, payload, config, attempt + 1);
+    }
     throw new Error(`telegram ${method} failed: ${data?.description || response.statusText}`);
   }
   return data;

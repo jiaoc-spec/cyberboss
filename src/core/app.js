@@ -35,6 +35,8 @@ const { TurnGateStore } = require("./turn-gate-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
+const { DailyReviewPipelineService } = require("../services/daily-review-pipeline-service");
+const { DecisionReviewMonitor } = require("../services/decision-review-monitor");
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
 const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
 const { ModelRouterService } = require("../services/model-router-service");
@@ -111,11 +113,26 @@ class CyberbossApp {
       focusProtection: this.projectServices.focusProtection,
       patternLedger: this.projectServices.patternLedger,
     });
+    this.dailyReviewPipeline = new DailyReviewPipelineService({
+      config,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      systemMessageQueue: this.systemMessageQueue,
+      dailyInbox: this.projectServices.dailyInbox,
+    });
     this.failureWatchdog = new FailureWatchdogService({
       config,
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       dailyInbox: this.projectServices.dailyInbox,
+      reviewPipeline: this.dailyReviewPipeline,
+    });
+    this.decisionReviewMonitor = new DecisionReviewMonitor({
+      config,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      systemMessageQueue: this.systemMessageQueue,
+      decisionJournal: this.projectServices.decisionJournal,
     });
     this.turnGateStore = new TurnGateStore();
     this.deepseekFallback = new DeepSeekFallbackService({ config });
@@ -231,6 +248,8 @@ class CyberbossApp {
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
+            this.flushDailyReviewPipeline(account),
+            this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
           const response = await this.channelAdapter.getUpdates({
@@ -256,6 +275,8 @@ class CyberbossApp {
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
+            this.flushDailyReviewPipeline(account),
+            this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
         } catch (error) {
@@ -1405,6 +1426,22 @@ class CyberbossApp {
     }
   }
 
+  async flushDailyReviewPipeline(account) {
+    try {
+      await this.dailyReviewPipeline?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] daily review pipeline failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushDecisionReviewMonitor(account) {
+    try {
+      await this.decisionReviewMonitor?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] decision review monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
   observeIncomingPriorityCompletion(normalized) {
     try {
       const result = this.projectServices?.priorityAwareness?.observeMessage({
@@ -2366,6 +2403,11 @@ class CyberbossApp {
     if (context?.fallbackSent) {
       return true;
     }
+    const target = normalizeReplyTarget(replyTarget || context?.replyTarget);
+    if (target?.provider === "system" && !systemTriggerRequiresDelivery(context?.text)) {
+      console.log(`[cyberboss] empty system reply treated as silent thread=${threadId}`);
+      return true;
+    }
     return this.sendDeepSeekFallback({
       ...context,
       reason: "Codex completed without a usable reply",
@@ -2619,6 +2661,17 @@ function normalizeReplyTarget(target) {
     contextToken: String(target.contextToken).trim(),
     provider: normalizeText(target.provider),
   };
+}
+
+function systemTriggerRequiresDelivery(preparedText = "") {
+  const text = String(preparedText || "");
+  const triggerMarker = "\nTrigger:\n";
+  const triggerIndex = text.indexOf(triggerMarker);
+  const trigger = triggerIndex >= 0 ? text.slice(triggerIndex + triggerMarker.length) : "";
+  if (!trigger || /no_deepseek_fallback=true/i.test(trigger)) {
+    return false;
+  }
+  return trigger.includes("DELIVERY REQUIRED");
 }
 
 function formatCompactNumber(value) {
