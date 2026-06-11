@@ -975,6 +975,162 @@ const PROJECT_TOOLS = [
       };
     },
   },
+  {
+    name: "cyberboss_knowledge_capture",
+    description: "Capture a piece of knowledge (insight, paper finding, quote, concept, learning note) into the Obsidian Knowledge Inbox with automatic related-note links. Use when Jane shares something worth keeping for her future studies or research — not for ordinary chat.",
+    shortHint: "Save a knowledge note into Obsidian with backlinks.",
+    topics: ["knowledge"],
+    inputSchema: {
+      type: "object",
+      required: ["title", "content"],
+      properties: {
+        title: { type: "string", description: "Short descriptive title for the note." },
+        content: { type: "string", description: "The knowledge content, cleaned up but faithful to what Jane said or read." },
+        tags: { type: "array", items: { type: "string" }, description: "Topic tags, e.g. Wundmanagement, Pflegewissenschaft, Statistik." },
+        source: { type: "string", description: "Where it came from: a paper title/DOI, a course, a conversation, a book." },
+        date: { type: "string", description: "Optional date YYYY-MM-DD. Defaults to today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.knowledge.capture(args);
+      return {
+        text: `Knowledge captured: ${result.title}${result.relatedNotes.length ? ` (related: ${result.relatedNotes.join(", ")})` : ""}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_knowledge_search",
+    description: "Search Jane's Obsidian knowledge notes (Wissenskarte and Notizen) by keyword. Use during reviews or when a conversation touches a topic she may have notes about.",
+    shortHint: "Search knowledge notes by keyword.",
+    topics: ["knowledge"],
+    inputSchema: {
+      type: "object",
+      required: ["query"],
+      properties: {
+        query: { type: "string", description: "Keyword or phrase to search for." },
+        limit: { type: "integer", description: "Maximum results, default 8." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.knowledge.search(args);
+      return {
+        text: `Knowledge search "${result.query}": ${result.results.length} results.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_research_record",
+    description: "Record an academic asset into the Research Ledger: a paper read (type=paper), a research idea (idea), writing produced (writing), an academic contact (contact), or a course milestone (course). This is the compounding record of Jane's path toward research and professorship.",
+    shortHint: "Record paper/idea/writing/contact/course into the research ledger.",
+    topics: ["research"],
+    inputSchema: {
+      type: "object",
+      required: ["type", "title"],
+      properties: {
+        type: { type: "string", description: "One of: paper, idea, writing, contact, course, other." },
+        title: { type: "string", description: "Title of the paper/idea/writing piece, or the person's name for contacts." },
+        note: { type: "string", description: "Key takeaway, idea description, or context." },
+        link: { type: "string", description: "Optional DOI, URL, or Obsidian note name." },
+        tags: { type: "array", items: { type: "string" }, description: "Topic tags." },
+        date: { type: "string", description: "Optional date YYYY-MM-DD. Defaults to today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.researchLedger.record(args);
+      return {
+        text: `Research asset recorded: ${result.id} type=${result.type}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_research_query",
+    description: "Query the Research Ledger. Use during Weekly/Monthly Review to summarize how Jane's academic assets grew, or when she asks what she has read/produced.",
+    shortHint: "Query research ledger by type, text, or date range.",
+    topics: ["research"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        type: { type: "string", description: "Filter by type: paper, idea, writing, contact, course, other." },
+        query: { type: "string", description: "Substring filter across title/note/tags." },
+        from: { type: "string", description: "Start date YYYY-MM-DD inclusive." },
+        to: { type: "string", description: "End date YYYY-MM-DD inclusive." },
+        limit: { type: "integer", description: "Maximum results (most recent first)." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.researchLedger.query(args);
+      return {
+        text: `Research query: ${result.total} results.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_campaign_set",
+    description: "Create or update a Campaign: a time-bounded goal container like a semester, exam period, or application sprint. Deadlines may reference a habit id (e.g. python, wundmanagement, pflegewissenschaft); when a deadline is within the boost window the habit temporarily joins the daily Level A guardian set. Confirm with Jane before creating.",
+    shortHint: "Create/update a semester or exam campaign with deadlines.",
+    topics: ["campaign"],
+    inputSchema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        id: { type: "string", description: "Existing campaign id to update; omit to create." },
+        name: { type: "string", description: "Campaign name, e.g. WS 2026/27 Semester 1." },
+        startDate: { type: "string", description: "Start date YYYY-MM-DD." },
+        endDate: { type: "string", description: "End date YYYY-MM-DD." },
+        note: { type: "string", description: "Optional description or goals." },
+        deadlines: {
+          type: "array",
+          description: "Deadlines inside the campaign.",
+          items: {
+            type: "object",
+            required: ["label", "date"],
+            properties: {
+              label: { type: "string", description: "Deadline name, e.g. Statistik Klausur." },
+              date: { type: "string", description: "Date YYYY-MM-DD." },
+              habitId: { type: "string", description: "Optional habit id to boost as the deadline approaches." },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.campaign.upsert(args);
+      return {
+        text: `Campaign saved: ${result.id} ${result.name} (${result.deadlines.length} deadlines)`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_campaign_status",
+    description: "Show active campaigns and upcoming deadlines, including which habits are currently boosted. Use when planning a day/week or when Jane asks what is coming up.",
+    shortHint: "List active campaigns and upcoming deadlines.",
+    topics: ["campaign"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional date YYYY-MM-DD. Defaults to today." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.campaign.status(args);
+      return {
+        text: `Campaigns: ${result.activeCampaigns.length} active, ${result.upcomingDeadlines.length} upcoming deadlines.`,
+        data: result,
+      };
+    },
+  },
 ];
 
 const STATIC_EXTRA_TOOL_NAMES = new WhereaboutsToolHost({ service: null })

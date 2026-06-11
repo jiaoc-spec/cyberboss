@@ -2,6 +2,10 @@ const { createChannelAdapter } = require("../adapters/channel");
 const { SessionStore } = require("../adapters/runtime/codex/session-store");
 const { createTimelineIntegration } = require("../integrations/timeline");
 const { CalendarService } = require("../services/calendar-service");
+const { CampaignService } = require("../services/campaign-service");
+const { CurrentStateService } = require("../services/current-state-service");
+const { KnowledgeService } = require("../services/knowledge-service");
+const { ResearchLedgerService } = require("../services/research-ledger-service");
 const { CalendarTimelineSyncService } = require("../services/calendar-timeline-sync-service");
 const { ChannelFileService } = require("../services/channel-file-service");
 const { DailyInboxService } = require("../services/daily-inbox-service");
@@ -42,9 +46,10 @@ function createProjectTooling(config, options = {}) {
   const health = new HealthService({ config, diary });
   const dailyState = new DailyStateService({ config, dailyInbox, timeline, calendar, health });
   const patternLedger = new PatternLedgerService({ config });
+  const currentState = new CurrentStateService({ config });
   const reminder = new ReminderService({ config, channelAdapter, sessionStore });
   const focusProtection = new FocusProtectionService({ config, reminder, timeline });
-  const missingContext = new MissingContextService({ config, dailyState, channelAdapter, sessionStore });
+  const missingContext = new MissingContextService({ config, dailyState, channelAdapter, sessionStore, currentState });
   const priorityAwareness = new PriorityAwarenessService({
     config,
     timeline,
@@ -54,6 +59,10 @@ function createProjectTooling(config, options = {}) {
   });
   const services = {
     calendar,
+    campaign: new CampaignService({ config }),
+    currentState,
+    knowledge: new KnowledgeService({ config }),
+    researchLedger: new ResearchLedgerService({ config }),
     calendarTimelineSync: new CalendarTimelineSyncService({ config, calendar, timeline }),
     dailyInbox,
     dailyState,
