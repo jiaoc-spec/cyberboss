@@ -338,7 +338,7 @@ function normalizeSession(value) {
   return {
     id: normalizeText(value.id) || `focus-${Date.parse(startAt) || Date.now()}`,
     senderKey,
-    status: status === "active" && Date.now() >= Date.parse(endAt) ? "expired" : status,
+    status,
     task,
     startAt,
     endAt,
