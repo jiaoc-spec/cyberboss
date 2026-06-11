@@ -5,11 +5,12 @@ const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../
 const { dailyReviewExists } = require("./daily-state-service");
 
 class FailureWatchdogService {
-  constructor({ config, channelAdapter, sessionStore, dailyInbox }) {
+  constructor({ config, channelAdapter, sessionStore, dailyInbox, reviewPipeline }) {
     this.config = config || {};
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.dailyInbox = dailyInbox;
+    this.reviewPipeline = reviewPipeline;
     this.stateFile = this.config.failureWatchdogStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -32,21 +33,72 @@ class FailureWatchdogService {
     }
 
     const targetDate = addDaysText(local.date, -1);
+    const recheckDays = Number.isInteger(this.config.failureWatchdogRecheckDays)
+      ? this.config.failureWatchdogRecheckDays
+      : 7;
     const state = this.loadState();
-    const key = `daily-review:${targetDate}`;
-    if (state.checked[key]) {
-      return { sent: false };
+    let sent = false;
+
+    for (const date of trailingDates(targetDate, Math.max(1, recheckDays))) {
+      const key = `daily-review:${date}`;
+      const previous = normalizeEntry(state.checked[key]);
+      if (previous && previous.ok) {
+        continue;
+      }
+
+      let evaluation = this.evaluate(date);
+      if (!evaluation.ok) {
+        this.tryArchiveRepair(date, evaluation);
+        evaluation = this.evaluate(date);
+      }
+
+      if (evaluation.ok) {
+        state.checked[key] = {
+          ...previous,
+          checkedAt: now.toISOString(),
+          ok: true,
+          ...(previous ? { recoveredAt: now.toISOString() } : {}),
+        };
+        if (previous) {
+          console.log(`[cyberboss] failure watchdog recovered date=${date}`);
+        }
+        continue;
+      }
+
+      const entry = {
+        checkedAt: now.toISOString(),
+        ok: false,
+        notifiedAt: previous?.notifiedAt || "",
+      };
+      state.checked[key] = entry;
+
+      if (date === targetDate && !entry.notifiedAt && this.shouldNotify(date)) {
+        const target = this.resolveTarget(account);
+        if (target.senderId) {
+          const attempts = this.reviewPipeline?.statusFor?.(date)?.attempts || 0;
+          const text = [
+            `Jane，我检查了一下 ${date} 的午夜复盘，自动流程没有成功收尾${attempts ? `（自动补跑已尝试 ${attempts} 次）` : ""}。`,
+            ...evaluation.issues.map((issue) => `- ${issue}`),
+            "这不是你的问题，是我这边的自动化需要人工看一眼。你不用手动填日记。",
+          ].join("\n");
+          await this.sendText(target.senderId, text);
+          entry.notifiedAt = now.toISOString();
+          sent = true;
+          console.log(`[cyberboss] failure watchdog notified date=${date} issues=${evaluation.issues.length}`);
+        }
+      }
     }
 
-    const target = this.resolveTarget(account);
-    if (!target.senderId) {
-      return { sent: false };
-    }
+    state.checked = pruneChecked(state.checked, targetDate);
+    this.saveState(state);
+    return { sent, targetDate };
+  }
 
-    const inbox = this.dailyInbox?.read?.({ date: targetDate }) || { exists: false, filePath: "" };
-    const review = dailyReviewExists(this.config, targetDate);
-    const archivePath = path.join(this.config.dailyInboxArchiveDir || "", `${targetDate}.md`);
-    const archiveExists = archivePath && fs.existsSync(archivePath);
+  evaluate(date) {
+    const inbox = this.dailyInbox?.read?.({ date }) || { exists: false, filePath: "" };
+    const review = dailyReviewExists(this.config, date);
+    const archivePath = path.join(this.config.dailyInboxArchiveDir || "", `${date}.md`);
+    const archiveExists = Boolean(this.config.dailyInboxArchiveDir) && fs.existsSync(archivePath);
     const issues = [];
     if (!review.ok) {
       issues.push(`Obsidian Daily Review 可能没有成功完成（${review.reason}）。`);
@@ -57,20 +109,32 @@ class FailureWatchdogService {
     if (!archiveExists && inbox.exists) {
       issues.push("当天原始 Inbox 仍留在待处理目录。");
     }
+    return { ok: issues.length === 0, issues, reviewOk: review.ok, inboxPending: inbox.exists };
+  }
 
-    state.checked[key] = { checkedAt: now.toISOString(), ok: issues.length === 0 };
-    this.saveState(state);
-    if (!issues.length) {
-      return { sent: false };
+  tryArchiveRepair(date, evaluation) {
+    if (!evaluation.reviewOk || !evaluation.inboxPending) {
+      return;
     }
-    const text = [
-      `Jane，我检查了一下 ${targetDate} 的午夜复盘，自动流程好像没有完全收尾。`,
-      ...issues.map((issue) => `- ${issue}`),
-      "这不是你的问题，是我这边的自动化需要补跑。你不用手动填日记，我会把它当成需要处理的后台故障。",
-    ].join("\n");
-    await this.sendText(target.senderId, text);
-    console.log(`[cyberboss] failure watchdog notified date=${targetDate} issues=${issues.length}`);
-    return { sent: true, targetDate, issues };
+    if (!this.dailyInbox || typeof this.dailyInbox.archive !== "function") {
+      return;
+    }
+    try {
+      const result = this.dailyInbox.archive({ date });
+      if (result.archived) {
+        console.log(`[cyberboss] failure watchdog auto-archived inbox date=${date}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] failure watchdog archive repair failed date=${date}: ${error.message}`);
+    }
+  }
+
+  shouldNotify(date) {
+    if (!this.reviewPipeline || this.config.dailyReviewPipelineEnabled === false) {
+      return true;
+    }
+    const status = this.reviewPipeline.statusFor?.(date);
+    return status?.status === "gave_up";
   }
 
   resolveTarget(account) {
@@ -116,6 +180,34 @@ class FailureWatchdogService {
     fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });
     fs.writeFileSync(this.stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
   }
+}
+
+function normalizeEntry(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return {
+    checkedAt: typeof value.checkedAt === "string" ? value.checkedAt : "",
+    ok: Boolean(value.ok),
+    notifiedAt: typeof value.notifiedAt === "string" ? value.notifiedAt : "",
+    ...(value.recoveredAt ? { recoveredAt: value.recoveredAt } : {}),
+  };
+}
+
+function pruneChecked(checked, currentDate) {
+  const cutoff = addDaysText(currentDate, -60);
+  return Object.fromEntries(Object.entries(checked).filter(([key]) => {
+    const date = key.startsWith("daily-review:") ? key.slice("daily-review:".length) : "";
+    return !date || date >= cutoff;
+  }));
+}
+
+function trailingDates(dateText, count) {
+  const dates = [];
+  for (let index = 0; index < count; index += 1) {
+    dates.push(addDaysText(dateText, -index));
+  }
+  return dates;
 }
 
 function localDateParts(date, timeZone) {

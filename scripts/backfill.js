@@ -6,6 +6,7 @@ const os = require("os");
 const fs = require("fs");
 const crypto = require("crypto");
 const { checkReviewStatus, formatStatusReport } = require("../src/services/daily-review-check");
+const { buildDailyReviewPrompt } = require("../src/services/daily-review-prompt");
 
 const args = process.argv.slice(2);
 const date = args.find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
@@ -72,7 +73,10 @@ const message = {
   accountId,
   senderId,
   workspaceRoot,
-  text: buildBackfillMessage(date),
+  text: buildDailyReviewPrompt(date, {
+    obsidianDailyFolder: process.env.CYBERBOSS_OBSIDIAN_DAILY_FOLDER || "",
+    reason: "backfill",
+  }),
   createdAt: new Date().toISOString(),
 };
 
@@ -91,30 +95,3 @@ console.log("⚠️  模型分工说明：");
 console.log("   此任务需要 Codex（主 runtime）+ MCP 工具才能写入 Obsidian。");
 console.log("   DeepSeek fallback 无法执行文件操作，会保持 silent 而不产生低质量输出。");
 console.log("   如需立即高质量补跑，直接在 Claude Code 中告诉 Claude 补生成即可。");
-
-function buildBackfillMessage(targetDate) {
-  return `[BACKFILL REQUEST date=${targetDate}] [COMPLEX_TASK requires_tools=true no_deepseek_fallback=true]
-
-如果你是 DeepSeek fallback 而非主 runtime（Codex/Claude），请直接回复 {"action":"silent"}，不要生成任何内容。此任务需要文件读写工具才能正确执行。
-
----
-
-请补生成 ${targetDate} 的 Obsidian Daily Review / 昨日时间轴报表。
-
-数据源（按优先级读取）：
-1. ~/.cyberboss/daily-inbox/${targetDate}.md
-2. ~/.cyberboss/apple-calendar-cache.json（过滤 ${targetDate} 的事件）
-3. ~/.cyberboss/missing-context-state.json（该日期的回答）
-4. ~/.cyberboss/critical-habits-state.json（Level A/B/C）
-5. ~/.cyberboss/shift-rating-state.json
-6. ~/.cyberboss/pattern-ledger.json
-7. ~/.cyberboss/wins-ledger.json
-8. ~/.cyberboss/decision-journal.json
-
-Obsidian 目标文件：03. 🔵 Tagebuch/01. 日记/${targetDate}.md
-- 如文件已有"待午夜后自动生成"占位符，整体填充
-- 如文件已有部分内容，追加缺失 section，不要删除已有内容
-- 写入前不需要备份（iCloud 会自动保留版本）
-
-原则：Meaning over Activity，不写 debug/技术日志噪音，缺失信息标记 unknown，重点帮助理解那一天。`;
-}
