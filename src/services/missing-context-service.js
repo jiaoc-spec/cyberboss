@@ -8,11 +8,12 @@ const DEFAULT_CHECK_INTERVAL_MS = 300_000;
 const DEFAULT_RESPONSE_WINDOW_MS = 16 * 60 * 60_000;
 
 class MissingContextService {
-  constructor({ config, dailyState = null, channelAdapter = null, sessionStore = null } = {}) {
+  constructor({ config, dailyState = null, channelAdapter = null, sessionStore = null, currentState = null } = {}) {
     this.config = config || {};
     this.dailyState = dailyState;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
+    this.currentState = currentState;
     this.stateFile = this.config.missingContextStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -79,6 +80,11 @@ class MissingContextService {
       return { prompted: [] };
     }
     this.lastCheckAtMs = now.getTime();
+
+    const busy = this.currentState?.isBusyNow?.({ now });
+    if (busy?.busy) {
+      return { prompted: [], deferred: busy.state };
+    }
 
     const target = this.resolveTarget(account);
     if (!target.senderId || !target.workspaceRoot || !target.contextToken) {

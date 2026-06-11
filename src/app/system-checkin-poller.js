@@ -6,6 +6,7 @@ const { SessionStore } = require("../adapters/runtime/codex/session-store");
 const { CheckinConfigStore, resolveDefaultCheckinRange } = require("../core/checkin-config-store");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { SystemMessageQueueStore } = require("../core/system-message-queue-store");
+const { readCurrentStateFile, evaluateBusyState } = require("../services/current-state-service");
 const { getActiveFocusSession } = require("../services/focus-protection-service");
 
 const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = "%USER% comes to mind again.";
@@ -137,6 +138,15 @@ function getProtectedCheckinState({ config = {}, target = {}, now = new Date() }
       skip: true,
       reason: `focus protection active task=${focus.task}`,
     };
+  }
+  if (config.currentStateFile) {
+    const busy = evaluateBusyState(readCurrentStateFile(config.currentStateFile), now);
+    if (busy.busy) {
+      return {
+        skip: true,
+        reason: `explicit busy state active state=${busy.state} age=${busy.ageMinutes}m`,
+      };
+    }
   }
   const state = readTimelineAutoCaptureState(config.timelineAutoCaptureStateFile);
   const pending = state.pending || {};

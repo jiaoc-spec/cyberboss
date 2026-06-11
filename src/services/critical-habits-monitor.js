@@ -31,7 +31,7 @@ const PATTERN_CONTEXT_RULES = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, focusProtection, patternLedger }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, focusProtection, patternLedger, currentState, campaign }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -40,6 +40,8 @@ class CriticalHabitsMonitor {
     this.dailyState = dailyState;
     this.focusProtection = focusProtection;
     this.patternLedger = patternLedger;
+    this.currentState = currentState;
+    this.campaign = campaign;
     this.stateFile = this.config.criticalHabitsStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -66,6 +68,10 @@ class CriticalHabitsMonitor {
     if (focus?.protected) {
       return { queued: [] };
     }
+    const busy = this.currentState?.isBusyNow?.({ now });
+    if (busy?.busy) {
+      return { queued: [], deferred: busy.state };
+    }
 
     const timeZone = this.config.timeZone || this.config.diaryTimeZone || "UTC";
     const local = localDateParts(now, timeZone);
@@ -79,7 +85,7 @@ class CriticalHabitsMonitor {
     if (levelADue) {
       const events = await this.readEventsForDates([local.date]);
       const missing = [];
-      for (const item of this.config.criticalHabitsLevelA) {
+      for (const item of this.resolveLevelAItems(local.date)) {
         const key = `A:${local.date}:${item.id}`;
         const dailyStateHabit = todayState?.levelA?.find((habitState) => habitState.id === item.id);
         const completed = dailyStateHabit?.completed || events.some((event) => matchesHabit(event, item));
@@ -158,6 +164,29 @@ class CriticalHabitsMonitor {
       console.error(`[cyberboss] critical habits daily state failed date=${date}: ${error.message}`);
       return null;
     }
+  }
+
+  // Level A plus any Level B/C habit temporarily boosted by a near campaign
+  // deadline (e.g. an exam in 10 days promotes that subject to daily guardian).
+  resolveLevelAItems(date) {
+    const base = Array.isArray(this.config.criticalHabitsLevelA) ? this.config.criticalHabitsLevelA : [];
+    if (!this.campaign || typeof this.campaign.boostedHabitIds !== "function") {
+      return base;
+    }
+    const boostedIds = this.campaign.boostedHabitIds(date);
+    if (!boostedIds.length) {
+      return base;
+    }
+    const pool = [
+      ...(Array.isArray(this.config.criticalHabitsLevelB) ? this.config.criticalHabitsLevelB : []),
+      ...(Array.isArray(this.config.criticalHabitsLevelC) ? this.config.criticalHabitsLevelC : []),
+    ];
+    const baseIds = new Set(base.map((item) => item.id));
+    const boosted = pool.filter((item) => boostedIds.includes(item.id) && !baseIds.has(item.id));
+    if (boosted.length) {
+      console.log(`[cyberboss] campaign boost active habits=${boosted.map((item) => item.id).join(",")}`);
+    }
+    return [...base, ...boosted];
   }
 
   collectSupportStrategies(dailyState, limit = 2) {
