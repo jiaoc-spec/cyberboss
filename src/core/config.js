@@ -65,6 +65,7 @@ function readConfig() {
     decisionReviewCheckIntervalMs: readIntEnv("CYBERBOSS_DECISION_REVIEW_CHECK_INTERVAL_MS") || 3_600_000,
     decisionReviewHour: readIntEnv("CYBERBOSS_DECISION_REVIEW_HOUR") ?? 11,
     currentStateFile: readTextEnv("CYBERBOSS_CURRENT_STATE_FILE") || path.join(stateDir, "current-state.json"),
+    playbookFile: readTextEnv("CYBERBOSS_PLAYBOOK_FILE") || path.join(stateDir, "playbook.json"),
     weeklyReviewPipelineEnabled: readOptionalBoolEnv("CYBERBOSS_WEEKLY_REVIEW_PIPELINE_ENABLED") !== false,
     weeklyReviewPipelineHour: readIntEnv("CYBERBOSS_WEEKLY_REVIEW_PIPELINE_HOUR") ?? 20,
     monthlyReviewPipelineEnabled: readOptionalBoolEnv("CYBERBOSS_MONTHLY_REVIEW_PIPELINE_ENABLED") !== false,

@@ -1131,6 +1131,103 @@ const PROJECT_TOOLS = [
       };
     },
   },
+  {
+    name: "cyberboss_focus_start",
+    description: "Start a timed focus session immediately for the current chat user. Use when Jane replies with a digit (1) or agreement to a Playbook prompt, or asks to start a task right now. Creates the protected session and the end-of-session completion check automatically.",
+    shortHint: "One-touch start of a timed focus session.",
+    topics: ["focus", "playbook"],
+    inputSchema: {
+      type: "object",
+      required: ["task"],
+      properties: {
+        task: { type: "string", description: "Task name, e.g. Sport, Englisch, Deutsch, Python." },
+        minutes: { type: "integer", description: "Session length in minutes. Default 10." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.focusProtection.startQuick(args);
+      return {
+        text: `Focus started: ${result.session.task} for ${result.minutes} minutes (ends ${result.session.endAt}).`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_playbook_set",
+    description: "Create or update a Playbook rule: a pre-decided default action bound to an anchor moment (arrived_home, off_work, commuting_home, woke_up, going_to_sleep). Use when Jane expresses an if-then intention like 以后我到家就先运动十分钟. This removes in-the-moment decision cost.",
+    shortHint: "Set an if-then default action for an anchor moment.",
+    topics: ["playbook"],
+    inputSchema: {
+      type: "object",
+      required: ["anchor", "task", "label"],
+      properties: {
+        id: { type: "string", description: "Existing rule id to update; omit to create." },
+        anchor: { type: "string", description: "One of: arrived_home, off_work, commuting_home, woke_up, going_to_sleep." },
+        task: { type: "string", description: "Task name used for focus sessions, e.g. Sport, Deutsch, Englisch, Python." },
+        label: { type: "string", description: "Human label shown to Jane, e.g. 运动 10 分钟（最小版）." },
+        minutes: { type: "integer", description: "Focus session length in minutes. Default 10." },
+        hours: {
+          type: "object",
+          description: "Hour window when the rule may fire, local time.",
+          properties: {
+            from: { type: "integer", description: "Earliest hour (0-23)." },
+            to: { type: "integer", description: "Hour before which it must fire (1-24)." },
+          },
+          additionalProperties: false,
+        },
+        note: { type: "string", description: "Optional note about why or how to adjust." },
+        enabled: { type: "boolean", description: "Set false to pause the rule without deleting it." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.playbook.upsertRule(args);
+      return {
+        text: `Playbook rule saved: ${result.id} ${result.anchor} → ${result.label}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_playbook_list",
+    description: "List Playbook rules (pre-decided anchor → default action mappings). Use when Jane asks what her defaults are or wants to adjust them.",
+    shortHint: "List playbook rules.",
+    topics: ["playbook"],
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    async handler({ services }) {
+      const result = await services.playbook.list();
+      return {
+        text: `Playbook: ${result.rules.length} rules.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_playbook_remove",
+    description: "Remove a Playbook rule by id when Jane no longer wants that default.",
+    shortHint: "Remove a playbook rule.",
+    topics: ["playbook"],
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string", description: "Rule id such as pb_abc1234." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.playbook.removeRule(args);
+      return {
+        text: `Playbook rule removed: ${result.removed}`,
+        data: result,
+      };
+    },
+  },
 ];
 
 const STATIC_EXTRA_TOOL_NAMES = new WhereaboutsToolHost({ service: null })

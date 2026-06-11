@@ -36,6 +36,7 @@ const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queu
 const { CriticalHabitsMonitor } = require("../services/critical-habits-monitor");
 const { DeepSeekFallbackService } = require("../services/deepseek-fallback-service");
 const { DailyReviewPipelineService } = require("../services/daily-review-pipeline-service");
+const { buildPlaybookTrigger, ANCHOR_LABELS: PLAYBOOK_ANCHOR_LABELS } = require("../services/playbook-service");
 const { PeriodicReviewPipelineService } = require("../services/periodic-review-pipeline-service");
 const { DecisionReviewMonitor } = require("../services/decision-review-monitor");
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
@@ -1587,14 +1588,54 @@ class CyberbossApp {
 
   observeIncomingCurrentState(normalized) {
     try {
-      this.projectServices?.currentState?.observeMessage({
+      const result = this.projectServices?.currentState?.observeMessage({
         text: normalized?.text,
         receivedAt: normalized?.receivedAt,
         provider: normalized?.provider,
         senderId: normalized?.senderId,
       });
+      if (result?.stateUpdated && result.state) {
+        this.maybeQueuePlaybookTrigger(normalized, result.state);
+      }
     } catch (error) {
       console.error(`[cyberboss] current state observation failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  // When an anchor state fires (到家了 / 睡醒了 ...), surface the pre-decided
+  // playbook default as a single low-decision-cost prompt.
+  maybeQueuePlaybookTrigger(normalized, anchorState) {
+    try {
+      const playbook = this.projectServices?.playbook;
+      if (!playbook || !this.activeAccountId || !normalized?.senderId) {
+        return;
+      }
+      const now = parseDateOrNow(normalized?.receivedAt);
+      const rule = playbook.matchAnchor({ anchor: anchorState, now });
+      if (!rule) {
+        return;
+      }
+      const focus = this.projectServices?.focusProtection?.isProtected?.({
+        senderId: normalized?.senderId,
+        provider: normalized?.provider,
+        now,
+      });
+      if (focus?.protected) {
+        return;
+      }
+      const workspaceRoot = normalizeText(this.config.workspaceRoot);
+      this.systemMessageQueue.enqueue({
+        id: `playbook:${rule.id}:${crypto.randomUUID()}`,
+        accountId: this.activeAccountId,
+        senderId: normalized.senderId,
+        workspaceRoot,
+        text: buildPlaybookTrigger(rule, PLAYBOOK_ANCHOR_LABELS[anchorState] || anchorState, this.config.userName),
+        createdAt: now.toISOString(),
+      });
+      playbook.recordSent(rule.id, now);
+      console.log(`[cyberboss] playbook trigger queued rule=${rule.id} anchor=${anchorState}`);
+    } catch (error) {
+      console.error(`[cyberboss] playbook trigger failed: ${formatErrorMessage(error)}`);
     }
   }
 

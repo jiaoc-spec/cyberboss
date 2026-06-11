@@ -15,11 +15,50 @@ const COMPLETION_PATTERN = /(完成|做完|学完|练完|结束|搞定|done|fini
 const CANCEL_PATTERN = /(取消\s*focus|focus\s*cancel|退出\s*focus|结束\s*focus|停止\s*focus)/i;
 
 class FocusProtectionService {
-  constructor({ config, reminder = null, timeline = null } = {}) {
+  constructor({ config, reminder = null, timeline = null, channelAdapter = null, sessionStore = null } = {}) {
     this.config = config || {};
     this.reminder = reminder;
     this.timeline = timeline;
+    this.channelAdapter = channelAdapter;
+    this.sessionStore = sessionStore;
     this.stateFile = this.config.focusProtectionStateFile;
+  }
+
+  // One-touch start for playbook digit replies: resolves the preferred sender
+  // itself so the model only has to pass task and minutes.
+  async startQuick({ task = "", minutes = 10, now = new Date(), sourceText = "" } = {}) {
+    const normalizedTask = String(task || "").trim();
+    if (!normalizedTask) {
+      throw new Error("focus_start: task is required.");
+    }
+    const safeMinutes = Number.isFinite(Number(minutes)) && Number(minutes) >= 3
+      ? Math.min(Math.round(Number(minutes)), 180)
+      : 10;
+    const provider = this.channelAdapter?.describe?.().id || "telegram";
+    const contextTokens = typeof this.channelAdapter?.getKnownContextTokens === "function"
+      ? this.channelAdapter.getKnownContextTokens()
+      : {};
+    const account = this.channelAdapter?.resolveAccount?.() || { accountId: "" };
+    const { resolvePreferredSenderId } = require("../core/default-targets");
+    const senderId = resolvePreferredSenderId({
+      config: this.config,
+      accountId: account.accountId,
+      sessionStore: this.sessionStore,
+      contextTokens,
+    });
+    if (!senderId) {
+      throw new Error("focus_start: cannot resolve the chat user.");
+    }
+    const endAt = new Date(now.getTime() + safeMinutes * 60_000);
+    const session = await this.start({
+      senderKey: `${provider}:${senderId}`,
+      task: normalizedTask,
+      startAt: now,
+      endAt,
+      sourceText: sourceText || `playbook quick start ${safeMinutes}m`,
+      normalized: { provider, senderId },
+    });
+    return { session, minutes: safeMinutes };
   }
 
   async observeIncoming(normalized = {}) {

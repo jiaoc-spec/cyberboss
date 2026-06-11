@@ -15,6 +15,7 @@ const { FocusProtectionService } = require("../services/focus-protection-service
 const { HealthService } = require("../services/health-service");
 const { MissingContextService } = require("../services/missing-context-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
+const { PlaybookService } = require("../services/playbook-service");
 const { WinsService } = require("../services/wins-service");
 const { DecisionJournalService } = require("../services/decision-journal-service");
 const { PriorityAwarenessService } = require("../services/priority-awareness-service");
@@ -48,7 +49,7 @@ function createProjectTooling(config, options = {}) {
   const patternLedger = new PatternLedgerService({ config });
   const currentState = new CurrentStateService({ config });
   const reminder = new ReminderService({ config, channelAdapter, sessionStore });
-  const focusProtection = new FocusProtectionService({ config, reminder, timeline });
+  const focusProtection = new FocusProtectionService({ config, reminder, timeline, channelAdapter, sessionStore });
   const missingContext = new MissingContextService({ config, dailyState, channelAdapter, sessionStore, currentState });
   const priorityAwareness = new PriorityAwarenessService({
     config,
@@ -61,6 +62,7 @@ function createProjectTooling(config, options = {}) {
     calendar,
     campaign: new CampaignService({ config }),
     currentState,
+    playbook: new PlaybookService({ config }),
     knowledge: new KnowledgeService({ config }),
     researchLedger: new ResearchLedgerService({ config }),
     calendarTimelineSync: new CalendarTimelineSyncService({ config, calendar, timeline }),
