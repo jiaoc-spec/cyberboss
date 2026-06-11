@@ -38,6 +38,7 @@ const { DeepSeekFallbackService } = require("../services/deepseek-fallback-servi
 const { DailyReviewPipelineService } = require("../services/daily-review-pipeline-service");
 const { buildPlaybookTrigger, ANCHOR_LABELS: PLAYBOOK_ANCHOR_LABELS } = require("../services/playbook-service");
 const { PeriodicReviewPipelineService } = require("../services/periodic-review-pipeline-service");
+const { StateBackupService } = require("../services/state-backup-service");
 const { DecisionReviewMonitor } = require("../services/decision-review-monitor");
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
 const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
@@ -137,6 +138,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
     });
+    this.stateBackup = new StateBackupService({ config });
     this.decisionReviewMonitor = new DecisionReviewMonitor({
       config,
       channelAdapter: this.channelAdapter,
@@ -260,6 +262,7 @@ class CyberbossApp {
             this.flushMissingContextMonitor(account),
             this.flushDailyReviewPipeline(account),
             this.flushPeriodicReviewPipeline(account),
+            this.flushStateBackup(),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -288,6 +291,7 @@ class CyberbossApp {
             this.flushMissingContextMonitor(account),
             this.flushDailyReviewPipeline(account),
             this.flushPeriodicReviewPipeline(account),
+            this.flushStateBackup(),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -525,6 +529,11 @@ class CyberbossApp {
     }
 
     await this.handleWinsLedgerIntercept(normalized);
+
+    const playbookHandled = await this.handlePlaybookQuickStart(normalized);
+    if (playbookHandled) {
+      return;
+    }
 
     const workspaceRoot = this.resolveWorkspaceRoot(bindingKey);
     await this.rollOverDailyThreadIfNeeded({ bindingKey, workspaceRoot, normalized });
@@ -961,6 +970,10 @@ class CyberbossApp {
     if (!dailyState || typeof dailyState.analyze !== "function") {
       return "";
     }
+    const cacheKey = Math.floor(Date.now() / 45_000);
+    if (this.temporalContextCache?.key === cacheKey) {
+      return this.temporalContextCache.text;
+    }
     try {
       const receivedAt = parseDateOrNow(prepared?.receivedAt);
       const local = resolveCaptureLocalDateTime(receivedAt.toISOString(), this.config);
@@ -1001,7 +1014,9 @@ class CyberbossApp {
       }
       lines.push(...this.buildCurrentStateContextLines(receivedAt));
       lines.push("Use this context to reason about today/tonight/tomorrow. Do not treat past calendar events as future tasks. If the user explicitly states a current state, it overrides older assumptions.");
-      return lines.join("\n");
+      const text = lines.join("\n");
+      this.temporalContextCache = { key: cacheKey, text };
+      return text;
     } catch (error) {
       console.error(`[cyberboss] temporal context build failed: ${formatErrorMessage(error)}`);
       return "";
@@ -1578,6 +1593,14 @@ class CyberbossApp {
     }
   }
 
+  async flushStateBackup() {
+    try {
+      await this.stateBackup?.check();
+    } catch (error) {
+      console.error(`[cyberboss] state backup check failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
   async flushDecisionReviewMonitor(account) {
     try {
       await this.decisionReviewMonitor?.check(account);
@@ -1632,10 +1655,56 @@ class CyberbossApp {
         text: buildPlaybookTrigger(rule, PLAYBOOK_ANCHOR_LABELS[anchorState] || anchorState, this.config.userName),
         createdAt: now.toISOString(),
       });
-      playbook.recordSent(rule.id, now);
+      playbook.recordPrompt(rule, now);
       console.log(`[cyberboss] playbook trigger queued rule=${rule.id} anchor=${anchorState}`);
     } catch (error) {
       console.error(`[cyberboss] playbook trigger failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  // A bare digit reply to a fresh playbook prompt starts the focus session
+  // right here at the bridge - no model round-trip, no routing, no failure mode.
+  async handlePlaybookQuickStart(normalized) {
+    try {
+      const playbook = this.projectServices?.playbook;
+      const focus = this.projectServices?.focusProtection;
+      if (!playbook || !focus || !normalized?.senderId) {
+        return false;
+      }
+      const text = normalizeText(normalized?.text);
+      if (!/^(1|好|好的|开始|开始吧|ok|go)$/i.test(text)) {
+        return false;
+      }
+      const now = parseDateOrNow(normalized?.receivedAt);
+      const pending = playbook.pendingQuickStart({ now });
+      if (!pending) {
+        return false;
+      }
+      const active = focus.isProtected?.({
+        senderId: normalized.senderId,
+        provider: normalized.provider,
+        now,
+      });
+      if (active?.protected) {
+        return false;
+      }
+      const result = await focus.startQuick({
+        task: pending.task,
+        minutes: pending.minutes,
+        now,
+        sourceText: `playbook:${pending.ruleId}`,
+      });
+      playbook.consumeQuickStart();
+      await this.channelAdapter.sendText({
+        userId: normalized.senderId,
+        text: `好，${pending.label}，现在开始计时。${result.minutes} 分钟后我来接你收尾。`,
+        contextToken: normalized.contextToken || normalized.senderId,
+      });
+      console.log(`[cyberboss] playbook quick start task=${pending.task} minutes=${result.minutes}`);
+      return true;
+    } catch (error) {
+      console.error(`[cyberboss] playbook quick start failed: ${formatErrorMessage(error)}`);
+      return false;
     }
   }
 

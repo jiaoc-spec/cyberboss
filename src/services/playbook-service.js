@@ -119,6 +119,43 @@ class PlaybookService {
     this._save(state);
   }
 
+  // Remember the prompt we just sent so a bare digit reply can start the
+  // session deterministically at the bridge level - no model round-trip.
+  recordPrompt(rule, now = new Date()) {
+    this.recordSent(rule.id, now);
+    const state = this._load();
+    state.lastPrompt = {
+      ruleId: rule.id,
+      task: rule.task,
+      label: rule.label,
+      minutes: rule.minutes,
+      sentAt: now.toISOString(),
+      consumed: false,
+    };
+    this._save(state);
+  }
+
+  pendingQuickStart({ now = new Date(), windowMinutes = 120 } = {}) {
+    const state = this._load();
+    const prompt = state.lastPrompt;
+    if (!prompt || prompt.consumed) {
+      return null;
+    }
+    const ageMs = now.getTime() - Date.parse(prompt.sentAt);
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > windowMinutes * 60_000) {
+      return null;
+    }
+    return prompt;
+  }
+
+  consumeQuickStart() {
+    const state = this._load();
+    if (state.lastPrompt) {
+      state.lastPrompt.consumed = true;
+      this._save(state);
+    }
+  }
+
   timeZone() {
     return this.config.timeZone || this.config.diaryTimeZone || "UTC";
   }
@@ -129,9 +166,10 @@ class PlaybookService {
       return {
         rules: Array.isArray(parsed?.rules) ? parsed.rules : [],
         sent: parsed?.sent && typeof parsed.sent === "object" ? parsed.sent : {},
+        lastPrompt: parsed?.lastPrompt && typeof parsed.lastPrompt === "object" ? parsed.lastPrompt : null,
       };
     } catch {
-      return { rules: DEFAULT_RULES.map((rule) => ({ ...rule })), sent: {} };
+      return { rules: DEFAULT_RULES.map((rule) => ({ ...rule })), sent: {}, lastPrompt: null };
     }
   }
 

@@ -394,6 +394,7 @@ test("handleRuntimeEvent prompts for project shell commands instead of auto-appr
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -449,6 +450,7 @@ test("handleNewCommand asks runtime to start a fresh draft before clearing the s
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -500,6 +502,7 @@ test("handleCompactCommand invokes runtime compaction for the current thread", a
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     pendingOperationByRunKey: new Map(),
     resolveWorkspaceRoot() {
       return "/workspace";
@@ -563,6 +566,7 @@ test("handleCompactCommand reports when there is no active thread", async () => 
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -609,6 +613,7 @@ test("handleStopCommand passes workspaceRoot through to runtime cancellation", a
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -670,6 +675,7 @@ test("handleStopCommand allows stopping while waiting for approval", async () =>
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -727,6 +733,7 @@ test("handleRuntimeEvent reports compact completion back to WeChat", async () =>
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     pendingOperationByRunKey: new Map([
       ["thread-1:turn-1", {
         kind: "compact",
@@ -789,6 +796,7 @@ test("handleRuntimeEvent auto-approves built-in view_image approvals without pro
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -840,6 +848,7 @@ test("handleRuntimeEvent auto-approves project-native MCP tool approvals without
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: { stateDir: path.join(os.tmpdir(), "cyberboss-approval-test") },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -893,6 +902,7 @@ test("handleRuntimeEvent auto-approves inbox image reads for claudecode without 
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: { stateDir },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -947,6 +957,7 @@ test("handleRuntimeEvent auto-approves any state-dir file operation without prom
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: { stateDir },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -1005,6 +1016,7 @@ test("handleRuntimeEvent still prompts for non-inbox image reads", async () => {
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: { stateDir },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -1065,6 +1077,7 @@ test("handleRuntimeEvent auto-approves allowlisted prefixes for claudecode appro
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -1116,6 +1129,7 @@ test("handleRuntimeEvent auto-approves allowlisted MCP tool approvals", async ()
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -1167,6 +1181,7 @@ test("handleSwitchCommand stores the verified claudecode thread returned by runt
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -1301,6 +1316,7 @@ test("handleStatusCommand asks to configure claudecode context window before sho
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: {
       claudeModel: "claude-sonnet",
     },
@@ -1365,6 +1381,7 @@ test("handleStatusCommand shows approximate context details for claudecode when 
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: {
       claudeContextWindow: 130000,
       claudeMaxOutputTokens: 64000,
@@ -1433,6 +1450,7 @@ test("handleStatusCommand asks to reduce claudecode max output tokens when reser
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: {
       claudeContextWindow: 130000,
       claudeMaxOutputTokens: 140000,
@@ -1501,6 +1519,7 @@ test("handleStatusCommand shows codex context details", async () => {
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: {},
     resolveWorkspaceRoot() {
       return "/workspace";
@@ -1564,6 +1583,7 @@ test("handleStatusCommand shows codex context as unavailable when no context dat
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: {},
     resolveWorkspaceRoot() {
       return "/workspace";

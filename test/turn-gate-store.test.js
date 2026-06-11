@@ -31,6 +31,7 @@ test("handlePreparedMessage queues a normal inbound message while the scope is b
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     runtimeAdapter: {
       getSessionStore() {
         return {
@@ -111,6 +112,7 @@ test("dispatchSystemMessage yields when a local pending turn already owns the wo
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     systemMessageDispatcher: {
       buildPreparedMessage() {
         return {
@@ -182,6 +184,7 @@ test("handlePreparedMessage queues while the scope is in a turn-boundary handoff
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     runtimeAdapter: {
       getSessionStore() {
         return {
@@ -261,6 +264,7 @@ test("dispatchPreparedTurn binds reply target to the explicit turn id when runti
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     channelAdapter: {
       async sendTyping() {
         order.push("typing");
@@ -343,6 +347,7 @@ test("completed turns flush queued inbound work before system messages", async (
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -406,6 +411,7 @@ test("completed turns keep the boundary closed until queued inbound work has bee
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -469,6 +475,7 @@ test("completed turns flush queued inbound work before system messages", async (
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -529,6 +536,7 @@ test("failed turns still send error back when thread binding lookup is missing",
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     streamDelivery: {
       resolveReplyTargetForRun() {
         return {
@@ -608,6 +616,7 @@ test("flushPendingInboundMessages batches queued messages from the same scope in
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     pendingInboundByScope: new Map([[
       scopeKey,
       {
@@ -668,6 +677,7 @@ test("flushPendingInboundMessages falls back to messageId ordering when received
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     pendingInboundByScope: new Map([[
       "binding-1::/workspace",
       {

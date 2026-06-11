@@ -97,6 +97,7 @@ test("handleRuntimeEvent auto-approves project-native Codex MCP elicitation appr
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     config: { stateDir: "/tmp/cyberboss-test-state" },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -187,6 +188,7 @@ test("handleApprovalCommand sends MCP elicitation responses back through the run
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -268,6 +270,7 @@ test("handleApprovalCommand enables persistent Codex MCP tool approval from WeCh
     async handleDecisionJournalIntercept() { return false; },
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
+    async handlePlaybookQuickStart() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },

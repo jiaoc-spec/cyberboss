@@ -77,3 +77,23 @@ test("trigger text demands a single default and digit start", () => {
   assert.match(text, /no menus, no three choices/);
   assert.match(text, /never re-ask/);
 });
+
+test("recordPrompt enables a one-shot quick start window", () => {
+  const service = makeService();
+  const rule = service.matchAnchor({ anchor: "arrived_home", now: new Date("2026-06-11T18:00:00+02:00") });
+  service.recordPrompt(rule, new Date("2026-06-11T18:00:00+02:00"));
+
+  const pending = service.pendingQuickStart({ now: new Date("2026-06-11T18:20:00+02:00") });
+  assert.equal(pending.task, "Sport");
+  assert.equal(pending.minutes, 10);
+
+  service.consumeQuickStart();
+  assert.equal(service.pendingQuickStart({ now: new Date("2026-06-11T18:25:00+02:00") }), null);
+});
+
+test("quick start window expires after two hours", () => {
+  const service = makeService();
+  const rule = service.matchAnchor({ anchor: "arrived_home", now: new Date("2026-06-11T18:00:00+02:00") });
+  service.recordPrompt(rule, new Date("2026-06-11T18:00:00+02:00"));
+  assert.equal(service.pendingQuickStart({ now: new Date("2026-06-11T20:30:00+02:00") }), null);
+});
