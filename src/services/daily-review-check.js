@@ -2,15 +2,15 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
+const {
+  DAILY_REVIEW_SECTION_PATTERN,
+  DAILY_REVIEW_PENDING_PATTERN,
+} = require("./daily-state-service");
+
 const OBSIDIAN_ICLOUD_BASE = path.join(
   os.homedir(),
   "Library/Mobile Documents/iCloud~md~obsidian/Documents"
 );
-
-const PLACEHOLDER_MARKERS = [
-  "待午夜后自动生成",
-  "暂无值得保留的记录",
-];
 
 const DAILY_NOTE_CANDIDATES = [
   "03. 🔵 Tagebuch/01. 日记",
@@ -84,8 +84,8 @@ function checkObsidianNote(obsidianDailyDir, date) {
   if (text === null) {
     return { found: false, hasPlaceholders: false, hasReviewContent: false, filePath };
   }
-  const hasPlaceholders = PLACEHOLDER_MARKERS.some((m) => text.includes(m));
-  const hasReviewContent = text.includes("## 每日复盘") && !hasPlaceholders;
+  const hasPlaceholders = DAILY_REVIEW_PENDING_PATTERN.test(text);
+  const hasReviewContent = DAILY_REVIEW_SECTION_PATTERN.test(text) && !hasPlaceholders;
   return { found: true, hasPlaceholders, hasReviewContent, filePath };
 }
 

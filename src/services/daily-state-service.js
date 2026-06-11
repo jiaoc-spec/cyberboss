@@ -11,6 +11,7 @@ const { readMissingContextState } = require("./missing-context-service");
 const { readShiftRatingForDate } = require("./shift-rating-service");
 
 const NIGHT_SHIFT_PATTERN = /(night\s*shift|nachtdienst|nachtwache|夜班)/i;
+const EARLY_SHIFT_PATTERN = /(frühdienst|fruehdienst|early\s*shift|早班)/i;
 const PHONE_PATTERN = /(screen\s*time|bildschirmzeit|刷手机|看手机|手机时间|手机使用|scroll)/i;
 const COMMUTE_PATTERN = /(commute|通勤|出门|到家|回家|去上班|下班|路上|fahrt|weg)/i;
 const SLEEP_PATTERN = /(sleep|睡觉|睡眠|补觉|躺床|休息|nap|schlaf)/i;
@@ -46,11 +47,16 @@ class DailyStateService {
     const levelB = analyzeHabits(DEFAULT_LEVEL_B, timelineEvents, allText);
     const levelC = analyzeHabits(DEFAULT_LEVEL_C, timelineEvents, allText);
     const nightShiftEvents = calendarEvents.filter(isNightShiftCalendarEvent);
+    const earlyShiftEvents = calendarEvents.filter(isEarlyShiftCalendarEvent);
     const phoneUseEvents = timelineEvents.filter((event) => PHONE_PATTERN.test(eventToText(event)));
     const commuteEvents = timelineEvents.filter((event) => COMMUTE_PATTERN.test(eventToText(event)));
     const sleepEvents = timelineEvents.filter((event) => SLEEP_PATTERN.test(eventToText(event)));
+    // Calendar is authoritative: if it says early shift, don't let text pattern matches override it
+    const calendarSaysEarlyShift = earlyShiftEvents.length > 0;
+    const calendarSaysNightShift = nightShiftEvents.length > 0;
     const signals = {
-      hasNightShift: nightShiftEvents.length > 0 || NIGHT_SHIFT_PATTERN.test(allText),
+      hasNightShift: calendarSaysNightShift || (!calendarSaysEarlyShift && NIGHT_SHIFT_PATTERN.test(allText)),
+      hasEarlyShift: calendarSaysEarlyShift || EARLY_SHIFT_PATTERN.test(allText),
       hasPhoneUse: phoneUseEvents.length > 0 || PHONE_PATTERN.test(allText),
       hasCommute: commuteEvents.length > 0 || COMMUTE_PATTERN.test(allText),
       hasSleepOrRest: sleepEvents.length > 0 || SLEEP_PATTERN.test(allText),
@@ -238,6 +244,10 @@ function isNightShiftCalendarEvent(event) {
   return NIGHT_SHIFT_PATTERN.test(calendarEventToText(event));
 }
 
+function isEarlyShiftCalendarEvent(event) {
+  return EARLY_SHIFT_PATTERN.test(calendarEventToText(event));
+}
+
 function eventToText(event) {
   const tags = Array.isArray(event?.tags) ? event.tags.join(" ") : "";
   return [
@@ -319,14 +329,17 @@ function defaultObsidianDailyNotePath(config, date) {
   return path.join(vaultDir, dailyFolder, `${date}.md`);
 }
 
+const DAILY_REVIEW_SECTION_PATTERN = /##\s*每日复盘/;
+const DAILY_REVIEW_PENDING_PATTERN = /待午夜后自动生成|结构化 timeline-for-agent 在 .* 没有可用事件/;
+
 function dailyReviewExists(config, date) {
   const notePath = defaultObsidianDailyNotePath(config, date);
   if (!fs.existsSync(notePath)) {
     return { ok: false, notePath, reason: "missing_note" };
   }
   const text = fs.readFileSync(notePath, "utf8");
-  const hasReview = /##\s*每日复盘/.test(text);
-  const hasPendingMarker = /待午夜后自动生成|结构化 timeline-for-agent 在 .* 没有可用事件/.test(text);
+  const hasReview = DAILY_REVIEW_SECTION_PATTERN.test(text);
+  const hasPendingMarker = DAILY_REVIEW_PENDING_PATTERN.test(text);
   return {
     ok: hasReview && !hasPendingMarker,
     notePath,
@@ -336,6 +349,8 @@ function dailyReviewExists(config, date) {
 
 module.exports = {
   DailyStateService,
+  DAILY_REVIEW_SECTION_PATTERN,
+  DAILY_REVIEW_PENDING_PATTERN,
   buildPriorityTiming,
   dailyReviewExists,
   defaultObsidianDailyNotePath,
