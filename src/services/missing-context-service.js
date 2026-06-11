@@ -5,7 +5,7 @@ const path = require("path");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 
 const DEFAULT_CHECK_INTERVAL_MS = 300_000;
-const DEFAULT_RESPONSE_WINDOW_MS = 6 * 60 * 60_000;
+const DEFAULT_RESPONSE_WINDOW_MS = 16 * 60 * 60_000;
 
 class MissingContextService {
   constructor({ config, dailyState = null, channelAdapter = null, sessionStore = null } = {}) {
@@ -254,11 +254,11 @@ function chooseQuestion({ day, analysis }) {
       title: "今日能量",
       question: "今天整体能量大概在哪一档？",
       options: [
-        option("1", "0-2 很低", 1),
-        option("2", "3-4 偏低", 3.5),
-        option("3", "5-6 中等", 5.5),
-        option("4", "7-8 不错", 7.5),
-        option("5", "9-10 很好", 9.5),
+        option("A", "很低（0-2）", 1),
+        option("B", "偏低（3-4）", 3.5),
+        option("C", "中等（5-6）", 5.5),
+        option("D", "不错（7-8）", 7.5),
+        option("E", "很好（9-10）", 9.5),
       ],
       related: {},
     };
@@ -270,11 +270,11 @@ function chooseQuestion({ day, analysis }) {
       title: "今日心情",
       question: "今天心情整体更接近哪一档？",
       options: [
-        option("1", "0-2 很低", 1),
-        option("2", "3-4 偏低", 3.5),
-        option("3", "5-6 中等", 5.5),
-        option("4", "7-8 不错", 7.5),
-        option("5", "9-10 很好", 9.5),
+        option("A", "很低（0-2）", 1),
+        option("B", "偏低（3-4）", 3.5),
+        option("C", "中等（5-6）", 5.5),
+        option("D", "不错（7-8）", 7.5),
+        option("E", "很好（9-10）", 9.5),
       ],
       related: {},
     };
@@ -285,6 +285,10 @@ function chooseQuestion({ day, analysis }) {
 
 function needsRecoveryQuestion(analysis) {
   const signals = analysis?.signals || {};
+  // Early shift does not need a recovery question — recovery framing is for after night shifts
+  if (signals.hasEarlyShift && !signals.hasNightShift) {
+    return false;
+  }
   return Boolean(signals.hasNightShift || signals.hasSleepOrRest || signals.lowEnergy || signals.periodOrBodyDiscomfort);
 }
 
@@ -298,7 +302,7 @@ function formatQuestion(question) {
     "",
     ...question.options.map((item) => `${item.key}. ${item.label}`),
     "",
-    "你可以只回数字。我只是补一条复盘需要的关键上下文，不展开问。",
+    "你可以只回字母或数字。我只是补一条复盘需要的关键上下文，不展开问。",
   ].join("\n");
 }
 
@@ -307,11 +311,12 @@ function parseAnswer(text, question) {
   if (/^(跳过|不知道|不确定|unknown|skip)$/i.test(body)) {
     return { status: "unknown", key: "unknown", label: "unknown", value: "unknown" };
   }
-  const match = body.match(/^(?:选)?\s*(\d{1,2})(?:\s*[\u3002.、,，].*)?$/);
+  const match = body.match(/^(?:选)?\s*([A-Fa-f]|\d{1,2})(?:\s*[\u3002.、,，].*)?$/);
   if (!match) {
     return null;
   }
-  const choice = (question.options || []).find((item) => item.key === match[1]);
+  const token = match[1].toUpperCase();
+  const choice = (question.options || []).find((item) => item.key === token);
   if (!choice) {
     return null;
   }

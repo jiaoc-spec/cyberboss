@@ -75,7 +75,7 @@ test("missing context asks one high-value Level A reason question", async () => 
   assert.equal(result.prompted[0].field, "reason_for_missing_level_a");
   assert.equal(sent.length, 1);
   assert.match(sent[0].text, /Sport、Deutsch/);
-  assert.match(sent[0].text, /你可以只回数字/);
+  assert.match(sent[0].text, /你可以只回字母或数字/);
   const state = JSON.parse(fs.readFileSync(config.missingContextStateFile, "utf8"));
   assert.equal(state.days["2026-06-06"].questions.length, 1);
 });
