@@ -14,6 +14,8 @@ const {
   loadStickerIndexSync,
 } = require("../src/services/sticker-service");
 
+const repoRoot = path.resolve(__dirname, "..");
+
 function createConfig(overrides = {}) {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-sticker-test-"));
   const stickersDir = path.join(stateDir, "stickers");
@@ -23,10 +25,10 @@ function createConfig(overrides = {}) {
     stickerAssetsDir: path.join(stickersDir, "assets"),
     stickersIndexFile: path.join(stickersDir, "index.json"),
     stickerTagsFile: path.join(stickersDir, "tags.json"),
-    stickersTemplateDir: path.join("/Users/tingyiwen/Dev/cyberboss", "templates", "stickers"),
-    stickersTemplateIndexFile: path.join("/Users/tingyiwen/Dev/cyberboss", "templates", "stickers", "index.json"),
-    stickerTagsTemplateFile: path.join("/Users/tingyiwen/Dev/cyberboss", "templates", "stickers", "tags.json"),
-    stickerNormalizeGifScript: path.join("/Users/tingyiwen/Dev/cyberboss", "scripts", "normalize-sticker-gif.js"),
+    stickersTemplateDir: path.join(repoRoot, "templates", "stickers"),
+    stickersTemplateIndexFile: path.join(repoRoot, "templates", "stickers", "index.json"),
+    stickerTagsTemplateFile: path.join(repoRoot, "templates", "stickers", "tags.json"),
+    stickerNormalizeGifScript: path.join(repoRoot, "scripts", "normalize-sticker-gif.js"),
     accountsDir: path.join(stateDir, "accounts"),
     weixinBaseUrl: "https://ilinkai.weixin.qq.com",
     workspaceId: "default",
@@ -59,6 +61,12 @@ function createService(config) {
       accountId: "wx-account",
     },
     channelAdapter: {
+      resolveAccount() {
+        return { accountId: "wx-account", baseUrl: config.weixinBaseUrl };
+      },
+      getKnownContextTokens() {
+        return { "user-1": "ctx-1" };
+      },
       async sendText(payload) {
         sentTexts.push(payload);
       },

@@ -88,6 +88,15 @@ test("codex MCP elicitation approvals map to runtime approval events", () => {
 test("handleRuntimeEvent auto-approves project-native Codex MCP elicitation approvals", async () => {
   const responses = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: { stateDir: "/tmp/cyberboss-test-state" },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -169,6 +178,15 @@ test("handleApprovalCommand sends MCP elicitation responses back through the run
   };
 
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -241,6 +259,15 @@ test("handleApprovalCommand enables persistent Codex MCP tool approval from WeCh
   };
 
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },

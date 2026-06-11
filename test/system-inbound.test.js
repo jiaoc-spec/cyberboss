@@ -268,6 +268,11 @@ test("image-only inbound turns enter the dedicated debounce queue", async () => 
   const queued = [];
   let routed = 0;
   await CyberbossApp.prototype.handlePreparedMessage.call({
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    modelRouter: { decide() { return { mode: "primary" }; } },
     runtimeAdapter: {
       getSessionStore() {
         return {

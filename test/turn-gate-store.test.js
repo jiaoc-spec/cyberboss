@@ -21,6 +21,16 @@ test("handlePreparedMessage queues a normal inbound message while the scope is b
   const queued = [];
   let dispatched = false;
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     runtimeAdapter: {
       getSessionStore() {
         return {
@@ -91,6 +101,16 @@ test("handlePreparedMessage queues a normal inbound message while the scope is b
 test("dispatchSystemMessage yields when a local pending turn already owns the workspace thread", async () => {
   let handled = false;
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     systemMessageDispatcher: {
       buildPreparedMessage() {
         return {
@@ -152,6 +172,16 @@ test("handlePreparedMessage queues while the scope is in a turn-boundary handoff
   const queued = [];
   let dispatched = false;
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     runtimeAdapter: {
       getSessionStore() {
         return {
@@ -221,6 +251,16 @@ test("dispatchPreparedTurn binds reply target to the explicit turn id when runti
   const queuedBindings = [];
   const order = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     channelAdapter: {
       async sendTyping() {
         order.push("typing");
@@ -293,6 +333,16 @@ test("dispatchPreparedTurn binds reply target to the explicit turn id when runti
 test("completed turns flush queued inbound work before system messages", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -346,6 +396,16 @@ test("completed turns flush queued inbound work before system messages", async (
 test("completed turns keep the boundary closed until queued inbound work has been flushed", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -399,6 +459,16 @@ test("completed turns keep the boundary closed until queued inbound work has bee
 test("completed turns flush queued inbound work before system messages", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -449,6 +519,16 @@ test("completed turns flush queued inbound work before system messages", async (
 test("failed turns still send error back when thread binding lookup is missing", async () => {
   const sent = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       resolveReplyTargetForRun() {
         return {
@@ -518,6 +598,16 @@ test("flushPendingInboundMessages batches queued messages from the same scope in
   const dispatched = [];
   const scopeKey = "binding-1::/workspace";
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     pendingInboundByScope: new Map([[
       scopeKey,
       {
@@ -568,6 +658,16 @@ test("flushPendingInboundMessages batches queued messages from the same scope in
 test("flushPendingInboundMessages falls back to messageId ordering when receivedAt ties", async () => {
   const dispatched = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async rollOverDailyThreadIfNeeded() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     pendingInboundByScope: new Map([[
       "binding-1::/workspace",
       {

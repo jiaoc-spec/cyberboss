@@ -385,6 +385,15 @@ test("claudecode process client rejects a different session id before the next t
 test("handleRuntimeEvent prompts for project shell commands instead of auto-approving them", async () => {
   const prompts = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -431,6 +440,15 @@ test("handleRuntimeEvent prompts for project shell commands instead of auto-appr
 test("handleNewCommand asks runtime to start a fresh draft before clearing the saved thread", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -473,6 +491,15 @@ test("handleNewCommand asks runtime to start a fresh draft before clearing the s
 test("handleCompactCommand invokes runtime compaction for the current thread", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     pendingOperationByRunKey: new Map(),
     resolveWorkspaceRoot() {
       return "/workspace";
@@ -527,6 +554,15 @@ test("handleCompactCommand invokes runtime compaction for the current thread", a
 test("handleCompactCommand reports when there is no active thread", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -564,6 +600,15 @@ test("handleCompactCommand reports when there is no active thread", async () => 
 test("handleStopCommand passes workspaceRoot through to runtime cancellation", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -616,6 +661,15 @@ test("handleStopCommand passes workspaceRoot through to runtime cancellation", a
 test("handleStopCommand allows stopping while waiting for approval", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -664,6 +718,15 @@ test("handleStopCommand allows stopping while waiting for approval", async () =>
 test("handleRuntimeEvent reports compact completion back to WeChat", async () => {
   const sent = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     pendingOperationByRunKey: new Map([
       ["thread-1:turn-1", {
         kind: "compact",
@@ -717,6 +780,15 @@ test("handleRuntimeEvent reports compact completion back to WeChat", async () =>
 test("handleRuntimeEvent auto-approves built-in view_image approvals without prompting", async () => {
   const responses = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -759,6 +831,15 @@ test("handleRuntimeEvent auto-approves built-in view_image approvals without pro
 test("handleRuntimeEvent auto-approves project-native MCP tool approvals without prompting", async () => {
   const responses = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: { stateDir: path.join(os.tmpdir(), "cyberboss-approval-test") },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -803,6 +884,15 @@ test("handleRuntimeEvent auto-approves inbox image reads for claudecode without 
   const responses = [];
   const stateDir = path.join(os.tmpdir(), "cyberboss-approval-test");
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: { stateDir },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -848,6 +938,15 @@ test("handleRuntimeEvent auto-approves any state-dir file operation without prom
   const responses = [];
   const stateDir = path.join(os.tmpdir(), "cyberboss-approval-test");
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: { stateDir },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -897,6 +996,15 @@ test("handleRuntimeEvent still prompts for non-inbox image reads", async () => {
   const prompts = [];
   const stateDir = path.join(os.tmpdir(), "cyberboss-approval-test");
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: { stateDir },
     streamDelivery: {
       async handleRuntimeEvent() {},
@@ -948,6 +1056,15 @@ test("handleRuntimeEvent still prompts for non-inbox image reads", async () => {
 test("handleRuntimeEvent auto-approves allowlisted prefixes for claudecode approvals", async () => {
   const responses = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -990,6 +1107,15 @@ test("handleRuntimeEvent auto-approves allowlisted prefixes for claudecode appro
 test("handleRuntimeEvent auto-approves allowlisted MCP tool approvals", async () => {
   const responses = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     streamDelivery: {
       async handleRuntimeEvent() {},
     },
@@ -1032,6 +1158,15 @@ test("handleRuntimeEvent auto-approves allowlisted MCP tool approvals", async ()
 test("handleSwitchCommand stores the verified claudecode thread returned by runtime", async () => {
   const calls = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     resolveWorkspaceRoot() {
       return "/workspace";
     },
@@ -1157,6 +1292,15 @@ test("codex session store does not reuse legacy thread ids without runtime-scope
 test("handleStatusCommand asks to configure claudecode context window before showing context", async () => {
   const sent = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: {
       claudeModel: "claude-sonnet",
     },
@@ -1212,6 +1356,15 @@ test("handleStatusCommand asks to configure claudecode context window before sho
 test("handleStatusCommand shows approximate context details for claudecode when configured", async () => {
   const sent = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: {
       claudeContextWindow: 130000,
       claudeMaxOutputTokens: 64000,
@@ -1271,6 +1424,15 @@ test("handleStatusCommand shows approximate context details for claudecode when 
 test("handleStatusCommand asks to reduce claudecode max output tokens when reserve exceeds window", async () => {
   const sent = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: {
       claudeContextWindow: 130000,
       claudeMaxOutputTokens: 140000,
@@ -1330,6 +1492,15 @@ test("handleStatusCommand asks to reduce claudecode max output tokens when reser
 test("handleStatusCommand shows codex context details", async () => {
   const sent = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: {},
     resolveWorkspaceRoot() {
       return "/workspace";
@@ -1384,6 +1555,15 @@ test("handleStatusCommand shows codex context details", async () => {
 test("handleStatusCommand shows codex context as unavailable when no context data is available", async () => {
   const sent = [];
   const appLike = {
+    getFallbackContext() { return null; },
+    markFallbackResponseStarted() {},
+    forgetFallbackContext() {},
+    rememberFallbackContext() {},
+    recordDeepSeekUsage() {},
+    async sendDeepSeekFallback() { return false; },
+    async handleDecisionJournalIntercept() { return false; },
+    async handleWinsLedgerIntercept() { return false; },
+    async handlePatternIntercept() { return false; },
     config: {},
     resolveWorkspaceRoot() {
       return "/workspace";
