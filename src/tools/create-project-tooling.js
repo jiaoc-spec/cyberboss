@@ -5,6 +5,7 @@ const { CalendarService } = require("../services/calendar-service");
 const { CampaignService } = require("../services/campaign-service");
 const { CurrentStateService } = require("../services/current-state-service");
 const { KnowledgeService } = require("../services/knowledge-service");
+const { ObsidianNoteService } = require("../services/obsidian-note-service");
 const { ResearchLedgerService } = require("../services/research-ledger-service");
 const { CalendarTimelineSyncService } = require("../services/calendar-timeline-sync-service");
 const { ChannelFileService } = require("../services/channel-file-service");
@@ -64,6 +65,7 @@ function createProjectTooling(config, options = {}) {
     currentState,
     playbook: new PlaybookService({ config }),
     knowledge: new KnowledgeService({ config }),
+    obsidianNote: new ObsidianNoteService({ config }),
     researchLedger: new ResearchLedgerService({ config }),
     calendarTimelineSync: new CalendarTimelineSyncService({ config, calendar, timeline }),
     dailyInbox,

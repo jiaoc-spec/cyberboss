@@ -1228,6 +1228,50 @@ const PROJECT_TOOLS = [
       };
     },
   },
+  {
+    name: "cyberboss_obsidian_note_read",
+    description: "Read an Obsidian note inside the daily/weekly/monthly/knowledge folders without sandbox approval. Path is relative to the vault root, e.g. 03. 🔵 Tagebuch/01. 日记/2026-06-11.md.",
+    shortHint: "Read a vault note (no approval needed).",
+    topics: ["obsidian"],
+    inputSchema: {
+      type: "object",
+      required: ["relativePath"],
+      properties: {
+        relativePath: { type: "string", description: "Note path relative to the vault root, must end in .md." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.obsidianNote.read(args);
+      return {
+        text: result.exists ? `Read ${result.relativePath} (${result.text.length} chars).` : `Note not found: ${result.relativePath}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_obsidian_note_write",
+    description: "Write review/report content into an Obsidian note WITHOUT sandbox approval - the bridge writes the file directly. ALWAYS use this for Daily/Weekly/Monthly Review output instead of shell or patch edits, which trigger a human approval prompt and break unattended midnight runs. mode=replace_placeholder fills the 待午夜后自动生成 placeholder (falls back to append); mode=append adds to the end. Never deletes existing content. Restricted to the daily/weekly/monthly/knowledge folders.",
+    shortHint: "Write a vault note without approval (append or fill placeholder).",
+    topics: ["obsidian"],
+    inputSchema: {
+      type: "object",
+      required: ["relativePath", "content"],
+      properties: {
+        relativePath: { type: "string", description: "Note path relative to the vault root, must end in .md." },
+        content: { type: "string", description: "Markdown content to write." },
+        mode: { type: "string", description: "append (default) or replace_placeholder." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = await services.obsidianNote.write(args);
+      return {
+        text: `Note ${result.action}: ${result.relativePath}`,
+        data: result,
+      };
+    },
+  },
 ];
 
 const STATIC_EXTRA_TOOL_NAMES = new WhereaboutsToolHost({ service: null })

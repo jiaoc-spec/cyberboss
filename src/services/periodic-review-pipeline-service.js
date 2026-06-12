@@ -127,7 +127,8 @@ class PeriodicReviewPipelineService {
 
 请生成 ${weekKey} 的每周复盘，写入 Obsidian：${weeklyFolder}/${weekKey}.md
 
-- 如果文件已存在（含 Jane 自己的模板和 dataview），在文件末尾追加一个 "${WEEKLY_MARKER}" section，不要动已有内容
+- 读取用 cyberboss_obsidian_note_read，写入必须用 cyberboss_obsidian_note_write（mode=append）；绝对不要用 shell 或 apply_patch 直接改 vault 文件（会触发人工审批）
+- 如果文件已存在（含 Jane 自己的模板和 dataview），追加一个 "${WEEKLY_MARKER}" section，不要动已有内容
 - 数据源：${dailyFolder}/ 本周 7 天的 Daily Note（截至 ${todayDate}）、~/.cyberboss/pattern-ledger.json、wins-ledger.json、decision-journal.json、research-ledger.json、apple-calendar-cache.json
 
 每周复盘的职责（不是日记汇总）：
@@ -152,7 +153,8 @@ class PeriodicReviewPipelineService {
 
 请生成 ${monthKey} 的每月复盘，写入 Obsidian：${monthlyFolder}/${monthKey}.md
 
-- 文件已存在则在末尾追加 "${MONTHLY_MARKER}" section，不要覆盖已有内容
+- 读取用 cyberboss_obsidian_note_read，写入必须用 cyberboss_obsidian_note_write（mode=append）；绝对不要用 shell 或 apply_patch 直接改 vault 文件（会触发人工审批）
+- 文件已存在则追加 "${MONTHLY_MARKER}" section，不要覆盖已有内容
 - 数据源优先用 ${weeklyFolder}/ 该月的周记（不要从原始聊天重建），加上 pattern-ledger.json、wins-ledger.json、decision-journal.json、research-ledger.json
 
 每月复盘的职责：
