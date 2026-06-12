@@ -100,7 +100,7 @@ test("empty normal model replies receive a local fallback", async () => {
 
   assert.deepEqual(sent, [{
     userId: "user-empty",
-    text: "你的消息已经收到并记录了，但当前模型没有生成回复。你可以继续发消息，我仍然会保存你的记录。",
+    text: "收到，这条我记下了。刚刚没接住话，等下再好好回你。",
     contextToken: "ctx-empty",
   }]);
 });

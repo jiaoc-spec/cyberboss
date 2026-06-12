@@ -272,6 +272,7 @@ class CyberbossApp {
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
             this.flushKnowledgeResurface(account),
+            this.flushPlaybookPending(),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -302,6 +303,7 @@ class CyberbossApp {
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
             this.flushKnowledgeResurface(account),
+            this.flushPlaybookPending(),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
           ]);
@@ -1682,19 +1684,65 @@ class CyberbossApp {
       if (focus?.protected) {
         return;
       }
-      const workspaceRoot = normalizeText(this.config.workspaceRoot);
-      this.systemMessageQueue.enqueue({
-        id: `playbook:${rule.id}:${crypto.randomUUID()}`,
-        accountId: this.activeAccountId,
-        senderId: normalized.senderId,
-        workspaceRoot,
-        text: buildPlaybookTrigger(rule, PLAYBOOK_ANCHOR_LABELS[anchorState] || anchorState, this.config.userName),
-        createdAt: now.toISOString(),
-      });
-      playbook.recordPrompt(rule, now);
-      console.log(`[cyberboss] playbook trigger queued rule=${rule.id} anchor=${anchorState}`);
+      if (Number(rule.graceMinutes) > 0) {
+        playbook.schedulePrompt(rule, { anchor: anchorState, senderId: normalized.senderId, now });
+        console.log(`[cyberboss] playbook prompt scheduled rule=${rule.id} anchor=${anchorState} grace=${rule.graceMinutes}m`);
+        return;
+      }
+      this.deliverPlaybookPrompt({ rule, anchorState, senderId: normalized.senderId, now });
     } catch (error) {
       console.error(`[cyberboss] playbook trigger failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  deliverPlaybookPrompt({ rule, anchorState, senderId, now }) {
+    const playbook = this.projectServices?.playbook;
+    const workspaceRoot = normalizeText(this.config.workspaceRoot);
+    this.systemMessageQueue.enqueue({
+      id: `playbook:${rule.id}:${crypto.randomUUID()}`,
+      accountId: this.activeAccountId,
+      senderId,
+      workspaceRoot,
+      text: buildPlaybookTrigger(rule, PLAYBOOK_ANCHOR_LABELS[anchorState] || anchorState, this.config.userName),
+      createdAt: now.toISOString(),
+    });
+    playbook.recordPrompt(rule, now);
+    console.log(`[cyberboss] playbook trigger queued rule=${rule.id} anchor=${anchorState}`);
+  }
+
+  // Deliver grace-period playbook prompts when due, but only if the moment is
+  // still right: drop silently when she is busy, asleep again, or in focus.
+  async flushPlaybookPending() {
+    try {
+      const playbook = this.projectServices?.playbook;
+      if (!playbook || !this.activeAccountId) {
+        return;
+      }
+      const now = new Date();
+      for (const entry of playbook.duePendingPrompts({ now })) {
+        playbook.clearPending(entry.ruleId);
+        const rule = playbook.resolveRule(entry.ruleId);
+        if (!rule || !rule.enabled || !entry.senderId) {
+          continue;
+        }
+        const current = this.projectServices?.currentState?.current?.({ now });
+        if (current && current.fresh && ["commuting_to_work", "at_work", "going_to_sleep"].includes(current.state)) {
+          console.log(`[cyberboss] playbook pending dropped rule=${entry.ruleId} reason=state_${current.state}`);
+          continue;
+        }
+        const focus = this.projectServices?.focusProtection?.isProtected?.({
+          senderId: entry.senderId,
+          provider: this.channelAdapter.describe().id,
+          now,
+        });
+        if (focus?.protected) {
+          console.log(`[cyberboss] playbook pending dropped rule=${entry.ruleId} reason=focus_active`);
+          continue;
+        }
+        this.deliverPlaybookPrompt({ rule, anchorState: entry.anchor, senderId: entry.senderId, now });
+      }
+    } catch (error) {
+      console.error(`[cyberboss] playbook pending flush failed: ${formatErrorMessage(error)}`);
     }
   }
 

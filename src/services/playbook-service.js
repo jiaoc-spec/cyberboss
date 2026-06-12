@@ -16,8 +16,9 @@ const DEFAULT_RULES = [
     label: "运动 10 分钟（最小版）",
     minutes: 10,
     hours: { from: 8, to: 22 },
+    graceMinutes: 10,
     enabled: true,
-    note: "到家后的默认动作。回 1 启动。想改就直接告诉我。",
+    note: "到家后的默认动作（到家 10 分钟后才提示，先放下包）。回 1 启动。想改就直接告诉我。",
   },
   {
     id: "pb_default_wake_german",
@@ -26,8 +27,9 @@ const DEFAULT_RULES = [
     label: "德语 10 分钟",
     minutes: 10,
     hours: { from: 8, to: 20 },
+    graceMinutes: 60,
     enabled: true,
-    note: "休息日睡醒后的默认动作。早班清晨不会触发（8 点前不生效）。",
+    note: "休息日睡醒后的默认动作。醒后至少缓冲 1 小时才提示——刚醒的时间属于她自己的 routine。早班清晨不会触发（8 点前不生效）。",
   },
 ];
 
@@ -37,7 +39,7 @@ class PlaybookService {
     this.filePath = this.config.playbookFile;
   }
 
-  async upsertRule({ id = "", anchor = "", task = "", label = "", minutes = 10, hours = null, note = "", enabled = true } = {}) {
+  async upsertRule({ id = "", anchor = "", task = "", label = "", minutes = 10, hours = null, graceMinutes = null, note = "", enabled = true } = {}) {
     const normalizedAnchor = String(anchor || "").trim();
     if (!ANCHORS.includes(normalizedAnchor)) {
       throw new Error(`playbook_set: anchor must be one of ${ANCHORS.join(", ")}.`);
@@ -55,6 +57,7 @@ class PlaybookService {
       label: String(label).trim(),
       minutes: clampMinutes(minutes),
       hours: normalizeHours(hours) || existing?.hours || { from: 8, to: 22 },
+      graceMinutes: clampGrace(graceMinutes ?? existing?.graceMinutes ?? defaultGraceForAnchor(normalizedAnchor)),
       note: String(note || existing?.note || "").trim(),
       enabled: enabled !== false,
       updatedAt: new Date().toISOString(),
@@ -135,6 +138,40 @@ class PlaybookService {
     this._save(state);
   }
 
+  // Grace-period scheduling: an anchor with graceMinutes > 0 does not prompt
+  // immediately - the moment right after waking belongs to Jane's own routine.
+  // The prompt is delivered later by the main loop, after re-validation.
+  schedulePrompt(rule, { anchor = "", senderId = "", now = new Date() } = {}) {
+    this.recordSent(rule.id, now);
+    const state = this._load();
+    state.pending[rule.id] = {
+      ruleId: rule.id,
+      anchor: anchor || rule.anchor,
+      senderId,
+      dueAt: new Date(now.getTime() + clampGrace(rule.graceMinutes) * 60_000).toISOString(),
+      scheduledAt: now.toISOString(),
+    };
+    this._save(state);
+  }
+
+  duePendingPrompts({ now = new Date() } = {}) {
+    const state = this._load();
+    return Object.values(state.pending).filter((entry) => Date.parse(entry.dueAt) <= now.getTime());
+  }
+
+  resolveRule(ruleId) {
+    const state = this._load();
+    return state.rules.find((rule) => rule.id === ruleId) || null;
+  }
+
+  clearPending(ruleId) {
+    const state = this._load();
+    if (state.pending[ruleId]) {
+      delete state.pending[ruleId];
+      this._save(state);
+    }
+  }
+
   pendingQuickStart({ now = new Date(), windowMinutes = 120 } = {}) {
     const state = this._load();
     const prompt = state.lastPrompt;
@@ -167,9 +204,10 @@ class PlaybookService {
         rules: Array.isArray(parsed?.rules) ? parsed.rules : [],
         sent: parsed?.sent && typeof parsed.sent === "object" ? parsed.sent : {},
         lastPrompt: parsed?.lastPrompt && typeof parsed.lastPrompt === "object" ? parsed.lastPrompt : null,
+        pending: parsed?.pending && typeof parsed.pending === "object" ? parsed.pending : {},
       };
     } catch {
-      return { rules: DEFAULT_RULES.map((rule) => ({ ...rule })), sent: {}, lastPrompt: null };
+      return { rules: DEFAULT_RULES.map((rule) => ({ ...rule })), sent: {}, lastPrompt: null, pending: {} };
     }
   }
 
@@ -201,6 +239,18 @@ const ANCHOR_LABELS = {
   woke_up: "睡醒了",
   going_to_sleep: "准备睡觉",
 };
+
+function clampGrace(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes < 0) {
+    return 0;
+  }
+  return Math.min(Math.round(minutes), 240);
+}
+
+function defaultGraceForAnchor(anchor) {
+  return ({ woke_up: 60, arrived_home: 10 })[anchor] || 0;
+}
 
 function clampMinutes(value) {
   const minutes = Number(value);

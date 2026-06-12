@@ -85,3 +85,35 @@ test("scenario 3: playbook prompts must never present menus", () => {
   const ops = fs.readFileSync(path.join(repoRoot, "templates/weixin-operations.md"), "utf8");
   assert.match(ops, /one digit must always be enough to begin/);
 });
+
+test("scenario 4 (2026-06-12): just-woke-up must get a full hour before any task prompt", () => {
+  // Real failure: Jane said she woke at ~9:00; at 09:02 the playbook pushed
+  // Deutsch, and at 09:08 a check-in added 德语那 10 分钟别拖太久.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-golden-wake-"));
+  const playbook = new PlaybookService({
+    config: { timeZone: "Europe/Berlin", playbookFile: path.join(dir, "pb.json") },
+  });
+  const wake = playbook._load().rules.find((rule) => rule.anchor === "woke_up");
+  assert.ok(wake.graceMinutes >= 60, "woke_up grace must be at least an hour");
+
+  playbook.schedulePrompt(wake, { anchor: "woke_up", senderId: "jane", now: new Date("2026-06-12T09:01:00+02:00") });
+  assert.equal(playbook.duePendingPrompts({ now: new Date("2026-06-12T09:08:00+02:00") }).length, 0,
+    "8 minutes after waking there must be no prompt");
+
+  // instructions must forbid re-mentioning an unanswered prompt
+  const ops = fs.readFileSync(path.join(repoRoot, "templates/weixin-operations.md"), "utf8");
+  assert.match(ops, /one-shot and then CLOSED/);
+  assert.match(ops, /别拖太久/);
+  assert.match(ops, /The first hour after \{\{USER_NAME\}\} wakes up belongs to her own routine/);
+});
+
+test("scenario 5 (2026-06-12): backstage narration must be stripped from replies", () => {
+  // Real failure: "我先把这段状态接住，再判断要不要顺手给你留一个今晚的收尾提醒" was sent to Jane.
+  const source = fs.readFileSync(path.join(repoRoot, "src/core/stream-delivery.js"), "utf8");
+  const leakLine = "我先把这段状态接住，再判断要不要顺手给你留一个今晚的收尾提醒，避免你晚上又被拖散。";
+  const pattern = /^我(?:先|会|来)?把.{0,12}(?:状态|情绪|这段|这条).{0,8}(?:接住|接稳|稳住|收住)/;
+  assert.ok(pattern.test(leakLine), "leak pattern must match the real leaked line");
+  assert.ok(source.includes("接住|接稳|稳住|收住"), "stream-delivery must carry the leak pattern");
+  // and a normal supportive line must NOT be stripped
+  assert.ok(!pattern.test("你这段其实挺关键：昨晚补回来了，今天就别再跟睡眠较劲。"));
+});

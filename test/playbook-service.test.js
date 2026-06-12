@@ -97,3 +97,27 @@ test("quick start window expires after two hours", () => {
   service.recordPrompt(rule, new Date("2026-06-11T18:00:00+02:00"));
   assert.equal(service.pendingQuickStart({ now: new Date("2026-06-11T20:30:00+02:00") }), null);
 });
+
+test("grace period: woke_up schedules instead of prompting immediately", () => {
+  const service = makeService();
+  const { rules } = { rules: service._load().rules };
+  const wake = rules.find((rule) => rule.anchor === "woke_up");
+  assert.equal(wake.graceMinutes, 60);
+  assert.equal(rules.find((rule) => rule.anchor === "arrived_home").graceMinutes, 10);
+
+  const now = new Date("2026-06-12T09:01:00+02:00");
+  service.schedulePrompt(wake, { anchor: "woke_up", senderId: "jane", now });
+
+  // not due 8 minutes later (the real failure: prompted at 09:02, nagged at 09:08)
+  assert.equal(service.duePendingPrompts({ now: new Date("2026-06-12T09:09:00+02:00") }).length, 0);
+  // due after the full hour
+  const due = service.duePendingPrompts({ now: new Date("2026-06-12T10:02:00+02:00") });
+  assert.equal(due.length, 1);
+  assert.equal(due[0].senderId, "jane");
+
+  service.clearPending(wake.id);
+  assert.equal(service.duePendingPrompts({ now: new Date("2026-06-12T10:05:00+02:00") }).length, 0);
+
+  // scheduling already counts as today's send: no second fire on re-anchor
+  assert.equal(service.matchAnchor({ anchor: "woke_up", now: new Date("2026-06-12T11:00:00+02:00") }), null);
+});

@@ -1176,6 +1176,7 @@ const PROJECT_TOOLS = [
           },
           additionalProperties: false,
         },
+        graceMinutes: { type: "integer", description: "Delay between the anchor moment and the prompt, in minutes. Defaults: woke_up 60 (her morning routine comes first), arrived_home 10, others 0." },
         note: { type: "string", description: "Optional note about why or how to adjust." },
         enabled: { type: "boolean", description: "Set false to pause the rule without deleting it." },
       },

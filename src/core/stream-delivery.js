@@ -1,7 +1,7 @@
 const { sanitizeProtocolLeakText } = require("../adapters/runtime/codex/protocol-leak-monitor");
 
 const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
-const EMPTY_MODEL_REPLY_FALLBACK = "你的消息已经收到并记录了，但当前模型没有生成回复。你可以继续发消息，我仍然会保存你的记录。";
+const EMPTY_MODEL_REPLY_FALLBACK = "收到，这条我记下了。刚刚没接住话，等下再好好回你。";
 
 class StreamDelivery {
   constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, onEmptyReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs }) {
@@ -784,6 +784,9 @@ function isOperationalLeakLine(line) {
 }
 
 const OPERATIONAL_LEAK_PATTERNS = [
+  /^我(?:先|会|来)?把.{0,12}(?:状态|情绪|这段|这条).{0,8}(?:接住|接稳|稳住|收住)/,
+  /(?:再|然后)(?:判断|看看|决定).{0,8}(?:要不要|是否).{0,16}(?:提醒|记录|写|留|收尾)/,
+  /^我(?:先|会)?在后台/,
   /^我(?:先|会|来|去|再|马上)?把.*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表).*(?:看一下|查一下|处理|整理|接进去|接上|写进去|补进去|更新|同步|分类|归类|记(?:一下|成|进|到)?)/i,
   /^我(?:先|会|来|去|再|马上)?(?:看一下|查一下|处理|整理|更新|同步|读取|检查).*(?:时间轴|timeline|日历|calendar|Obsidian|日记|分类|category|记录|数据|班表)/i,
   /^我(?:先|会|来|去|再|马上)?把.*(?:状态|收尾|夜班|下班|这条|这个).*(?:接住|接上|补到|补进|放进|写进|记成|记进).*(?:记录|日记|时间线|timeline|可用记录|今天)/i,
