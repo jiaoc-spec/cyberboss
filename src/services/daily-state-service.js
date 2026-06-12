@@ -97,6 +97,7 @@ class DailyStateService {
         "力量训练",
       ]),
     };
+    const scheduleMode = resolveScheduleMode(signals);
     const recommendedMode = signals.lowEnergy || signals.periodOrBodyDiscomfort || signals.hasNightShift || signals.highAfterShiftFatigue
       ? "minimum"
       : "standard";
@@ -123,6 +124,7 @@ class DailyStateService {
       targetDate,
       calendarEvents,
       signals,
+      scheduleMode,
       contextQuestionTiming,
     });
 
@@ -140,6 +142,7 @@ class DailyStateService {
       missingContext,
       shiftRating,
       signals,
+      scheduleMode,
       recommendedMode,
       priorityTiming,
       contextQuestionTiming,
@@ -321,7 +324,7 @@ function localMinutesForDate(date, timeZone, targetDate) {
   return minutes;
 }
 
-function buildTemporalContext({ now, timeZone, targetDate, calendarEvents, signals, contextQuestionTiming }) {
+function buildTemporalContext({ now, timeZone, targetDate, calendarEvents, signals, scheduleMode, contextQuestionTiming }) {
   const todayEvents = (calendarEvents || [])
     .filter((event) => event && !event.isAllDay)
     .map((event) => summarizeCalendarEvent(event, timeZone))
@@ -333,10 +336,19 @@ function buildTemporalContext({ now, timeZone, targetDate, calendarEvents, signa
     date: targetDate,
     localNow: formatLocalDateTime(now, timeZone),
     dayType: resolveContextQuestionReason(signals),
+    scheduleMode: scheduleMode || resolveScheduleMode(signals),
     currentEvent: current ? summarizeCalendarEvent(current, timeZone) : null,
     remainingEventsToday: nextEvents,
     contextQuestionTiming,
   };
+}
+
+function resolveScheduleMode(signals = {}) {
+  if (signals.hasOffDay) return "off_day";
+  if (signals.hasNightShift) return "night_shift";
+  if (signals.hasLateShift) return "late_shift";
+  if (signals.hasEarlyShift) return "early_shift";
+  return "normal_day";
 }
 
 function findNightShiftStart(events, date, timeZone) {

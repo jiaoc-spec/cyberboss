@@ -88,7 +88,8 @@ class CriticalHabitsMonitor {
     }
     const guardianDue = local.hour >= this.config.criticalHabitsLevelAHour
       || todayState?.priorityTiming?.isDue === true;
-    const softMiddayDue = isLevelASoftMiddayDue({ local, config: this.config, todayState, current });
+    const softMiddayDue = !hasDayStrategySentToday(this.config.dayStrategyStateFile, local.date)
+      && isLevelASoftMiddayDue({ local, config: this.config, todayState, current });
     const levelADue = guardianDue || softMiddayDue;
     const promptKind = softMiddayDue && !guardianDue ? "midday" : "guardian";
 
@@ -460,6 +461,19 @@ function isLevelASoftMiddayDue({ local, config = {}, todayState = null, current 
     return false;
   }
   return true;
+}
+
+function hasDayStrategySentToday(filePath, date) {
+  if (!filePath || !date) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const sent = parsed?.sent && typeof parsed.sent === "object" ? parsed.sent : {};
+    return Object.keys(sent).some((key) => key.startsWith(`${date}:`));
+  } catch {
+    return false;
+  }
 }
 
 function localDateParts(date, timeZone) {

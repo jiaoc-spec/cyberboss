@@ -12,6 +12,7 @@ const { CalendarTimelineSyncService } = require("../services/calendar-timeline-s
 const { ChannelFileService } = require("../services/channel-file-service");
 const { DailyInboxService } = require("../services/daily-inbox-service");
 const { DailyStateService } = require("../services/daily-state-service");
+const { DayStrategyService } = require("../services/day-strategy-service");
 const { DiaryService } = require("../services/diary-service");
 const { FocusProtectionService } = require("../services/focus-protection-service");
 const { HealthService } = require("../services/health-service");
@@ -48,6 +49,7 @@ function createProjectTooling(config, options = {}) {
   const calendar = new CalendarService({ config });
   const health = new HealthService({ config, diary });
   const dailyState = new DailyStateService({ config, dailyInbox, timeline, calendar, health });
+  const campaign = new CampaignService({ config });
   const patternLedger = new PatternLedgerService({ config });
   const currentState = new CurrentStateService({ config });
   const reminder = new ReminderService({ config, channelAdapter, sessionStore });
@@ -61,10 +63,21 @@ function createProjectTooling(config, options = {}) {
     focusProtection,
     currentState,
   });
+  const dayStrategy = new DayStrategyService({
+    config,
+    dailyState,
+    calendar,
+    campaign,
+    channelAdapter,
+    sessionStore,
+    focusProtection,
+    currentState,
+  });
   const services = {
     calendar,
-    campaign: new CampaignService({ config }),
+    campaign,
     currentState,
+    dayStrategy,
     playbook: new PlaybookService({ config }),
     knowledge: new KnowledgeService({ config }),
     obsidianNote: new ObsidianNoteService({ config }),

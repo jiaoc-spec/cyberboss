@@ -101,7 +101,8 @@ test("scenario 4 (2026-06-12): just-woke-up must never assign Deutsch directly",
   const ops = fs.readFileSync(path.join(repoRoot, "templates/weixin-operations.md"), "utf8");
   assert.match(ops, /one-shot and then CLOSED/);
   assert.match(ops, /别拖太久/);
-  assert.match(ops, /The first hour after \{\{USER_NAME\}\} wakes up belongs to her own routine/);
+  assert.match(ops, /The first two hours after \{\{USER_NAME\}\} wakes up usually belong to her own routine/);
+  assert.match(ops, /Day Strategy Assistant is the Personal Executive Assistant layer/);
 });
 
 test("scenario 5 (2026-06-12): backstage narration must be stripped from replies", () => {
@@ -113,4 +114,10 @@ test("scenario 5 (2026-06-12): backstage narration must be stripped from replies
   assert.ok(source.includes("接住|接稳|稳住|收住"), "stream-delivery must carry the leak pattern");
   // and a normal supportive line must NOT be stripped
   assert.ok(!pattern.test("你这段其实挺关键：昨晚补回来了，今天就别再跟睡眠较劲。"));
+});
+
+test("scenario 6: day strategy triggers are mandatory assistant-layer prompts", () => {
+  const source = fs.readFileSync(path.join(repoRoot, "src/core/system-message-dispatcher.js"), "utf8");
+  assert.match(source, /Day Strategy Assistant/);
+  assert.match(source, /day-strategy reminders/);
 });

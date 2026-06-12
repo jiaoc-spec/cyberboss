@@ -9,7 +9,12 @@ const { SystemMessageQueueStore } = require("../core/system-message-queue-store"
 const { readCurrentStateFile, evaluateBusyState } = require("../services/current-state-service");
 const { getActiveFocusSession } = require("../services/focus-protection-service");
 
-const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = "%USER% comes to mind again.";
+const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = [
+  "Random companionship check-in for %USER%.",
+  "This is not a task reminder and not a guardian trigger.",
+  "Use daily state/calendar/current-state context if needed before deciding whether to speak.",
+  "If there is no clear useful or emotionally fitting reason to interrupt, return silent.",
+].join("\n");
 const SLEEP_CHECKIN_PROTECTION_HOURS = 10;
 
 async function runSystemCheckinPoller(config) {

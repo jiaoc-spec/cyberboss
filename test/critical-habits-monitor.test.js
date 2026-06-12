@@ -252,6 +252,41 @@ test("level A midday rhythm check respects current calendar events", async () =>
   assert.equal(sent.length, 0);
 });
 
+test("level A midday rhythm check is skipped when day strategy already prompted", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-day-strategy-sent-"));
+  const dayStrategyStateFile = path.join(dir, "day-strategy-state.json");
+  fs.writeFileSync(dayStrategyStateFile, `${JSON.stringify({
+    sent: {
+      "2026-06-05:off_day_open_window": "2026-06-05T11:05:00+02:00",
+    },
+  })}\n`);
+  const { monitor, sent } = createMonitor({
+    config: {
+      criticalHabitsLevelAMiddayHour: 12,
+      criticalHabitsLevelAMiddayMinute: 30,
+      dayStrategyStateFile,
+    },
+    dailyState: {
+      async analyze() {
+        return {
+          temporalContext: { currentEvent: null },
+          priorityTiming: { isDue: false, missingLevelA: ["sport", "english", "german"] },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: false },
+            { id: "german", label: "Deutsch", completed: false },
+          ],
+        };
+      },
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T12:31:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(sent.length, 0);
+});
+
 test("collectSupportStrategies surfaces matching pattern strategies", () => {
   const { CriticalHabitsMonitor } = require("../src/services/critical-habits-monitor");
   const monitor = new CriticalHabitsMonitor({

@@ -103,6 +103,10 @@ class CyberbossApp {
       this.projectServices.priorityAwareness.systemMessageQueue = this.systemMessageQueue;
       this.projectServices.priorityAwareness.sessionStore = this.runtimeAdapter.getSessionStore();
     }
+    if (this.projectServices?.dayStrategy) {
+      this.projectServices.dayStrategy.systemMessageQueue = this.systemMessageQueue;
+      this.projectServices.dayStrategy.sessionStore = this.runtimeAdapter.getSessionStore();
+    }
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
@@ -266,6 +270,7 @@ class CyberbossApp {
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushDayStrategyMonitor(account),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
@@ -297,6 +302,7 @@ class CyberbossApp {
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushDayStrategyMonitor(account),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
@@ -1014,6 +1020,7 @@ class CyberbossApp {
       const lines = [
         `Local now: ${ctx.localNow || `${local.date} ${local.time}`}`,
         `Day type / schedule mode: ${ctx.dayType || "unknown"}`,
+        `Work/off-day schedule mode: ${ctx.scheduleMode || "unknown"}`,
       ];
       if (ctx.currentEvent) {
         lines.push(`Currently in calendar event: ${formatTemporalCalendarEvent(ctx.currentEvent)}`);
@@ -1581,6 +1588,14 @@ class CyberbossApp {
       await this.criticalHabitsMonitor.check(account);
     } catch (error) {
       console.error(`[cyberboss] critical habits monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushDayStrategyMonitor(account) {
+    try {
+      await this.projectServices?.dayStrategy?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] day strategy monitor failed: ${formatErrorMessage(error)}`);
     }
   }
 
