@@ -558,7 +558,10 @@ class CyberbossApp {
       return;
     }
 
-    await this.handleWinsLedgerIntercept(normalized);
+    const winsHandled = await this.handleWinsLedgerIntercept(normalized);
+    if (winsHandled) {
+      return;
+    }
 
     const playbookHandled = await this.handlePlaybookQuickStart(normalized);
     if (playbookHandled) {
@@ -926,7 +929,7 @@ class CyberbossApp {
           });
           await this.autoAddPatternEvidence({
             domain: pending.domain,
-            note: `Win: ${pending.task}, success_factor: ${factor}, date: ${pending.date}`,
+            note: `Win: ${pending.task}, success_factor: ${parsed.success_factor}, date: ${pending.date}`,
             source: "wins-ledger",
             date: pending.date,
           });
@@ -937,27 +940,35 @@ class CyberbossApp {
             contextToken,
           });
         }
-      } else {
-        this.winsLedgerState.clearPending(senderId);
+        // The digit was an answer to OUR question - consume it so it never
+        // reaches the model, which has no idea a question was pending and
+        // happily misreads "3" as an energy score.
+        return true;
       }
-      return;
+      this.winsLedgerState.clearPending(senderId);
+      return false;
     }
 
     if (userText && !hasAttachments) {
       const win = detectWinTrigger(userText);
       if (win) {
-        await this.channelAdapter.sendText({
-          userId: senderId,
-          text: buildWinsPrompt(),
-          contextToken,
-        });
-        this.winsLedgerState.setPending(senderId, {
-          task: win.task,
-          domain: win.domain,
-          date: new Date().toISOString().slice(0, 10),
-        });
+        const date = new Date().toISOString().slice(0, 10);
+        if (!this.winsLedgerState.wasAsked(senderId, win.task, date)) {
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: buildWinsPrompt(),
+            contextToken,
+          });
+          this.winsLedgerState.setPending(senderId, {
+            task: win.task,
+            domain: win.domain,
+            date,
+          });
+          this.winsLedgerState.markAsked(senderId, win.task, date);
+        }
       }
     }
+    return false;
   }
 
   async buildRuntimeTurn({ prepared, model = "" }) {
@@ -1041,6 +1052,10 @@ class CyberbossApp {
           ? `; blocked by ${formatTemporalCalendarEvent(ctx.contextQuestionTiming.blockingEvent)}`
           : "";
         lines.push(`Daily energy/mood question timing: ${ctx.contextQuestionTiming.dueAt} (${ctx.contextQuestionTiming.reason || "unknown"}${blocking})`);
+      }
+      const signals = analysis?.signals || {};
+      if (signals.hasOffDay && !signals.hasNightShift && !signals.hasEarlyShift && !signals.hasLateShift) {
+        lines.push("HARD RULE: today is an OFF day per her calendar. She is not working and did not come from any shift today. Never use after-shift framing (下班回来 / 下早班 / 辛苦了今天的班). It is a rest day.");
       }
       lines.push(...this.buildCurrentStateContextLines(receivedAt));
       lines.push("Use this context to reason about today/tonight/tomorrow. Do not treat past calendar events as future tasks. If the user explicitly states a current state, it overrides older assumptions.");

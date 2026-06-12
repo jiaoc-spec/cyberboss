@@ -117,3 +117,55 @@ test("scenario 5 (2026-06-12): backstage narration must be stripped from replies
   // and a normal supportive line must NOT be stripped
   assert.ok(!pattern.test("你这段其实挺关键：昨晚补回来了，今天就别再跟睡眠较劲。"));
 });
+
+test("scenario 6 (2026-06-13): a digit answer to the wins question must never reach the model", async () => {
+  // Real failure: Jane answered 3 (=有提醒) to the Wins question; the bridge
+  // recorded it but let "3" continue to DeepSeek, which misread it as a
+  // 3/10 energy score. A second bug sent 记录失败：factor is not defined.
+  const { CyberbossApp } = require("../src/core/app");
+  const { WinsLedgerState } = require("../src/core/wins-ledger-state");
+
+  const sent = [];
+  const recorded = [];
+  const evidence = [];
+  const state = new WinsLedgerState();
+  state.setPending("jane", { task: "Englisch", domain: "learning", date: "2026-06-13" });
+
+  const appLike = {
+    winsLedgerState: state,
+    projectServices: {
+      wins: {
+        async record(args) {
+          recorded.push(args);
+          return { id: "win_1", ...args };
+        },
+      },
+    },
+    channelAdapter: {
+      async sendText(payload) {
+        sent.push(payload.text);
+      },
+    },
+    async autoAddPatternEvidence(args) {
+      evidence.push(args);
+    },
+  };
+
+  const handled = await CyberbossApp.prototype.handleWinsLedgerIntercept.call(appLike, {
+    senderId: "jane",
+    text: "3",
+    contextToken: "ctx",
+  });
+
+  assert.equal(handled, true, "the digit answer must be consumed at the bridge");
+  assert.equal(recorded[0].success_factor, "had_reminder");
+  assert.ok(sent.some((text) => text.includes("已记录到 Wins Ledger")));
+  assert.ok(!sent.some((text) => text.includes("记录失败")), "no ReferenceError leak to chat");
+  assert.match(evidence[0].note, /had_reminder/);
+});
+
+test("scenario 6 guard: off-day must forbid after-shift framing in temporal context", () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "src/core/app.js"), "utf8");
+  assert.match(appSource, /today is an OFF day per her calendar/);
+  assert.match(appSource, /下班回来 \/ 下早班/);
+});
