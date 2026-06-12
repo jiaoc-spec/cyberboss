@@ -59,6 +59,7 @@ function createProjectTooling(config, options = {}) {
     channelAdapter,
     sessionStore,
     focusProtection,
+    currentState,
   });
   const services = {
     calendar,

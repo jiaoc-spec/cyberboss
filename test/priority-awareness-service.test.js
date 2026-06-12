@@ -19,6 +19,7 @@ function createService(overrides = {}) {
       priorityAwarenessStateFile: path.join(dir, "priority-awareness.json"),
       priorityAwarenessCheckIntervalMs: 1,
       priorityAwarenessCooldownMs: 1,
+      priorityAwarenessWakeGraceMinutes: 120,
       priorityAwarenessCheckpointMinutes: [120, 45],
       priorityAwarenessBoundaryBufferMinutes: 30,
       ...overrides.config,
@@ -44,6 +45,7 @@ function createService(overrides = {}) {
       },
     },
     focusProtection: overrides.focusProtection,
+    currentState: overrides.currentState,
   });
   return { service, queued };
 }
@@ -222,7 +224,7 @@ test("monitor can still surface a hard-boundary warning during focus protection"
   assert.match(queued[0].text, /Still open: Sport, Deutsch/);
 });
 
-test("wake-up reentry queues one priority awareness message and cools down", () => {
+test("wake-up reentry waits for the grace window before queuing priority awareness", async () => {
   const { service, queued } = createService();
   service.set({
     date: "2026-06-05",
@@ -242,8 +244,17 @@ test("wake-up reentry queues one priority awareness message and cools down", () 
     receivedAt: "2026-06-05T14:00:00+02:00",
   });
 
-  assert.equal(first.queued.length, 1);
+  assert.equal(first.queued.length, 0);
+  assert.equal(first.scheduled, true);
   assert.equal(second.queued.length, 0);
+  assert.equal(second.scheduled, true);
+  assert.equal(queued.length, 0);
+
+  const beforeGrace = await service.check({ accountId: "account-1" }, new Date("2026-06-05T15:39:00+02:00"));
+  assert.equal(beforeGrace.queued.length, 0);
+
+  const afterGrace = await service.check({ accountId: "account-1" }, new Date("2026-06-05T15:41:00+02:00"));
+  assert.equal(afterGrace.queued.length, 1);
   assert.equal(queued.length, 1);
   assert.match(queued[0].text, /Wake-up reentry Priority Awareness trigger/);
   assert.match(queued[0].text, /Completed: Englisch/);
@@ -251,16 +262,37 @@ test("wake-up reentry queues one priority awareness message and cools down", () 
   assert.match(queued[0].text, /Do not ask what she is doing/);
 });
 
-test("wake-up reentry falls back to Level A when no explicit priority is set", () => {
+test("wake-up reentry falls back to Level A when no explicit priority is set after grace", async () => {
   const { service, queued } = createService();
 
   const result = service.queueWakeReentry({ accountId: "account-1" }, {
     receivedAt: "2026-06-05T13:40:00+02:00",
   });
 
-  assert.equal(result.queued.length, 1);
+  assert.equal(result.queued.length, 0);
+  const afterGrace = await service.check({ accountId: "account-1" }, new Date("2026-06-05T15:41:00+02:00"));
+  assert.equal(afterGrace.queued.length, 1);
   assert.match(queued[0].text, /Use Level A as the default/);
   assert.match(queued[0].text, /Sport, Deutsch, Englisch/);
+});
+
+test("wake-up reentry stays deferred when the user is currently working", async () => {
+  const { service, queued } = createService({
+    currentState: {
+      current() {
+        return { state: "at_work", fresh: true, ageMinutes: 20 };
+      },
+    },
+  });
+
+  service.queueWakeReentry({ accountId: "account-1" }, {
+    receivedAt: "2026-06-05T13:40:00+02:00",
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-05T15:41:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(queued.length, 0);
 });
 
 test("naive reminder times use the configured Berlin timezone", () => {
