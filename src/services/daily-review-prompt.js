@@ -35,7 +35,27 @@ Pattern Ledger 观察义务（这是长期记忆闭环的一部分）：
 - 如果 ${targetDate} 的数据能回答某个 pattern 的 nextObservation，用 cyberboss_pattern_add_evidence 追加当天证据
 - 不要为了凑证据而编造；没有相关数据就跳过
 
-原则：Meaning over Activity，不写 debug/技术日志噪音，缺失信息标记 unknown，重点帮助理解那一天。
+复盘写作原则：
+- 写给 Jane 的未来自己，不写给数据管道。
+- 不要列后台处理痕迹：不要写"已删除"、"用户表述"、"未记录"、"data_quality_notes"、"工具失败"、"archive"、"同步"等实现细节，除非它直接影响生活洞察。
+- 缺失信息只在影响判断时提一句；不要把 unknown 当成复盘主体。
+- 每日复盘不是流水账，也不是完成/失败判决。重点回答：
+  1. 今天什么真的影响了长期目标？
+  2. 今天更了解了 Jane 的哪一个状态、模式或限制？
+  3. 今天哪些事情应该进入周/月视角继续观察？
+  4. 明天最小可回来的版本是什么？
+- 对 habit 信息要结构化、保守：明确完成才写完成；没有证据就写未形成完成记录，不要把提醒、计划或意愿当成完成。
+- 复盘正文优先使用这些 section：一天主线、自我理解、习惯和恢复、值得进入长期观察、明日最小延续。避免过多机械小标题。
+- Meaning over Activity，不写 debug/技术日志噪音，重点帮助理解那一天。
+
+Obsidian Tracker 义务：
+- 如果当天能判断 habit 完成情况，请在"## 时间轴数据" JSON 中保留机器可读字段，便于 tracker 自动同步。
+- Tracker habit 名称只使用这些：
+  Sport、冥想、英语发音、德语语法、德语影子跟读、武当1+2、足弓、健身、基本功、成品舞、有氧操、美容灯、Praxisanleitung、Wundmanagement、Python、Nursing Digest。
+- Englisch 在 tracker 中具体指"英语发音"。
+- Deutsch 在 tracker 中拆成"德语语法"和"德语影子跟读"；如果当天只知道笼统 Deutsch，不要编造成两个都完成。
+- Energy、Mood、Shift Fatigue、Screen Time 是状态/指标，不是 habit。可以保留为 daily state 字段，但不要放进 tracker habit 列表。
+- JSON 只放紧凑结构化数据；人类复盘不要解释同步过程。
 
 全部完成后返回 {"action":"silent"}。只有在遇到无法自行解决的问题时才用 send_message 简短说明。`;
 }

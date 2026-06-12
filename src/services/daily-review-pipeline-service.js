@@ -9,12 +9,13 @@ const RUN_KEY_PREFIX = "daily-review:";
 const STATE_RETENTION_DAYS = 14;
 
 class DailyReviewPipelineService {
-  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, dailyInbox }) {
+  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, dailyInbox, obsidianTrackerSync }) {
     this.config = config || {};
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.dailyInbox = dailyInbox;
+    this.obsidianTrackerSync = obsidianTrackerSync;
     this.stateFile = this.config.dailyReviewPipelineStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -47,6 +48,7 @@ class DailyReviewPipelineService {
 
     const review = dailyReviewExists(this.config, targetDate);
     if (review.ok) {
+      this.syncTrackerIfAvailable(targetDate);
       entry.status = "complete";
       entry.completedAt = now.toISOString();
       this.persistEntry(state, key, entry, targetDate);
@@ -96,6 +98,22 @@ class DailyReviewPipelineService {
     this.persistEntry(state, key, entry, targetDate);
     console.log(`[cyberboss] daily review pipeline queued date=${targetDate} attempt=${entry.attempts}/${maxAttempts}`);
     return { action: "queued", targetDate, attempt: entry.attempts };
+  }
+
+  syncTrackerIfAvailable(targetDate) {
+    if (!this.obsidianTrackerSync || typeof this.obsidianTrackerSync.sync !== "function") {
+      return;
+    }
+    try {
+      const result = this.obsidianTrackerSync.sync({ throughDate: targetDate });
+      if (result?.action === "synced") {
+        console.log(
+          `[cyberboss] obsidian tracker synced through=${targetDate} dates=${result.syncedDates?.length || 0}`
+        );
+      }
+    } catch (error) {
+      console.error(`[cyberboss] obsidian tracker sync failed date=${targetDate}: ${error.message}`);
+    }
   }
 
   statusFor(targetDate) {

@@ -125,6 +125,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       dailyInbox: this.projectServices.dailyInbox,
+      obsidianTrackerSync: this.projectServices.obsidianTrackerSync,
     });
     this.failureWatchdog = new FailureWatchdogService({
       config,
