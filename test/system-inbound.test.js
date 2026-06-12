@@ -22,6 +22,49 @@ test("system messages bypass normal inbound wrapping", async () => {
   });
 });
 
+test("delivery-required empty system replies receive a local fallback when model fallbacks fail", async () => {
+  const sent = [];
+  const deliveryRequiredText = [
+    "SYSTEM ACTION MODE: internal trigger, not user chat.",
+    "",
+    "Trigger:",
+    "Day Strategy Assistant: DELIVERY REQUIRED",
+    "Schedule mode: off_day.",
+  ].join("\n");
+
+  const handled = await CyberbossApp.prototype.handleEmptyModelReply.call({
+    getFallbackContext() {
+      return {
+        text: deliveryRequiredText,
+        replyTarget: {
+          userId: "user-1",
+          contextToken: "ctx-1",
+          provider: "system",
+        },
+      };
+    },
+    async sendDeepSeekFallback() {
+      return false;
+    },
+    channelAdapter: {
+      async sendText(payload) {
+        sent.push(payload);
+      },
+    },
+  }, {
+    threadId: "thread-1",
+    turnId: "turn-1",
+  });
+
+  assert.equal(handled, true);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0], {
+    userId: "user-1",
+    text: "我刚才差点漏掉这个提醒，先把今天的节奏拉回来：如果 Sport、Deutsch、Englisch 还有没碰的，先选一个最小版本开始，别让今天被零碎事情吃掉。",
+    contextToken: "ctx-1",
+  });
+});
+
 test("image attachments stay as inbound drafts before runtime turn assembly", async () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-inbound-test-"));
   const originalFetch = global.fetch;
