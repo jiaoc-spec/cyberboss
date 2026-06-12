@@ -10,13 +10,14 @@ const CLOSED_STATUSES = new Set(["completed", "postponed", "skipped", "cancelled
 const VALID_STATUSES = new Set([...ACTIVE_STATUSES, ...CLOSED_STATUSES]);
 
 class PriorityAwarenessService {
-  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null }) {
+  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.focusProtection = focusProtection;
+    this.currentState = currentState;
     this.stateFile = this.config.priorityAwarenessStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -158,6 +159,17 @@ class PriorityAwarenessService {
     const targetDate = localDate(now, this.timeZone());
     const state = this.loadState();
     const day = state.days[targetDate];
+    const pendingWakeDueMs = Date.parse(day?.awareness?.wakeReentryDueAt || "");
+    if (Number.isFinite(pendingWakeDueMs) && pendingWakeDueMs > now.getTime()) {
+      return { queued: [], deferred: "wake_grace" };
+    }
+
+    const wakeQueued = this.maybeQueueWakeReentryDue({ account, target, state, targetDate, now });
+    if (wakeQueued.length) {
+      this.saveState(state);
+      return { queued: wakeQueued };
+    }
+
     if (!day?.deadlineAt || !Array.isArray(day.priorities) || !day.priorities.length) {
       return { queued: [] };
     }
@@ -239,11 +251,57 @@ class PriorityAwarenessService {
     };
     const awareness = day.awareness || (day.awareness = {});
     const lastWakeMs = Date.parse(awareness.lastWakeReentryAt || "");
+    const lastScheduledMs = Date.parse(awareness.lastWakeReentryScheduledAt || "");
+    const pendingDueMs = Date.parse(awareness.wakeReentryDueAt || "");
     const cooldownMs = this.config.priorityAwarenessWakeCooldownMs || 2 * 60 * 60_000;
-    if (Number.isFinite(lastWakeMs) && now.getTime() - lastWakeMs < cooldownMs) {
+    if (Number.isFinite(pendingDueMs) && pendingDueMs > now.getTime()) {
+      state.days[targetDate] = day;
+      this.saveState(state);
+      return { queued: [], scheduled: true, dueAt: new Date(pendingDueMs).toISOString() };
+    }
+    if (
+      (Number.isFinite(lastWakeMs) && now.getTime() - lastWakeMs < cooldownMs)
+      || (Number.isFinite(lastScheduledMs) && now.getTime() - lastScheduledMs < cooldownMs)
+    ) {
       state.days[targetDate] = day;
       this.saveState(state);
       return { queued: [] };
+    }
+
+    const graceMinutes = Number.isInteger(this.config.priorityAwarenessWakeGraceMinutes)
+      ? this.config.priorityAwarenessWakeGraceMinutes
+      : 120;
+    const dueAt = new Date(now.getTime() + Math.max(0, graceMinutes) * 60_000);
+    awareness.wakeReentryDueAt = dueAt.toISOString();
+    awareness.lastWakeReentryScheduledAt = now.toISOString();
+    day.updatedAt = now.toISOString();
+    state.days[targetDate] = day;
+    this.saveState(state);
+    console.log(`[cyberboss] priority wake reentry scheduled date=${targetDate} dueAt=${dueAt.toISOString()}`);
+    return { queued: [], scheduled: true, dueAt: dueAt.toISOString() };
+  }
+
+  maybeQueueWakeReentryDue({ account, target, state, targetDate, now }) {
+    const day = state.days[targetDate];
+    const awareness = day?.awareness;
+    const dueMs = Date.parse(awareness?.wakeReentryDueAt || "");
+    if (!Number.isFinite(dueMs) || dueMs > now.getTime()) {
+      return [];
+    }
+
+    const current = this.currentState?.current?.({ now });
+    if (current?.fresh && ["commuting_to_work", "at_work", "going_to_sleep"].includes(current.state)) {
+      console.log(`[cyberboss] priority wake reentry deferred reason=state_${current.state}`);
+      return [];
+    }
+    const focus = this.focusProtection?.isProtected?.({
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "",
+      now,
+    });
+    if (focus?.protected) {
+      console.log("[cyberboss] priority wake reentry deferred reason=focus_active");
+      return [];
     }
 
     const active = (day.priorities || []).filter((item) => ACTIVE_STATUSES.has(item.status));
@@ -270,11 +328,11 @@ class PriorityAwarenessService {
       createdAt: now.toISOString(),
     });
     awareness.lastWakeReentryAt = now.toISOString();
+    awareness.wakeReentryDueAt = "";
     day.updatedAt = now.toISOString();
     state.days[targetDate] = day;
-    this.saveState(state);
     console.log(`[cyberboss] priority wake reentry queued date=${targetDate}`);
-    return { queued: [message] };
+    return [message];
   }
 
   async syncTimelineEvidence(day) {

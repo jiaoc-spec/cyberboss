@@ -86,7 +86,7 @@ test("scenario 3: playbook prompts must never present menus", () => {
   assert.match(ops, /one digit must always be enough to begin/);
 });
 
-test("scenario 4 (2026-06-12): just-woke-up must get a full hour before any task prompt", () => {
+test("scenario 4 (2026-06-12): just-woke-up must never assign Deutsch directly", () => {
   // Real failure: Jane said she woke at ~9:00; at 09:02 the playbook pushed
   // Deutsch, and at 09:08 a check-in added 德语那 10 分钟别拖太久.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-golden-wake-"));
@@ -94,17 +94,15 @@ test("scenario 4 (2026-06-12): just-woke-up must get a full hour before any task
     config: { timeZone: "Europe/Berlin", playbookFile: path.join(dir, "pb.json") },
   });
   const wake = playbook._load().rules.find((rule) => rule.anchor === "woke_up");
-  assert.ok(wake.graceMinutes >= 60, "woke_up grace must be at least an hour");
-
-  playbook.schedulePrompt(wake, { anchor: "woke_up", senderId: "jane", now: new Date("2026-06-12T09:01:00+02:00") });
-  assert.equal(playbook.duePendingPrompts({ now: new Date("2026-06-12T09:08:00+02:00") }).length, 0,
-    "8 minutes after waking there must be no prompt");
+  assert.equal(wake.enabled, false, "woke_up must not be a default task anchor");
+  assert.equal(playbook.matchAnchor({ anchor: "woke_up", now: new Date("2026-06-12T09:01:00+02:00") }), null);
 
   // instructions must forbid re-mentioning an unanswered prompt
   const ops = fs.readFileSync(path.join(repoRoot, "templates/weixin-operations.md"), "utf8");
   assert.match(ops, /one-shot and then CLOSED/);
   assert.match(ops, /别拖太久/);
-  assert.match(ops, /The first hour after \{\{USER_NAME\}\} wakes up belongs to her own routine/);
+  assert.match(ops, /The first two hours after \{\{USER_NAME\}\} wakes up usually belong to her own routine/);
+  assert.match(ops, /Day Strategy Assistant is the Personal Executive Assistant layer/);
 });
 
 test("scenario 5 (2026-06-12): backstage narration must be stripped from replies", () => {
@@ -168,4 +166,10 @@ test("scenario 6 guard: off-day must forbid after-shift framing in temporal cont
   const appSource = fs.readFileSync(path.join(repoRoot, "src/core/app.js"), "utf8");
   assert.match(appSource, /today is an OFF day per her calendar/);
   assert.match(appSource, /下班回来 \/ 下早班/);
+});
+
+test("scenario 7: day strategy triggers are mandatory assistant-layer prompts", () => {
+  const source = fs.readFileSync(path.join(repoRoot, "src/core/system-message-dispatcher.js"), "utf8");
+  assert.match(source, /Day Strategy Assistant/);
+  assert.match(source, /day-strategy reminders/);
 });

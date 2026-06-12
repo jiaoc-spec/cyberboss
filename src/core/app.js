@@ -103,6 +103,10 @@ class CyberbossApp {
       this.projectServices.priorityAwareness.systemMessageQueue = this.systemMessageQueue;
       this.projectServices.priorityAwareness.sessionStore = this.runtimeAdapter.getSessionStore();
     }
+    if (this.projectServices?.dayStrategy) {
+      this.projectServices.dayStrategy.systemMessageQueue = this.systemMessageQueue;
+      this.projectServices.dayStrategy.sessionStore = this.runtimeAdapter.getSessionStore();
+    }
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
@@ -125,6 +129,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       dailyInbox: this.projectServices.dailyInbox,
+      obsidianTrackerSync: this.projectServices.obsidianTrackerSync,
     });
     this.failureWatchdog = new FailureWatchdogService({
       config,
@@ -265,6 +270,7 @@ class CyberbossApp {
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushDayStrategyMonitor(account),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
@@ -296,6 +302,7 @@ class CyberbossApp {
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushDayStrategyMonitor(account),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
@@ -1024,6 +1031,7 @@ class CyberbossApp {
       const lines = [
         `Local now: ${ctx.localNow || `${local.date} ${local.time}`}`,
         `Day type / schedule mode: ${ctx.dayType || "unknown"}`,
+        `Work/off-day schedule mode: ${ctx.scheduleMode || "unknown"}`,
       ];
       if (ctx.currentEvent) {
         lines.push(`Currently in calendar event: ${formatTemporalCalendarEvent(ctx.currentEvent)}`);
@@ -1595,6 +1603,14 @@ class CyberbossApp {
       await this.criticalHabitsMonitor.check(account);
     } catch (error) {
       console.error(`[cyberboss] critical habits monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushDayStrategyMonitor(account) {
+    try {
+      await this.projectServices?.dayStrategy?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] day strategy monitor failed: ${formatErrorMessage(error)}`);
     }
   }
 
@@ -2769,15 +2785,25 @@ class CyberbossApp {
       return true;
     }
     const target = normalizeReplyTarget(replyTarget || context?.replyTarget);
-    if (target?.provider === "system" && !systemTriggerRequiresDelivery(context?.text)) {
+    const requiresDelivery = target?.provider === "system" && systemTriggerRequiresDelivery(context?.text);
+    if (target?.provider === "system" && !requiresDelivery) {
       console.log(`[cyberboss] empty system reply treated as silent thread=${threadId}`);
       return true;
     }
-    return this.sendDeepSeekFallback({
+    const fallbackSent = await this.sendDeepSeekFallback({
       ...context,
       reason: "Codex completed without a usable reply",
       replyTarget: replyTarget || context?.replyTarget,
     });
+    if (fallbackSent || !requiresDelivery || !target) {
+      return fallbackSent;
+    }
+    await this.channelAdapter.sendText({
+      userId: target.userId,
+      text: buildDeliveryRequiredLocalFallback(context?.text),
+      contextToken: target.contextToken,
+    }).catch(() => {});
+    return true;
   }
 
   async sendDeepSeekFallback({ text = "", reason = "", provider = "", replyTarget = null, fallbackSent = false } = {}) {
@@ -2800,10 +2826,11 @@ class CyberbossApp {
       }
       this.recordDeepSeekUsage(`fallback:${target.userId}`, result.usage);
       if (provider === "system") {
+        const deliveryRequired = systemTriggerRequiresDelivery(text);
         const action = parseFallbackSystemAction(result.text);
         if (action.action === "silent") {
           console.log(`[cyberboss] deepseek fallback silent model=${result.model || ""}`);
-          return true;
+          return !deliveryRequired;
         }
         if (action.action !== "send_message" || !action.message) {
           return false;
@@ -3054,6 +3081,17 @@ function systemTriggerRequiresDelivery(preparedText = "") {
     return false;
   }
   return trigger.includes("DELIVERY REQUIRED");
+}
+
+function buildDeliveryRequiredLocalFallback(preparedText = "") {
+  const text = String(preparedText || "");
+  if (/Day Strategy Assistant/i.test(text)) {
+    return "我刚才差点漏掉这个提醒，先把今天的节奏拉回来：如果 Sport、Deutsch、Englisch 还有没碰的，先选一个最小版本开始，别让今天被零碎事情吃掉。";
+  }
+  if (/Critical Habits Monitor|Priority Awareness Assistant|Wake-up reentry Priority Awareness/i.test(text)) {
+    return "我刚才差点漏掉这个提醒。先不讲大道理：Sport、Deutsch、Englisch 里如果还有没碰的，挑一个做最小版本就好，回来比完美重要。";
+  }
+  return "我刚才差点漏掉这个提醒。先把注意力轻轻拉回来：今天真正重要的事，选一个最小版本碰一下就好。";
 }
 
 function formatCompactNumber(value) {

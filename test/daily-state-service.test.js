@@ -265,3 +265,43 @@ test("daily state uses late-shift and night-shift question windows", async () =>
   assert.equal(night.contextQuestionTiming.dueAt, "20:00");
   assert.equal(night.contextQuestionTiming.isDue, true);
 });
+
+test("daily state exposes off-day schedule mode from Apple Calendar Frei", async () => {
+  const service = new DailyStateService({
+    config: { timeZone: "Europe/Berlin" },
+    dailyInbox: {
+      read() {
+        return { exists: true, filePath: "/tmp/day.md", text: "" };
+      },
+    },
+    timeline: {
+      async read() {
+        return { data: { events: [] } };
+      },
+    },
+    calendar: {
+      async read() {
+        return {
+          events: [
+            {
+              title: "Frei",
+              start: "2026-06-12T00:00:00+02:00",
+              end: "2026-06-13T00:00:00+02:00",
+              calendar: "Arbeit",
+              isAllDay: true,
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const state = await service.analyze({
+    date: "2026-06-12",
+    now: new Date("2026-06-12T12:30:00+02:00"),
+  });
+
+  assert.equal(state.signals.hasOffDay, true);
+  assert.equal(state.scheduleMode, "off_day");
+  assert.equal(state.temporalContext.scheduleMode, "off_day");
+});

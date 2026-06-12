@@ -152,6 +152,33 @@ test("empty system model replies remain silent", async () => {
   assert.deepEqual(sent, []);
 });
 
+test("blank system reply item invokes empty reply fallback hook", async () => {
+  const handled = [];
+  const { sent, streamDelivery } = createHarness({
+    async onEmptyReply(payload) {
+      handled.push(payload);
+      return true;
+    },
+  });
+  streamDelivery.queueReplyTargetForThread("thread-system-blank", {
+    userId: "user-system-blank",
+    contextToken: "ctx-system-blank",
+    provider: "system",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-system-blank",
+    turnId: "turn-system-blank",
+    itemId: "item-system-blank",
+    text: "   ",
+  });
+
+  assert.equal(handled.length, 1);
+  assert.equal(handled[0].threadId, "thread-system-blank");
+  assert.equal(handled[0].replyTarget.provider, "system");
+  assert.deepEqual(sent, []);
+});
+
 test("system send_message JSON sends only the message text", async () => {
   const { sent, streamDelivery } = createHarness();
   streamDelivery.queueReplyTargetForThread("thread-2", {

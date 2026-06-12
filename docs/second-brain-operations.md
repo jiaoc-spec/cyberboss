@@ -8,6 +8,7 @@ CyberBoss uses Telegram as the daily inbox and Obsidian as the durable output li
 - Daily Inbox: factual capture buffer for the current day.
 - Timeline: structured events, including meaningful low-friction blocks such as sleep, commute, work, phone use, and meals.
 - Daily State Engine: reads Daily Inbox, timeline, and Apple Calendar to understand today's practical constraints.
+- Day Strategy Assistant: converts today's calendar mode into proactive assistant timing.
 - Critical Habits Monitor: protects Level A/B/C long-term values.
 - Failure Watchdog: checks whether midnight review and archive finished.
 - Pattern Ledger: stores longitudinal patterns so reviews stay connected across days, weeks, and months.
@@ -26,13 +27,37 @@ It currently detects:
 - Career growth signals such as Praxisanleitung, Wundmanagement, Pflegewissenschaft, research, literature, and teaching.
 - Body identity signals such as sport, fitness, strength training, jazz dance, and dance.
 
+## Day Strategy Assistant
+
+Day Strategy is the Personal Executive Assistant layer. It decides whether
+today has a useful action window before the fixed habit guardian fires.
+
+Default schedule modes:
+
+- `off_day`: Apple Calendar says `Frei` / off day. The first strategy window
+  opens around 11:00, after the wake-up buffer.
+- `late_shift`: morning is the valuable window before work.
+- `early_shift`: after-work support starts with recovery realism.
+- `night_shift`: the pre-shift window matters, but suggestions stay minimum
+  and reality-aware.
+- `normal_day`: no special strategy prompt unless tomorrow morning creates a
+  boundary, such as Frühdienst.
+
+The strategy prompt should recognize the day shape, name the usable window,
+and reconnect Jane to Level A or an upcoming campaign/deadline without guilt.
+It is not a random check-in and not a checklist lecture.
+
 ## Critical Habits Timing
 
 Level A reminders are no longer only fixed-time checks.
 
 Default timing:
 
-- Normal day: after `CYBERBOSS_CRITICAL_HABITS_LEVEL_A_HOUR`, default 20:00.
+- Day strategy: context-aware prompt before the fixed guardian when a useful
+  window exists, for example 11:00 on off days.
+- Soft Level A rhythm check: around 12:30 if Level A is still missing and no
+  strategy/current-state protection blocks it.
+- Normal day guardian: after `CYBERBOSS_CRITICAL_HABITS_LEVEL_A_HOUR`, default 20:00.
 - Night-shift day: up to `CYBERBOSS_CRITICAL_HABITS_NIGHT_SHIFT_LEAD_MINUTES` before shift start, default 180 minutes.
 - Night-shift recovery day: after `CYBERBOSS_CRITICAL_HABITS_RECOVERY_HOUR`, default 15:00.
 

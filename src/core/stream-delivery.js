@@ -354,6 +354,17 @@ class StreamDelivery {
 
     const replyText = buildReplyText(state, { completedOnly: false });
     if (!replyText.trim()) {
+      if (this.onEmptyReply) {
+        const handled = await this.onEmptyReply({
+          threadId: state.threadId,
+          turnId: state.turnId,
+          replyTarget: normalizeReplyTarget(state.replyTarget),
+        }).catch(() => false);
+        if (handled) {
+          this.markAllItemsSent(state);
+          return;
+        }
+      }
       this.markAllItemsSent(state);
       console.log(`[cyberboss] empty system reply treated as silent thread=${state.threadId}`);
       return;

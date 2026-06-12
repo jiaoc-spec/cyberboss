@@ -20,6 +20,9 @@ const DEFAULT_RULES = [
     enabled: true,
     note: "到家后的默认动作（到家 10 分钟后才提示，先放下包）。回 1 启动。想改就直接告诉我。",
   },
+  // Waking up is not a task anchor by default. Jane needs a protected
+  // transition window first; Priority Awareness can later bring the whole
+  // Level A map back instead of assigning Deutsch immediately.
   {
     id: "pb_default_wake_german",
     anchor: "woke_up",
@@ -27,9 +30,9 @@ const DEFAULT_RULES = [
     label: "德语 10 分钟",
     minutes: 10,
     hours: { from: 8, to: 20 },
-    graceMinutes: 60,
-    enabled: true,
-    note: "休息日睡醒后的默认动作。醒后至少缓冲 1 小时才提示——刚醒的时间属于她自己的 routine。早班清晨不会触发（8 点前不生效）。",
+    graceMinutes: 120,
+    enabled: false,
+    note: "默认关闭：醒来后不要直接推德语。先给缓冲，再由 Priority Awareness 整体提醒 Sport/Deutsch/Englisch。",
   },
 ];
 

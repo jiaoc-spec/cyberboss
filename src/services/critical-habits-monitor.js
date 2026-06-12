@@ -72,6 +72,10 @@ class CriticalHabitsMonitor {
     if (busy?.busy) {
       return { queued: [], deferred: busy.state };
     }
+    const current = this.currentState?.current?.({ now });
+    if (isQuietCurrentState(current, this.config)) {
+      return { queued: [], deferred: current.state };
+    }
 
     const timeZone = this.config.timeZone || this.config.diaryTimeZone || "UTC";
     const local = localDateParts(now, timeZone);
@@ -79,14 +83,21 @@ class CriticalHabitsMonitor {
     const queued = [];
 
     const todayState = await this.analyzeToday({ date: local.date, now });
-    const levelADue = local.hour >= this.config.criticalHabitsLevelAHour
+    if (isCalendarBusyNow(todayState)) {
+      return { queued: [], deferred: "calendar_event" };
+    }
+    const guardianDue = local.hour >= this.config.criticalHabitsLevelAHour
       || todayState?.priorityTiming?.isDue === true;
+    const softMiddayDue = !hasDayStrategySentToday(this.config.dayStrategyStateFile, local.date)
+      && isLevelASoftMiddayDue({ local, config: this.config, todayState, current });
+    const levelADue = guardianDue || softMiddayDue;
+    const promptKind = softMiddayDue && !guardianDue ? "midday" : "guardian";
 
     if (levelADue) {
       const events = await this.readEventsForDates([local.date]);
       const missing = [];
       for (const item of this.resolveLevelAItems(local.date)) {
-        const key = `A:${local.date}:${item.id}`;
+        const key = `${promptKind === "midday" ? "A_MIDDAY" : "A"}:${local.date}:${item.id}`;
         const dailyStateHabit = todayState?.levelA?.find((habitState) => habitState.id === item.id);
         const completed = dailyStateHabit?.completed || events.some((event) => matchesHabit(event, item));
         if (!state.sent[key] && !completed) {
@@ -94,8 +105,10 @@ class CriticalHabitsMonitor {
         }
       }
       if (missing.length) {
-        queued.push(await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState }));
-        this.recordPatternEvidence({ dailyState: todayState, missing, now });
+        queued.push(await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState, promptKind }));
+        if (promptKind !== "midday") {
+          this.recordPatternEvidence({ dailyState: todayState, missing, now });
+        }
         for (const { key } of missing) {
           state.sent[key] = now.toISOString();
         }
@@ -255,10 +268,10 @@ class CriticalHabitsMonitor {
     return message;
   }
 
-  async deliverLevelAMessage({ account, target, missing, now, dailyState }) {
+  async deliverLevelAMessage({ account, target, missing, now, dailyState, promptKind = "guardian" }) {
     const items = missing.map(({ item }) => item);
     const supportStrategies = this.collectSupportStrategies(dailyState);
-    const text = buildLevelADirectMessage(items, dailyState, supportStrategies);
+    const text = buildLevelADirectMessage(items, dailyState, supportStrategies, { promptKind });
     if (typeof this.channelAdapter?.sendText === "function") {
       try {
         await this.channelAdapter.sendText({
@@ -280,13 +293,13 @@ class CriticalHabitsMonitor {
         console.error(`[cyberboss] critical habit direct send failed: ${error.message}`);
       }
     }
-    return this.enqueueLevelAMessage({ account, target, missing, now, supportStrategies });
+    return this.enqueueLevelAMessage({ account, target, missing, now, supportStrategies, promptKind });
   }
 
-  enqueueLevelAMessage({ account, target, missing, now, supportStrategies = [] }) {
+  enqueueLevelAMessage({ account, target, missing, now, supportStrategies = [], promptKind = "guardian" }) {
     const items = missing.map(({ item }) => item);
     const text = [
-      "Critical Habits Monitor: DELIVERY REQUIRED. Level A daily guardian trigger.",
+      `Critical Habits Monitor: DELIVERY REQUIRED. Level A ${promptKind === "midday" ? "midday soft rhythm check" : "daily guardian trigger"}.`,
       `Today still has no recorded Level A activity for: ${items.map((item) => item.label).join(", ")}.`,
       "These are not ordinary tasks. They are the foundation habits Jane already chose for her future self.",
       ...items.map((item) => `${item.label}: ${item.meaning || "她已经选择的长期成长方向"}.`),
@@ -296,7 +309,9 @@ class CriticalHabitsMonitor {
           ...supportStrategies.map((entry) => `- [${entry.id}] ${entry.title}: ${entry.supportStrategy}`),
         ]
         : []),
-      "Return send_message, not silent. Send one concise, natural, warm-but-grounded message that restores priority awareness without guilt.",
+      promptKind === "midday"
+        ? "Return send_message, not silent. Send one concise, natural, warm-but-grounded message that restores priority awareness without treating this as a failure. This is a rhythm check, not a scolding."
+        : "Return send_message, not silent. Send one concise, natural, warm-but-grounded message that restores priority awareness without guilt.",
       "Do not supervise, command, scold, or make it sound like a checklist app.",
       "Offer a realistic choice: one minimum version now, postpone, or consciously rest/skip today.",
       "Always Return matters more than a perfect streak.",
@@ -333,7 +348,7 @@ function habit(id, label, keywords, categoryPrefixes, meaning = "", estimatedMin
   return { id, label, keywords, categoryPrefixes, meaning, estimatedMinutes };
 }
 
-function buildLevelADirectMessage(items, dailyState = null, supportStrategies = []) {
+function buildLevelADirectMessage(items, dailyState = null, supportStrategies = [], { promptKind = "guardian" } = {}) {
   const labels = items.map((item) => item.label).join("、");
   const meanings = items
     .map((item) => item.meaning)
@@ -346,14 +361,16 @@ function buildLevelADirectMessage(items, dailyState = null, supportStrategies = 
   const fatigue = dailyState?.shiftRating?.found ? dailyState.shiftRating : null;
   const timingReason = dailyState?.priorityTiming?.reason || "";
   const boundaryLabel = dailyState?.priorityTiming?.boundaryLabel || "";
-  const intro = buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue });
+  const intro = buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue, promptKind });
   const strategyText = supportStrategies.length
     ? `我们之前观察到的规律也支持这一点：${supportStrategies.map((entry) => entry.supportStrategy).join(" ")}`
     : "";
   return [
     intro,
     meanings ? `它们不是打卡，是你给未来自己的地基：${meanings}。` : "它们不是打卡，是你给未来自己的地基。",
-    mode === "minimum"
+    promptKind === "midday"
+      ? "现在不是要你立刻把全部做完，只是别让今天从手边溜过去。挑一个最小入口就很好：运动 10 分钟、英语 5 分钟、德语 5 到 10 分钟，哪个更顺手就先碰哪个。"
+      : mode === "minimum"
       ? "今天如果身体和脑子都在省电，就做最小版本：运动 10 分钟、英语 5 分钟、德语 5 到 10 分钟，挑一个碰一下也算回来。"
       : "如果现在还来得及，挑一个最小版本碰一下就好；如果今天真的不合适，也可以明确延期或休息。",
     strategyText,
@@ -361,7 +378,7 @@ function buildLevelADirectMessage(items, dailyState = null, supportStrategies = 
   ].filter(Boolean).join("\n\n");
 }
 
-function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue }) {
+function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue, promptKind }) {
   const doneText = completed.length ? `已经完成：${completed.join("、")}。` : "";
   const timingText = timingReason && timingReason !== "fixed_daily_guardian_time"
     ? `${boundaryLabel || "今天的时间边界"}已经靠近了，`
@@ -369,6 +386,13 @@ function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel
   const fatigueText = fatigue?.fatigueBand === "high"
     ? `你刚才给的下班疲惫分是 ${fatigue.score}/10，今天我们按最小版本来，不按完整版本逼自己。`
     : "";
+  if (promptKind === "midday") {
+    return [
+      "Jane，我不催你，只是轻轻把今天的地基放回眼前一下。",
+      doneText,
+      `现在还没看到 ${labels} 的记录。`,
+    ].filter(Boolean).join("\n");
+  }
   if (mode === "minimum") {
     return [
       "Jane，我轻轻把你的重点拉回眼前一下。",
@@ -394,6 +418,64 @@ function matchesHabit(event, item) {
     || item.categoryPrefixes.some((prefix) => categoryFields.some((field) => field.startsWith(prefix.toLowerCase())));
 }
 
+function isQuietCurrentState(current, config = {}) {
+  if (!current?.fresh) {
+    return false;
+  }
+  if (current.state === "going_to_sleep") {
+    return true;
+  }
+  if (current.state === "woke_up") {
+    const graceMinutes = Number.isInteger(config.criticalHabitsWakeGraceMinutes)
+      ? config.criticalHabitsWakeGraceMinutes
+      : 120;
+    return current.ageMinutes < graceMinutes;
+  }
+  return false;
+}
+
+function isCalendarBusyNow(dailyState) {
+  return Boolean(dailyState?.temporalContext?.currentEvent);
+}
+
+function isLevelASoftMiddayDue({ local, config = {}, todayState = null, current = null }) {
+  const softHour = Number.isInteger(config.criticalHabitsLevelAMiddayHour)
+    ? config.criticalHabitsLevelAMiddayHour
+    : 12;
+  const softMinute = Number.isInteger(config.criticalHabitsLevelAMiddayMinute)
+    ? config.criticalHabitsLevelAMiddayMinute
+    : 30;
+  const guardianHour = Number.isInteger(config.criticalHabitsLevelAHour)
+    ? config.criticalHabitsLevelAHour
+    : 20;
+  const localMinutes = (local.hour * 60) + (local.minute || 0);
+  const softMinutes = (softHour * 60) + Math.max(0, Math.min(59, softMinute));
+  if (localMinutes < softMinutes || local.hour >= guardianHour) {
+    return false;
+  }
+  if (isQuietCurrentState(current, config) || isCalendarBusyNow(todayState)) {
+    return false;
+  }
+  const missingLevelA = todayState?.priorityTiming?.missingLevelA;
+  if (Array.isArray(missingLevelA) && missingLevelA.length === 0) {
+    return false;
+  }
+  return true;
+}
+
+function hasDayStrategySentToday(filePath, date) {
+  if (!filePath || !date) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const sent = parsed?.sent && typeof parsed.sent === "object" ? parsed.sent : {};
+    return Object.keys(sent).some((key) => key.startsWith(`${date}:`));
+  } catch {
+    return false;
+  }
+}
+
 function localDateParts(date, timeZone) {
   const parts = {};
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -402,6 +484,7 @@ function localDateParts(date, timeZone) {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
+    minute: "2-digit",
     hourCycle: "h23",
     weekday: "short",
   });
@@ -414,6 +497,7 @@ function localDateParts(date, timeZone) {
   return {
     date: dateText,
     hour: Number(parts.hour),
+    minute: Number(parts.minute),
     weekday: weekdayNumber(parts.weekday),
     isoWeek: isoWeekKey(dateText),
   };
