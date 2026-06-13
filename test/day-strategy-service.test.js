@@ -102,6 +102,8 @@ test("off day queues a strategy prompt after the open window", async () => {
   assert.match(queued[0].text, /Schedule mode: off_day/);
   assert.match(queued[0].text, /Tomorrow morning work context: Frühdienst 04:30-12:30/);
   assert.match(queued[0].text, /Statistik Klausur in 10d -> python/);
+  assert.match(queued[0].text, /Be-Do-Have frame/);
+  assert.match(queued[0].text, /Identity Ledger/);
 });
 
 test("off day strategy does not repeat after it has been sent", async () => {

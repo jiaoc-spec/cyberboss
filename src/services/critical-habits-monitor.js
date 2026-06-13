@@ -302,6 +302,8 @@ class CriticalHabitsMonitor {
       `Critical Habits Monitor: DELIVERY REQUIRED. Level A ${promptKind === "midday" ? "midday soft rhythm check" : "daily guardian trigger"}.`,
       `Today still has no recorded Level A activity for: ${items.map((item) => item.label).join(", ")}.`,
       "These are not ordinary tasks. They are the foundation habits Jane already chose for her future self.",
+      "Use the Be-Do-Have frame: reconnect her to who she is becoming first, then suggest the smallest action that identity can take today.",
+      "Identity mapping: Sport -> healthy, fit, physically autonomous future self; Englisch -> future studies and international literature reader; Deutsch -> professional communicator, teacher, academic worker in Germany.",
       ...items.map((item) => `${item.label}: ${item.meaning || "她已经选择的长期成长方向"}.`),
       ...(supportStrategies.length
         ? [

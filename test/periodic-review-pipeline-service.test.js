@@ -49,6 +49,8 @@ test("weekly review queues on Sunday evening", async () => {
   assert.equal(result.actions[0].action, "queued");
   assert.match(queued[0].text, /WEEKLY REVIEW PIPELINE week=2026-W24/);
   assert.match(queued[0].text, /每周复盘/);
+  assert.match(queued[0].text, /Identity Ledger \/ Be-Do-Have/);
+  assert.match(queued[0].text, /健康体能、语言能力、护理科学\/教学科研、舞蹈表达/);
 });
 
 test("weekly review stays quiet before Sunday evening and on other days", async () => {
@@ -77,7 +79,10 @@ test("monthly review targets the previous month on the 1st", async () => {
   const monthly = result.actions.find((action) => action.kind === "monthly");
   assert.equal(monthly.action, "queued");
   assert.equal(monthly.runKey, "monthly:2026-06");
-  assert.match(queued.find((m) => m.id.startsWith("monthly")).text, /month=2026-06/);
+  const monthlyText = queued.find((m) => m.id.startsWith("monthly")).text;
+  assert.match(monthlyText, /month=2026-06/);
+  assert.match(monthlyText, /身份体检 \/ Be-Do-Have/);
+  assert.match(monthlyText, /护理科学家\/教授\/教师\/ANP\/研究者/);
 });
 
 test("monthly review does not run mid-month", async () => {
