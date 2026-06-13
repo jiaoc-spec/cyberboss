@@ -79,6 +79,8 @@ test("pipeline queues a review request with the output contract", async () => {
   assert.match(queued[0].text, /DAILY REVIEW PIPELINE date=2026-06-05/);
   assert.match(queued[0].text, /## 每日复盘/);
   assert.match(queued[0].text, /nextObservation/);
+  assert.match(queued[0].text, /Be-Do-Have \/ Identity Ledger/);
+  assert.match(queued[0].text, /健康、有体能、身体自主的人/);
 });
 
 test("pipeline retries with delay and gives up after max attempts", async () => {

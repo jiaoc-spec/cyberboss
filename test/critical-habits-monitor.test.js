@@ -196,12 +196,28 @@ test("level A midday rhythm check fires before the evening guardian without cons
   const evening = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T20:04:00+02:00"));
 
   assert.equal(midday.queued.length, 1);
+  assert.match(midday.queued[0].text, /未来自己的地基/);
   assert.equal(evening.queued.length, 1);
   assert.equal(sent.length, 2);
   assert.match(sent[0].text, /不催你/);
   assert.match(sent[0].text, /不是要你立刻把全部做完/);
   assert.match(sent[1].text, /今天最重要的地基/);
   assert.equal(patternCalls.length, 1, "midday soft check must not count as failure evidence");
+});
+
+test("queued level A fallback includes identity-ledger instructions", () => {
+  const { monitor, queued } = createMonitor();
+
+  monitor.enqueueLevelAMessage({
+    account: { accountId: "account-1" },
+    target: { senderId: "chat-1", workspaceRoot: "/workspace" },
+    missing: [{ item: DEFAULT_LEVEL_A[0], key: "A:2026-06-05:sport" }],
+    now: new Date("2026-06-05T20:04:00+02:00"),
+  });
+
+  assert.equal(queued.length, 1);
+  assert.match(queued[0].text, /Be-Do-Have frame/);
+  assert.match(queued[0].text, /Identity mapping/);
 });
 
 test("level A midday rhythm check respects the wake-up grace window", async () => {

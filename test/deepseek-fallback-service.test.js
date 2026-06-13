@@ -94,6 +94,9 @@ test("deepseek daily mode includes recent conversation and local priority contex
   assert.match(body.messages[0].content, /Praxisanleiterin/);
   assert.match(body.messages[0].content, /advanced nursing practitioner/);
   assert.match(body.messages[0].content, /Max-Planck-Institut/);
+  assert.match(body.messages[0].content, /Be-Do-Have frame/);
+  assert.match(body.messages[0].content, /Identity Ledger/);
+  assert.match(body.messages[0].content, /dancer identity/);
   assert.match(body.messages[0].content, /She is not lacking goals/);
   assert.match(body.messages[0].content, /close old friend/);
   assert.match(body.messages[0].content, /realistic romantic CyberBoss tone/);
