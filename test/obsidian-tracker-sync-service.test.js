@@ -90,3 +90,34 @@ test("tracker extraction records requested body and care habits", () => {
   assert.equal(entries["美容灯"], true);
   assert.equal(entries["Nursing Digest"], true);
 });
+
+test("tracker extraction prefers structured tracker completed lists over review prose", () => {
+  const entries = extractTrackerEntries(`
+## Growth Log
+
+- 英语发音完成了 25 分钟练习。
+
+### Open loops
+- Sport：当天没有形成完成记录。
+- 德语语法：当天没有形成完成记录。
+
+## 时间轴数据
+
+\`\`\`json
+{
+  "date": "2026-06-12",
+  "tracker": {
+    "completed": ["英语发音", "德语影子跟读", "武当1+2", "足弓"],
+    "not_completed": ["Sport", "德语语法"]
+  }
+}
+\`\`\`
+`);
+
+  assert.equal(entries.Sport, null);
+  assert.equal(entries["英语发音"], true);
+  assert.equal(entries["德语影子跟读"], true);
+  assert.equal(entries["武当1+2"], true);
+  assert.equal(entries["足弓"], true);
+  assert.equal(entries["德语语法"], null);
+});
