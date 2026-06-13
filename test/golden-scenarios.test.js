@@ -173,3 +173,20 @@ test("scenario 7: day strategy triggers are mandatory assistant-layer prompts", 
   assert.match(source, /Day Strategy Assistant/);
   assert.match(source, /day-strategy reminders/);
 });
+
+test("scenario 8: digestion fights collector's fallacy — suggest-first, never auto-hoards", () => {
+  // The real diagnosis: 99 raw Notizen vs 4 concept cards. The digestion
+  // pipeline must propose promotions and only write after Jane picks.
+  const ops = fs.readFileSync(path.join(repoRoot, "templates/weixin-operations.md"), "utf8");
+  assert.match(ops, /Digestion pipeline/);
+  assert.match(ops, /Never promote without her pick/);
+  assert.match(ops, /never delete or rewrite her existing raw notes/);
+  const appSource = fs.readFileSync(path.join(repoRoot, "src/core/app.js"), "utf8");
+  assert.match(appSource, /handleDigestionReply/);
+});
+
+test("scenario 9: active recall is academic-only and question-first", () => {
+  const ops = fs.readFileSync(path.join(repoRoot, "templates/weixin-operations.md"), "utf8");
+  assert.match(ops, /Active recall is academic-only and question-first/);
+  assert.match(ops, /do NOT hand her the answer/);
+});

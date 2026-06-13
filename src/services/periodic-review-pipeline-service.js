@@ -162,7 +162,8 @@ class PeriodicReviewPipelineService {
 2. 学术资产盘点：用 cyberboss_research_query 统计本月论文/想法/写作/课程的积累，写一段"这个月你的学术资产增加了什么"
 3. 月度决策回顾：本月记录和回访的决定，提炼决策模式
 4. 长期目标体检：Level A/B/C 与大学→科研路径的连接是否还活着，哪些方向在自然生长，哪些被遗忘
-5. 下月一个最重要的调整建议（只一个）
+5. 知识卡区维护（lint）：用 cyberboss_obsidian_note_read 看 ${this.config.knowledgeFolder || "01. ⚪ Wissenskarte"}/00. 知识地图.md 和概念卡，找出断链（指向不存在的 [[ ]]）、孤儿卡（没被任何卡或 MOC 链接）、明显重复的概念。只在月复盘里**列出**这些问题供 Jane 决定，不要自动删除或合并任何笔记。
+6. 下月一个最重要的调整建议（只一个）
 
 完成后返回 {"action":"silent"}。`;
   }

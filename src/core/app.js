@@ -40,6 +40,7 @@ const { buildPlaybookTrigger, ANCHOR_LABELS: PLAYBOOK_ANCHOR_LABELS } = require(
 const { PeriodicReviewPipelineService } = require("../services/periodic-review-pipeline-service");
 const { StateBackupService } = require("../services/state-backup-service");
 const { KnowledgeResurfaceService } = require("../services/knowledge-resurface-service");
+const { DigestionService, buildPromotionTrigger } = require("../services/digestion-service");
 const { DecisionReviewMonitor } = require("../services/decision-review-monitor");
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
 const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
@@ -145,6 +146,12 @@ class CyberbossApp {
       systemMessageQueue: this.systemMessageQueue,
     });
     this.stateBackup = new StateBackupService({ config });
+    this.digestion = new DigestionService({
+      config,
+      channelAdapter: this.channelAdapter,
+      sessionStore: this.runtimeAdapter.getSessionStore(),
+      systemMessageQueue: this.systemMessageQueue,
+    });
     this.knowledgeResurface = new KnowledgeResurfaceService({
       config,
       channelAdapter: this.channelAdapter,
@@ -278,6 +285,7 @@ class CyberbossApp {
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
             this.flushKnowledgeResurface(account),
+            this.flushDigestion(account),
             this.flushPlaybookPending(),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
@@ -310,6 +318,7 @@ class CyberbossApp {
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
             this.flushKnowledgeResurface(account),
+            this.flushDigestion(account),
             this.flushPlaybookPending(),
             this.flushDecisionReviewMonitor(account),
             this.flushFailureWatchdog(account),
@@ -562,6 +571,11 @@ class CyberbossApp {
 
     const patternHandled = await this.handlePatternIntercept(normalized);
     if (patternHandled) {
+      return;
+    }
+
+    const digestionHandled = await this.handleDigestionReply(normalized);
+    if (digestionHandled) {
       return;
     }
 
@@ -1662,6 +1676,14 @@ class CyberbossApp {
     }
   }
 
+  async flushDigestion(account) {
+    try {
+      await this.digestion?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] digestion failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
   async flushKnowledgeResurface(account) {
     try {
       await this.knowledgeResurface?.check(account);
@@ -1774,6 +1796,47 @@ class CyberbossApp {
       }
     } catch (error) {
       console.error(`[cyberboss] playbook pending flush failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  // Jane's reply to a pending weekly digestion offer ("1 3" / 全部 / 跳过) is
+  // consumed at the bridge and turned into a focused promotion trigger, so the
+  // digits never reach the model as an out-of-context message.
+  async handleDigestionReply(normalized) {
+    try {
+      const digestion = this.digestion;
+      if (!digestion || !normalized?.senderId) {
+        return false;
+      }
+      const text = normalizeText(normalized.text);
+      if (!text || (Array.isArray(normalized.attachments) && normalized.attachments.length)) {
+        return false;
+      }
+      const result = digestion.handleReply(text, parseDateOrNow(normalized.receivedAt));
+      if (!result) {
+        return false;
+      }
+      if (result.action === "skip") {
+        await this.channelAdapter.sendText({
+          userId: normalized.senderId,
+          text: "好，这周先不升级，下周再说。",
+          contextToken: normalized.contextToken || normalized.senderId,
+        });
+        return true;
+      }
+      this.systemMessageQueue.enqueue({
+        id: `digestion-promote:${crypto.randomUUID()}`,
+        accountId: this.activeAccountId,
+        senderId: result.senderId || normalized.senderId,
+        workspaceRoot: result.workspaceRoot || normalizeText(this.config.workspaceRoot),
+        text: buildPromotionTrigger(result.chosen, this.config),
+        createdAt: new Date().toISOString(),
+      });
+      console.log(`[cyberboss] digestion promotion queued count=${result.chosen.length}`);
+      return true;
+    } catch (error) {
+      console.error(`[cyberboss] digestion reply failed: ${formatErrorMessage(error)}`);
+      return false;
     }
   }
 

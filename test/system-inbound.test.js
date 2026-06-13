@@ -315,6 +315,7 @@ test("image-only inbound turns enter the dedicated debounce queue", async () => 
     async handleWinsLedgerIntercept() { return false; },
     async handlePatternIntercept() { return false; },
     async handlePlaybookQuickStart() { return false; },
+    async handleDigestionReply() { return false; },
     async rollOverDailyThreadIfNeeded() { return false; },
     modelRouter: { decide() { return { mode: "primary" }; } },
     runtimeAdapter: {
