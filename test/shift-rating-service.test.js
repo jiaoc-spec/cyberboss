@@ -122,6 +122,74 @@ test("shift rating stores numeric score and fatigue band", async () => {
   assert.equal(read.fatigueBand, "high");
 });
 
+test("bare digit after a shift-rating prompt is captured and consumed", async () => {
+  const sent = [];
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-shift-rating-"));
+  const stateFile = path.join(tmpDir, "state.json");
+  const service = new ShiftRatingService({
+    config: {
+      timeZone: "Europe/Berlin",
+      shiftRatingStateFile: stateFile,
+    },
+    channelAdapter: {
+      async sendText(payload) {
+        sent.push(payload);
+      },
+    },
+  });
+
+  await service.observeIncoming({
+    text: "下班啦",
+    receivedAt: "2026-06-06T17:32:00+02:00",
+    senderId: "jane",
+    contextToken: "ctx",
+    provider: "telegram",
+  });
+  const answer = await service.observeIncoming({
+    text: "3",
+    receivedAt: "2026-06-06T17:41:00+02:00",
+    senderId: "jane",
+    contextToken: "ctx",
+    provider: "telegram",
+  });
+
+  assert.equal(answer.handled, true);
+  assert.equal(answer.answered, true);
+  const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  assert.equal(state.lastPromptBySender["telegram:jane"].score, 3);
+  assert.equal(state.lastPromptBySender["telegram:jane"].fatigueBand, "low");
+  assert.match(sent.at(-1).text, /疲惫感 3\/10/);
+});
+
+test("bare digit without a pending shift-rating prompt is not captured", async () => {
+  const sent = [];
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-shift-rating-"));
+  const stateFile = path.join(tmpDir, "state.json");
+  const service = new ShiftRatingService({
+    config: {
+      timeZone: "Europe/Berlin",
+      shiftRatingStateFile: stateFile,
+    },
+    channelAdapter: {
+      async sendText(payload) {
+        sent.push(payload);
+      },
+    },
+  });
+
+  const result = await service.observeIncoming({
+    text: "3",
+    receivedAt: "2026-06-06T17:41:00+02:00",
+    senderId: "jane",
+    contextToken: "ctx",
+    provider: "telegram",
+  });
+
+  assert.equal(result.handled, false);
+  assert.equal(fs.existsSync(stateFile), false);
+  assert.equal(sent.length, 0);
+});
+
 test("fatigue score helpers classify configured thresholds", () => {
   assert.equal(parseFatigueScore("6分吧，没睡好"), 6);
   assert.equal(parseFatigueScore("8/10"), 8);

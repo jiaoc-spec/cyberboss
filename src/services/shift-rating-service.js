@@ -25,11 +25,25 @@ class ShiftRatingService {
     const date = formatDate(now, this.timeZone());
     const state = this.loadState();
     const senderKey = `${normalizeText(normalized.provider) || "channel"}:${normalizeText(normalized.senderId)}`;
+    const pendingPrompt = hasUnansweredPrompt(state, senderKey);
+
+    if (pendingPrompt && looksLikePendingScoreAnswer(text)) {
+      markAnswered(state, senderKey, date, text, now);
+      this.saveState(state);
+      const latest = state.lastPromptBySender?.[senderKey] || {};
+      const scoreText = Number.isFinite(Number(latest.score)) ? `${latest.score}/10` : "unknown";
+      await this.channelAdapter.sendText({
+        userId: normalized.senderId,
+        contextToken: normalized.contextToken,
+        text: `好，疲惫感 ${scoreText}，我记下来了。先按这个体感来照顾今晚，不把它放大成别的意思。`,
+      });
+      return { handled: true, answered: true };
+    }
 
     if (looksLikeScore(text)) {
       markAnswered(state, senderKey, date, text, now);
       this.saveState(state);
-      return { handled: false };
+      return { handled: Boolean(pendingPrompt), answered: Boolean(pendingPrompt) };
     }
 
     if (!looksLikeShiftEnded(text)) {
@@ -107,6 +121,16 @@ function looksLikeFutureShiftPlan(text) {
 
 function looksLikeScore(text) {
   return SCORE_PATTERN.test(normalizeText(text));
+}
+
+function looksLikePendingScoreAnswer(text) {
+  const body = normalizeText(text);
+  return looksLikeScore(body) || /^(?:10|[0-9](?:\.[0-9])?)(?:\s*分)?\s*(?:吧|左右|多|了)?$/i.test(body);
+}
+
+function hasUnansweredPrompt(state, senderKey) {
+  const previous = state?.lastPromptBySender?.[senderKey];
+  return Boolean(previous?.promptedAt && !previous?.answeredAt);
 }
 
 function wasRecentlyPrompted(state, senderKey, now, cooldownMs) {
