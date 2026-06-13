@@ -574,11 +574,6 @@ class CyberbossApp {
       return;
     }
 
-    const digestionHandled = await this.handleDigestionReply(normalized);
-    if (digestionHandled) {
-      return;
-    }
-
     const winsHandled = await this.handleWinsLedgerIntercept(normalized);
     if (winsHandled) {
       return;
@@ -586,6 +581,11 @@ class CyberbossApp {
 
     const playbookHandled = await this.handlePlaybookQuickStart(normalized);
     if (playbookHandled) {
+      return;
+    }
+
+    const digestionHandled = await this.handleDigestionReply(normalized);
+    if (digestionHandled) {
       return;
     }
 

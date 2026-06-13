@@ -183,6 +183,11 @@ test("scenario 8: digestion fights collector's fallacy — suggest-first, never 
   assert.match(ops, /never delete or rewrite her existing raw notes/);
   const appSource = fs.readFileSync(path.join(repoRoot, "src/core/app.js"), "utf8");
   assert.match(appSource, /handleDigestionReply/);
+  const winsIndex = appSource.indexOf("const winsHandled = await this.handleWinsLedgerIntercept");
+  const playbookIndex = appSource.indexOf("const playbookHandled = await this.handlePlaybookQuickStart");
+  const digestionIndex = appSource.indexOf("const digestionHandled = await this.handleDigestionReply");
+  assert.ok(winsIndex >= 0 && winsIndex < digestionIndex, "wins digit replies must win over digestion picks");
+  assert.ok(playbookIndex >= 0 && playbookIndex < digestionIndex, "playbook quick-start digits must win over digestion picks");
 });
 
 test("scenario 9: active recall is academic-only and question-first", () => {

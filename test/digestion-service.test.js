@@ -50,6 +50,7 @@ test("offers a numbered list on Sunday evening, once per week", async () => {
   assert.equal(r1.count, 2);
   assert.match(sent[0], /可以升级成概念卡/);
   assert.match(sent[0], /1\. 2026-06-10 渗液管理与感染预防/);
+  assert.match(sent[0], /升级 1 3/);
 
   service.lastCheckAtMs = 0;
   const r2 = await service.check({ accountId: "a" }, new Date("2026-06-14T22:30:00+02:00"));
@@ -97,7 +98,11 @@ test("handleReply returns null without a pending offer", () => {
 
 test("parseDigestionReply handles digits, 全部, 跳过, junk", () => {
   assert.deepEqual(parseDigestionReply("1 3", 4).indices, [1, 3]);
+  assert.deepEqual(parseDigestionReply("升级 1 3", 4).indices, [1, 3]);
+  assert.deepEqual(parseDigestionReply("知识 2", 4).indices, [2]);
   assert.deepEqual(parseDigestionReply("全部", 3).indices, [1, 2, 3]);
+  assert.deepEqual(parseDigestionReply("全部升级", 3).indices, [1, 2, 3]);
+  assert.deepEqual(parseDigestionReply("升级 全部", 3).indices, [1, 2, 3]);
   assert.equal(parseDigestionReply("跳过", 3).skip, true);
   assert.equal(parseDigestionReply("今天好累啊不想弄这个我去睡了晚安", 3), null);
   assert.equal(parseDigestionReply("9", 3), null);

@@ -206,7 +206,7 @@ function buildOfferMessage(candidates, config = {}) {
     "",
     ...candidates.map((c) => `${c.n}. ${c.title}`),
     "",
-    "回复要升级哪几条（如「1 3」），或回「全部」/「跳过」。不回也行，下周再说。",
+    "回复「升级 1 3」选择要升级的条目，也可以回「全部升级」/「跳过」。只回「1 3」也可以；不回就下周再说。",
   ];
   return lines.join("\n");
 }
@@ -234,12 +234,13 @@ function buildPromotionTrigger(chosen, config = {}) {
 }
 
 function parseDigestionReply(text, count) {
-  const body = String(text || "").trim();
+  let body = String(text || "").trim();
   if (!body || body.length > 40) return null;
+  body = body.replace(/^(升级|知识|消化)\s*/i, "").trim();
   if (/^(跳过|skip|算了|不用|pass)$/i.test(body)) {
     return { skip: true };
   }
-  if (/^(全部|all|都要|全要)$/i.test(body)) {
+  if (/^(全部|全部升级|all|都要|全要)$/i.test(body)) {
     return { indices: Array.from({ length: count }, (_, i) => i + 1) };
   }
   const nums = body.match(/\d+/g);
