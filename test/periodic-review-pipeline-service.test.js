@@ -81,7 +81,7 @@ test("weekly review bridge fallback writes the note after a model-side attempt d
   fs.mkdirSync(dailyDir, { recursive: true });
   fs.mkdirSync(weeklyDir, { recursive: true });
   fs.writeFileSync(path.join(dailyDir, "2026-06-08.md"), "英语发音完成\n运动未完成\n", "utf8");
-  fs.writeFileSync(path.join(dailyDir, "2026-06-09.md"), "德语影子跟读完成\nPython 推进\n", "utf8");
+  fs.writeFileSync(path.join(dailyDir, "2026-06-09.md"), "德语影子跟读完成\nPython 推进\n足弓完成\n", "utf8");
   fs.writeFileSync(path.join(weeklyDir, "2026-W24.md"), "# Weekly Review 2026-W24\n", "utf8");
   fs.writeFileSync(config.periodicReviewPipelineStateFile, JSON.stringify({
     runs: {
@@ -101,6 +101,8 @@ test("weekly review bridge fallback writes the note after a model-side attempt d
   const note = fs.readFileSync(path.join(weeklyDir, "2026-W24.md"), "utf8");
   assert.match(note, /## 每周复盘/);
   assert.match(note, /本周 Big Picture/);
+  assert.match(note, /运动 0 天，英语 1 天，德语 1 天/);
+  assert.match(note, /身体照顾证据：1 天/);
   assert.match(note, /英语 1 天/);
   assert.doesNotMatch(note, /工具断了|没法写入/);
   assert.equal(service.statusFor("weekly:2026-W24").status, "complete");

@@ -173,8 +173,8 @@ class PeriodicReviewPipelineService {
       "",
       "### 本周 Big Picture",
       `- 有 Daily Note 证据的天数：${notes.length}/${dates.length} 天。`,
-      `- Level A / 基础身份证据：运动 ${evidence.health.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天。`,
-      `- 职业与学术成长证据：${evidence.academic.positiveDays} 天；舞蹈 / 身体表达证据：${evidence.dance.positiveDays} 天；恢复与班次线索：${evidence.recovery.mentionDays} 天。`,
+      `- Level A / 基础身份证据：运动 ${evidence.sport.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天。`,
+      `- 身体照顾证据：${evidence.health.positiveDays} 天；职业与学术成长证据：${evidence.academic.positiveDays} 天；舞蹈 / 身体表达证据：${evidence.dance.positiveDays} 天；恢复与班次线索：${evidence.recovery.mentionDays} 天。`,
       "",
       "### 身份主线",
       `- 健康体能的人：${identityLine(evidence.health, "本周有身体照顾的证据", "本周健康体能线索偏少，适合用 10 分钟版本重新回来。")}`,
@@ -218,7 +218,7 @@ class PeriodicReviewPipelineService {
       "",
       "### 月度 Big Picture",
       `- 有 Daily Note 证据的天数：${notes.length}/${dates.length} 天。`,
-      `- 身份证据：健康体能 ${evidence.health.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天，职业 / 学术 ${evidence.academic.positiveDays} 天，舞蹈表达 ${evidence.dance.positiveDays} 天。`,
+      `- 身份证据：运动 ${evidence.sport.positiveDays} 天，身体照顾 ${evidence.health.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天，职业 / 学术 ${evidence.academic.positiveDays} 天，舞蹈表达 ${evidence.dance.positiveDays} 天。`,
       "",
       "### 身份体检 / Be-Do-Have",
       `- 健康体能：${identityLine(evidence.health, "这个身份本月有持续证据", "这个身份本月证据偏少，下月应保留最低版本。")}`,
@@ -496,7 +496,8 @@ function dateInRange(value, start, end) {
 
 function buildEvidenceSummary(notes) {
   return {
-    health: summarizeEvidence(notes, /(运动|sport|健身|有氧操|武当|足弓|力量训练|基本功|美容灯)/i),
+    sport: summarizeEvidence(notes, /(运动|sport|健身|有氧操|武当|力量训练|跑步|workout|training)/i),
+    health: summarizeEvidence(notes, /(运动|sport|健身|有氧操|武当|足弓|力量训练|基本功|美容灯|跑步|workout|training)/i),
     english: summarizeEvidence(notes, /(英语|englisch|english|rachel|发音)/i),
     german: summarizeEvidence(notes, /(德语|deutsch|语法|影子跟读)/i),
     academic: summarizeEvidence(notes, /(praxisanleitung|wundmanagement|python|nursing digest|护理科学|文献|论文|科研|研究|课程|网课)/i),
@@ -596,7 +597,7 @@ function summarizeDecisions(decisions, limit = 3) {
 
 function chooseSmallestEntry(evidence) {
   const candidates = [
-    { score: evidence.health.positiveDays, priority: 1, text: "运动先回到 10 分钟版本，重点是重新出现，不是一次做满。" },
+    { score: evidence.sport.positiveDays, priority: 1, text: "运动先回到 10 分钟版本，重点是重新出现，不是一次做满。" },
     { score: evidence.german.positiveDays, priority: 2, text: "德语先做 5-10 分钟影子跟读或语法小块，保护专业沟通这条线。" },
     { score: evidence.english.positiveDays, priority: 3, text: "英语发音先做 5 分钟，继续保护未来阅读国际文献的基础。" },
     { score: evidence.academic.positiveDays, priority: 4, text: "护理科学 / Praxisanleitung 先保留一个 15 分钟阅读或整理入口。" },
