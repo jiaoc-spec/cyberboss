@@ -61,6 +61,8 @@ class TimelineService {
     locale = "",
     mode = "",
     finalize = false,
+    dropEventIds = [],
+    source = null,
   } = {}) {
     ensureTimelineTimezone(this.config);
     const args = [];
@@ -87,7 +89,17 @@ class TimelineService {
     if (eventsFile) {
       args.push("--events-file", eventsFile);
     } else if (Array.isArray(events)) {
-      args.push("--events-json", JSON.stringify({ events }));
+      const payload = { events };
+      const normalizedDropEventIds = Array.isArray(dropEventIds)
+        ? dropEventIds.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
+      if (normalizedDropEventIds.length) {
+        payload.dropEventIds = normalizedDropEventIds;
+      }
+      if (source && typeof source === "object") {
+        payload.source = source;
+      }
+      args.push("--events-json", JSON.stringify(payload));
     } else if (eventsJson) {
       args.push("--events-json", eventsJson);
     }

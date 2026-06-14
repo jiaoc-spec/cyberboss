@@ -138,6 +138,46 @@ test("timeline service serializes structured events into timeline JSON payload",
   ]);
 });
 
+test("timeline service serializes drop ids and source metadata for merge writes", async () => {
+  const { service, calls } = createService();
+  await service.write({
+    date: "2026-06-14",
+    mode: "merge",
+    dropEventIds: ["3x3-old", "", " cal-phone "],
+    source: { provider: "today-3x3" },
+    events: [
+      {
+        id: "3x3-new",
+        startAt: "2026-06-14T10:00:00+02:00",
+        endAt: "2026-06-14T10:30:00+02:00",
+        title: "刷手机 / 屏幕时间",
+      },
+    ],
+  });
+
+  assert.deepEqual(calls, [
+    {
+      subcommand: "write",
+      args: [
+        "--date", "2026-06-14",
+        "--mode", "merge",
+        "--events-json", JSON.stringify({
+          events: [
+            {
+              id: "3x3-new",
+              startAt: "2026-06-14T10:00:00+02:00",
+              endAt: "2026-06-14T10:30:00+02:00",
+              title: "刷手机 / 屏幕时间",
+            },
+          ],
+          dropEventIds: ["3x3-old", "cal-phone"],
+          source: { provider: "today-3x3" },
+        }),
+      ],
+    },
+  ]);
+});
+
 test("timeline service rejects mixed structured and raw event sources", async () => {
   const { service } = createService();
   await assert.rejects(async () => {

@@ -1,4 +1,7 @@
 const crypto = require("crypto");
+const fs = require("fs");
+
+const { resolveToday3x3DatabasePath } = require("./today3x3-timeline-sync-service");
 
 const MIN_EVENT_MINUTES = 3;
 
@@ -25,7 +28,13 @@ class CalendarTimelineSyncService {
     });
     const events = [];
     let skipped = 0;
+    const today3x3Available = this.config.today3x3TimelineSync !== false
+      && fs.existsSync(resolveToday3x3DatabasePath(this.config));
     for (const item of Array.isArray(readResult?.events) ? readResult.events : []) {
+      if (today3x3Available && isCalendarPhoneEvent(item)) {
+        skipped += 1;
+        continue;
+      }
       const itemEvents = calendarEventToTimelineEvents(item, timeZone);
       if (itemEvents.length) {
         events.push(...itemEvents);
@@ -50,6 +59,14 @@ class CalendarTimelineSyncService {
       skipped,
     };
   }
+}
+
+function isCalendarPhoneEvent(item) {
+  return classifyCalendarEvent([
+    normalizeText(item?.title),
+    normalizeText(item?.calendar),
+    normalizeText(item?.notes),
+  ].join("\n")).tags.includes("phone");
 }
 
 function calendarEventToTimelineEvents(item, timeZone) {

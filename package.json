@@ -27,6 +27,7 @@
     "launch-agent:install": "node ./scripts/install-cyberboss-launch-agent.js",
     "calendar-helper:install": "node ./scripts/install-apple-calendar-helper.js",
     "tracker:sync": "node ./scripts/sync-obsidian-tracker.js",
+    "today3x3:sync": "node ./scripts/today3x3-timeline-sync-once.js",
     "eval:cyberboss": "node ./scripts/run-cyberboss-evals.js",
     "check": "node ./scripts/check-syntax.js"
   },

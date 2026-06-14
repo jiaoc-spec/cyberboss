@@ -279,6 +279,7 @@ class CyberbossApp {
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
+            this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
             this.flushDayStrategyMonitor(account),
             this.flushCriticalHabitsMonitor(account),
@@ -312,6 +313,7 @@ class CyberbossApp {
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
             this.flushPendingCalendarTimelineSync(),
+            this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
             this.flushDayStrategyMonitor(account),
             this.flushCriticalHabitsMonitor(account),
@@ -1578,6 +1580,27 @@ class CyberbossApp {
       }
     } catch (error) {
       console.error(`[cyberboss] calendar timeline sync failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushPendingToday3x3TimelineSync() {
+    if (!this.config.today3x3TimelineSync || !this.projectServices?.today3x3TimelineSync) {
+      return;
+    }
+    const intervalMs = Number(this.config.today3x3TimelineSyncIntervalMs) || 600_000;
+    if (this.lastToday3x3TimelineSyncAtMs && Date.now() - this.lastToday3x3TimelineSyncAtMs < intervalMs) {
+      return;
+    }
+    this.lastToday3x3TimelineSyncAtMs = Date.now();
+    try {
+      const result = await this.projectServices.today3x3TimelineSync.sync();
+      if (result.imported?.length) {
+        console.log(`[cyberboss] today 3x3 timeline sync completed count=${result.imported.length}`);
+      } else if (result.reason && result.reason !== "no_database") {
+        console.log(`[cyberboss] today 3x3 timeline sync skipped reason=${result.reason}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] today 3x3 timeline sync failed: ${formatErrorMessage(error)}`);
     }
   }
 

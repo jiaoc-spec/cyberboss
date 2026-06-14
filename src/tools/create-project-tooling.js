@@ -28,6 +28,7 @@ const { StickerService } = require("../services/sticker-service");
 const { SystemMessageService } = require("../services/system-message-service");
 const { TimelineAutoCaptureService } = require("../services/timeline-auto-capture-service");
 const { TimelineService } = require("../services/timeline-service");
+const { Today3x3TimelineSyncService } = require("../services/today3x3-timeline-sync-service");
 const { RuntimeContextStore } = require("./runtime-context-store");
 const { ProjectToolHost } = require("./tool-host");
 const { WhereaboutsService } = require("whereabouts-mcp");
@@ -101,6 +102,7 @@ function createProjectTooling(config, options = {}) {
     sticker: new StickerService({ config, channelAdapter, sessionStore, channelFileService: channelFile }),
     timeline,
     timelineAutoCapture: new TimelineAutoCaptureService({ config, timeline }),
+    today3x3TimelineSync: new Today3x3TimelineSyncService({ config, timeline }),
     whereabouts: new WhereaboutsService({
       config: {
         storeFile: config.locationStoreFile,
