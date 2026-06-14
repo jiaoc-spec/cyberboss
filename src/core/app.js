@@ -45,6 +45,7 @@ const { DecisionReviewMonitor } = require("../services/decision-review-monitor")
 const { FailureWatchdogService } = require("../services/failure-watchdog-service");
 const { FOCUS_REMINDER_PREFIX } = require("../services/focus-protection-service");
 const { ModelRouterService } = require("../services/model-router-service");
+const { AssistantCommandCenter, ContextEngineService } = require("../services/context-engine-service");
 const { isWakeUpMessage } = require("../services/timeline-auto-capture-service");
 const {
   matchesCommandPrefix,
@@ -169,6 +170,8 @@ class CyberbossApp {
     this.turnGateStore = new TurnGateStore();
     this.deepseekFallback = new DeepSeekFallbackService({ config });
     this.modelRouter = new ModelRouterService({ config });
+    this.contextEngine = new ContextEngineService({ config, services: this.projectServices });
+    this.commandCenter = new AssistantCommandCenter({ config });
     this.deepseekConversationBySender = new Map();
     this.fallbackContextByRunKey = new Map();
     this.pendingInboundByScope = new Map();
@@ -545,11 +548,20 @@ class CyberbossApp {
     if (typeof this.observeIncomingCurrentState === "function") {
       this.observeIncomingCurrentState(normalized);
     }
+    const commandContext = typeof this.buildAssistantCommandContext === "function"
+      ? await this.buildAssistantCommandContext(normalized)
+      : { context: null, decision: null };
     if (typeof this.observeIncomingFocusProtection === "function") {
       const handled = await this.observeIncomingFocusProtection(normalized);
       if (handled) {
         return;
       }
+    }
+    const pendingReplyHandled = typeof this.handleCommandCenterPendingReply === "function"
+      ? await this.handleCommandCenterPendingReply(normalized, commandContext)
+      : false;
+    if (pendingReplyHandled) {
+      return;
     }
     if (typeof this.observeIncomingShiftRating === "function") {
       const handled = await this.observeIncomingShiftRating(normalized);
@@ -597,18 +609,22 @@ class CyberbossApp {
     }
 
     if (!this.isTurnDispatchBlocked(bindingKey, workspaceRoot)) {
-      const routing = this.modelRouter.decide({
-        text: prepared.originalText || prepared.text,
-        senderId: prepared.senderId,
-        provider: prepared.provider,
-        attachments: prepared.attachments,
-        attachmentFailures: prepared.attachmentFailures,
-      });
-      if (routing.mode === "deepseek") {
-        const sent = await this.dispatchDeepSeekDailyReply({ prepared, routing });
-        if (sent) {
-          return;
+      if (!commandContext?.decision?.requiresCodex) {
+        const routing = this.modelRouter.decide({
+          text: prepared.originalText || prepared.text,
+          senderId: prepared.senderId,
+          provider: prepared.provider,
+          attachments: prepared.attachments,
+          attachmentFailures: prepared.attachmentFailures,
+        });
+        if (routing.mode === "deepseek") {
+          const sent = await this.dispatchDeepSeekDailyReply({ prepared, routing });
+          if (sent) {
+            return;
+          }
         }
+      } else {
+        console.log(`[cyberboss] command center kept turn on codex reasons=${commandContext.decision.riskReasons.join(",")}`);
       }
     }
 
@@ -871,6 +887,7 @@ class CyberbossApp {
       this.decisionJournalState.setPending(senderId, {
         text: userText,
         date: new Date().toISOString().slice(0, 10),
+        promptedAt: parseDateOrNow(normalized.receivedAt).toISOString(),
       });
     }
 
@@ -984,6 +1001,7 @@ class CyberbossApp {
             task: win.task,
             domain: win.domain,
             date,
+            promptedAt: parseDateOrNow(normalized.receivedAt).toISOString(),
           });
           this.winsLedgerState.markAsked(senderId, win.task, date);
         }
@@ -1015,6 +1033,10 @@ class CyberbossApp {
       : "";
     if (temporalContext) {
       text = `${text}\n\n---\nTemporal context for this reply:\n${temporalContext}`;
+    }
+    const commandGuardLines = this.commandCenter?.buildRuntimeGuardLines?.(prepared.__contextEngine) || [];
+    if (commandGuardLines.length) {
+      text = `${text}\n\n---\nAssistant Command Center guardrails for this reply:\n${commandGuardLines.join("\n")}`;
     }
     const originalText = String(prepared?.originalText || prepared?.text || "").trim();
     if (detectDecisionTrigger(originalText)) {
@@ -1942,6 +1964,52 @@ class CyberbossApp {
       console.error(`[cyberboss] missing context observation failed: ${formatErrorMessage(error)}`);
     }
     return false;
+  }
+
+  async buildAssistantCommandContext(normalized) {
+    try {
+      const context = await this.contextEngine?.analyzeIncoming?.({
+        normalized,
+        decisionJournalState: this.decisionJournalState,
+        winsLedgerState: this.winsLedgerState,
+        playbook: this.projectServices?.playbook,
+      });
+      const decision = this.commandCenter?.decideIncoming?.(context) || {};
+      normalized.__contextEngine = context || null;
+      normalized.__commandCenter = decision || null;
+      return { context, decision };
+    } catch (error) {
+      console.error(`[cyberboss] context engine failed: ${formatErrorMessage(error)}`);
+      return { context: null, decision: null };
+    }
+  }
+
+  async handleCommandCenterPendingReply(normalized, commandContext) {
+    const target = normalizeText(commandContext?.decision?.pendingReplyTarget);
+    if (!target) {
+      return false;
+    }
+    const routed = {
+      ...normalized,
+      text: normalizeText(commandContext?.context?.answerText) || normalized.text,
+    };
+    console.log(`[cyberboss] command center pending reply target=${target}`);
+    switch (target) {
+      case "shift_rating":
+        return this.observeIncomingShiftRating(routed);
+      case "missing_context":
+        return this.observeIncomingMissingContext(routed);
+      case "wins_ledger":
+        return this.handleWinsLedgerIntercept(routed);
+      case "decision_journal":
+        return this.handleDecisionJournalIntercept(routed);
+      case "playbook_quick_start":
+        return this.handlePlaybookQuickStart(routed);
+      case "digestion":
+        return this.handleDigestionReply(routed);
+      default:
+        return false;
+    }
   }
 
   resolveReminderWorkspaceRoot(reminder) {

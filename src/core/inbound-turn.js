@@ -32,6 +32,8 @@ function buildMergedInboundPrepared({
   const attachments = queued.flatMap((message) => Array.isArray(message.attachments) ? message.attachments : []);
   const attachmentFailures = queued.flatMap((message) => Array.isArray(message.attachmentFailures) ? message.attachmentFailures : []);
   const originalText = originalTexts.join("\n\n");
+  const replyTo = trailingPrepared?.replyTo || latest.replyTo || null;
+  const replyToText = normalizeText(trailingPrepared?.replyToText || latest.replyToText || replyTo?.text);
 
   return {
     bindingKey,
@@ -39,6 +41,8 @@ function buildMergedInboundPrepared({
     ...latest,
     originalText,
     text: originalText,
+    replyTo,
+    replyToText,
     attachments,
     attachmentFailures,
   };
@@ -56,6 +60,15 @@ function assembleRuntimeTurnText({ prepared, config = {}, visionContext = {} }) 
 
   if (localTime) {
     lines.push(`[${localTime}]`);
+  }
+  const replyToText = normalizeText(prepared?.replyToText || prepared?.replyTo?.text);
+  if (replyToText) {
+    if (lines.length) {
+      lines.push("");
+    }
+    lines.push("Reply context from the previous Telegram/WeChat message:");
+    lines.push(replyToText);
+    lines.push("Use this only to understand what the user's current reply refers to.");
   }
   if (originalText) {
     if (lines.length) {
@@ -162,6 +175,10 @@ function clonePreparedInboundMessage(prepared) {
     provider: prepared.provider,
     originalText: prepared.originalText,
     text: prepared.text,
+    replyTo: prepared.replyTo || null,
+    replyToText: prepared.replyToText || "",
+    __contextEngine: prepared.__contextEngine || null,
+    __commandCenter: prepared.__commandCenter || null,
     attachments: Array.isArray(prepared.attachments) ? prepared.attachments : [],
     attachmentFailures: Array.isArray(prepared.attachmentFailures) ? prepared.attachmentFailures : [],
     receivedAt: prepared.receivedAt,

@@ -181,6 +181,7 @@ function normalizeTelegramIncoming(update, config, accountId) {
     return null;
   }
   const text = normalizeText(message.text || message.caption);
+  const replyTo = normalizeTelegramReplyTo(message.reply_to_message);
   const attachments = Array.isArray(update.__cyberbossAttachments) ? update.__cyberbossAttachments : [];
   if (!text && !attachments.length) {
     return null;
@@ -194,9 +195,26 @@ function normalizeTelegramIncoming(update, config, accountId) {
     messageId: normalizeText(message.message_id),
     threadKey: chatId,
     text,
+    replyTo,
+    replyToText: replyTo?.text || "",
     attachments,
     contextToken: chatId,
     receivedAt: message.date ? new Date(Number(message.date) * 1000).toISOString() : new Date().toISOString(),
+  };
+}
+
+function normalizeTelegramReplyTo(message) {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const text = normalizeText(message.text || message.caption);
+  if (!text) {
+    return null;
+  }
+  return {
+    messageId: normalizeText(message.message_id),
+    text,
+    fromBot: Boolean(message.from?.is_bot),
   };
 }
 
@@ -435,4 +453,4 @@ function normalizeText(value) {
   return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
 }
 
-module.exports = { createTelegramChannelAdapter };
+module.exports = { createTelegramChannelAdapter, normalizeTelegramIncoming };

@@ -3,8 +3,8 @@ class WinsLedgerState {
     this._pending = new Map();
   }
 
-  setPending(senderId, { task, domain, date }) {
-    this._pending.set(String(senderId || "").trim(), { task, domain, date });
+  setPending(senderId, { task, domain, date, promptedAt = "" }) {
+    this._pending.set(String(senderId || "").trim(), { task, domain, date, promptedAt });
   }
 
   getPending(senderId) {

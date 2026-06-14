@@ -7,8 +7,8 @@ class DecisionJournalState {
     this._pending = new Map();
   }
 
-  setPending(senderId, { text, date }) {
-    this._pending.set(String(senderId || "").trim(), { text, date });
+  setPending(senderId, { text, date, promptedAt = "" }) {
+    this._pending.set(String(senderId || "").trim(), { text, date, promptedAt });
   }
 
   getPending(senderId) {
