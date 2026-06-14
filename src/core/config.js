@@ -97,6 +97,7 @@ function readConfig() {
     periodicReviewPipelineStateFile: readTextEnv("CYBERBOSS_PERIODIC_REVIEW_PIPELINE_STATE_FILE") || path.join(stateDir, "periodic-review-pipeline-state.json"),
     periodicReviewPipelineMaxAttempts: readIntEnv("CYBERBOSS_PERIODIC_REVIEW_PIPELINE_MAX_ATTEMPTS") || 3,
     periodicReviewPipelineRetryDelayMs: readIntEnv("CYBERBOSS_PERIODIC_REVIEW_PIPELINE_RETRY_DELAY_MS") || 60 * 60_000,
+    periodicReviewBridgeFallbackEnabled: readOptionalBoolEnv("CYBERBOSS_PERIODIC_REVIEW_BRIDGE_FALLBACK_ENABLED") !== false,
     obsidianWeeklyFolder: readTextEnv("CYBERBOSS_OBSIDIAN_WEEKLY_FOLDER") || "03. 🔵 Tagebuch/02. 周记",
     obsidianMonthlyFolder: readTextEnv("CYBERBOSS_OBSIDIAN_MONTHLY_FOLDER") || "03. 🔵 Tagebuch/03. 月记",
     knowledgeFolder: readTextEnv("CYBERBOSS_KNOWLEDGE_FOLDER") || "01. ⚪ Wissenskarte",

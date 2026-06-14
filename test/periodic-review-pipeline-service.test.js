@@ -49,6 +49,7 @@ test("weekly review queues on Sunday evening", async () => {
   assert.equal(result.actions[0].action, "queued");
   assert.match(queued[0].text, /WEEKLY REVIEW PIPELINE week=2026-W24/);
   assert.match(queued[0].text, /每周复盘/);
+  assert.match(queued[0].text, /不要给 Jane 发送“工具断了/);
   assert.match(queued[0].text, /Identity Ledger \/ Be-Do-Have/);
   assert.match(queued[0].text, /健康体能、语言能力、护理科学\/教学科研、舞蹈表达/);
 });
@@ -71,6 +72,39 @@ test("weekly review completes when the marker exists", async () => {
   assert.equal(result.actions[0].action, "complete");
   assert.equal(queued.length, 0);
   assert.equal(service.statusFor("weekly:2026-W24").status, "complete");
+});
+
+test("weekly review bridge fallback writes the note after a model-side attempt did not complete", async () => {
+  const { dir, queued, service, config } = makeFixture();
+  const dailyDir = path.join(dir, "vault", "日记");
+  const weeklyDir = path.join(dir, "vault", "周记");
+  fs.mkdirSync(dailyDir, { recursive: true });
+  fs.mkdirSync(weeklyDir, { recursive: true });
+  fs.writeFileSync(path.join(dailyDir, "2026-06-08.md"), "英语发音完成\n运动未完成\n", "utf8");
+  fs.writeFileSync(path.join(dailyDir, "2026-06-09.md"), "德语影子跟读完成\nPython 推进\n", "utf8");
+  fs.writeFileSync(path.join(weeklyDir, "2026-W24.md"), "# Weekly Review 2026-W24\n", "utf8");
+  fs.writeFileSync(config.periodicReviewPipelineStateFile, JSON.stringify({
+    runs: {
+      "weekly:2026-W24": {
+        attempts: 1,
+        status: "pending",
+        lastAttemptAt: "2026-06-14T18:16:04.828Z",
+      },
+    },
+  }), "utf8");
+
+  const result = await service.check({ accountId: "a" }, new Date("2026-06-14T20:45:00+02:00"));
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.actions[0].action, "bridge_fallback");
+  assert.equal(queued.length, 0);
+
+  const note = fs.readFileSync(path.join(weeklyDir, "2026-W24.md"), "utf8");
+  assert.match(note, /## 每周复盘/);
+  assert.match(note, /本周 Big Picture/);
+  assert.match(note, /英语 1 天/);
+  assert.doesNotMatch(note, /工具断了|没法写入/);
+  assert.equal(service.statusFor("weekly:2026-W24").status, "complete");
+  assert.equal(service.statusFor("weekly:2026-W24").completedBy, "bridge_fallback");
 });
 
 test("monthly review targets the previous month on the 1st", async () => {

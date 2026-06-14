@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
+const { ObsidianNoteService } = require("./obsidian-note-service");
 
 const WEEKLY_MARKER = "## 每周复盘";
 const MONTHLY_MARKER = "## 每月复盘";
@@ -18,6 +19,7 @@ class PeriodicReviewPipelineService {
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.stateFile = this.config.periodicReviewPipelineStateFile;
+    this.obsidianNote = new ObsidianNoteService({ config: this.config });
     this.lastCheckAtMs = 0;
   }
 
@@ -39,10 +41,13 @@ class PeriodicReviewPipelineService {
       && local.weekday === 7
       && local.hour >= (this.config.weeklyReviewPipelineHour ?? 20)) {
       const weekKey = isoWeekKey(local.date);
+      const relativePath = path.join(this.config.obsidianWeeklyFolder || "", `${weekKey}.md`);
       actions.push(await this.runCadence(account, now, {
         kind: "weekly",
         runKey: `weekly:${weekKey}`,
-        targetFile: path.join(this.resolveVaultDir(), this.config.obsidianWeeklyFolder || "", `${weekKey}.md`),
+        periodKey: weekKey,
+        relativePath,
+        targetFile: path.join(this.resolveVaultDir(), relativePath),
         marker: WEEKLY_MARKER,
         prompt: this.buildWeeklyPrompt(weekKey, local.date),
       }));
@@ -52,10 +57,13 @@ class PeriodicReviewPipelineService {
       && local.day <= 3
       && local.hour >= (this.config.monthlyReviewPipelineHour ?? 9)) {
       const previousMonth = previousMonthKey(local.date);
+      const relativePath = path.join(this.config.obsidianMonthlyFolder || "", `${previousMonth}.md`);
       actions.push(await this.runCadence(account, now, {
         kind: "monthly",
         runKey: `monthly:${previousMonth}`,
-        targetFile: path.join(this.resolveVaultDir(), this.config.obsidianMonthlyFolder || "", `${previousMonth}.md`),
+        periodKey: previousMonth,
+        relativePath,
+        targetFile: path.join(this.resolveVaultDir(), relativePath),
         marker: MONTHLY_MARKER,
         prompt: this.buildMonthlyPrompt(previousMonth),
       }));
@@ -64,7 +72,7 @@ class PeriodicReviewPipelineService {
     return { actions: actions.filter(Boolean) };
   }
 
-  async runCadence(account, now, { kind, runKey, targetFile, marker, prompt }) {
+  async runCadence(account, now, { kind, runKey, periodKey, relativePath, targetFile, marker, prompt }) {
     const state = this.loadState();
     const entry = state.runs[runKey] || { attempts: 0, status: "pending" };
     if (entry.status === "complete" || entry.status === "gave_up") {
@@ -77,6 +85,23 @@ class PeriodicReviewPipelineService {
       this.persist(state, runKey, entry);
       console.log(`[cyberboss] ${kind} review pipeline complete run=${runKey} attempts=${entry.attempts}`);
       return { kind, action: "complete", runKey };
+    }
+
+    if (this.config.periodicReviewBridgeFallbackEnabled !== false && entry.attempts > 0) {
+      try {
+        const fallback = await this.writeBridgeFallback({ kind, periodKey, relativePath, marker, now });
+        if (fallback?.written) {
+          entry.status = "complete";
+          entry.completedAt = now.toISOString();
+          entry.completedBy = "bridge_fallback";
+          entry.bridgeFallbackAt = now.toISOString();
+          this.persist(state, runKey, entry);
+          console.log(`[cyberboss] ${kind} review pipeline bridge fallback complete run=${runKey} file=${fallback.relativePath}`);
+          return { kind, action: "bridge_fallback", runKey, relativePath: fallback.relativePath };
+        }
+      } catch (error) {
+        console.error(`[cyberboss] ${kind} review pipeline bridge fallback failed run=${runKey}: ${error?.stack || error?.message || error}`);
+      }
     }
 
     const maxAttempts = this.config.periodicReviewPipelineMaxAttempts || 3;
@@ -116,12 +141,140 @@ class PeriodicReviewPipelineService {
     return { kind, action: "queued", runKey, attempt: entry.attempts };
   }
 
+  async writeBridgeFallback({ kind, periodKey, relativePath, marker, now }) {
+    const content = kind === "monthly"
+      ? await this.buildMonthlyBridgeReview(periodKey, now)
+      : await this.buildWeeklyBridgeReview(periodKey, now);
+    const result = await this.obsidianNote.write({
+      relativePath,
+      mode: "append",
+      content: `${marker}\n\n${content}`.replace(/\n*$/, "\n"),
+    });
+    return { written: true, relativePath: result.relativePath, filePath: result.filePath };
+  }
+
+  async buildWeeklyBridgeReview(weekKey, now) {
+    const range = isoWeekRange(weekKey);
+    const dates = datesBetween(range.start, range.end);
+    const notes = await this.readDailyNotes(dates);
+    const wins = this.readLedgerItems(this.config.winsLedgerFile, "wins")
+      .filter((item) => dateInRange(item.date, range.start, range.end));
+    const decisions = this.readLedgerItems(this.config.decisionJournalFile, "decisions")
+      .filter((item) => dateInRange(item.date, range.start, range.end) || dateInRange(item.review_date, range.start, range.end));
+    const patterns = this.readLedgerItems(this.config.patternLedgerFile, "patterns");
+    const evidence = buildEvidenceSummary(notes);
+    const patternLines = summarizePatterns(patterns, range.start, range.end);
+    const winLines = summarizeWins(wins);
+    const decisionLines = summarizeDecisions(decisions);
+    const suggestedEntry = chooseSmallestEntry(evidence);
+
+    return [
+      `数据范围：${range.start} 到 ${range.end}`,
+      "",
+      "### 本周 Big Picture",
+      `- 有 Daily Note 证据的天数：${notes.length}/${dates.length} 天。`,
+      `- Level A / 基础身份证据：运动 ${evidence.health.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天。`,
+      `- 职业与学术成长证据：${evidence.academic.positiveDays} 天；舞蹈 / 身体表达证据：${evidence.dance.positiveDays} 天；恢复与班次线索：${evidence.recovery.mentionDays} 天。`,
+      "",
+      "### 身份主线",
+      `- 健康体能的人：${identityLine(evidence.health, "本周有身体照顾的证据", "本周健康体能线索偏少，适合用 10 分钟版本重新回来。")}`,
+      `- 语言能力优秀的人：英语 ${identityLine(evidence.english, "有发音 / 英语投入证据", "英语证据偏少，先从 5 分钟发音开始就够。")} 德语 ${identityLine(evidence.german, "有语法 / 影子跟读证据", "德语证据偏少，先从 5-10 分钟影子跟读回来。")}`,
+      `- 护理科学 / 教学科研的人：${identityLine(evidence.academic, "有专业学习、课程、文献或项目推进证据", "本周学术线索较少，先保留一个很小的阅读或整理入口。")}`,
+      `- 持续跳舞的人：${identityLine(evidence.dance, "有舞蹈或基本功证据", "舞蹈线索偏少，可以先用一首歌或 10 分钟基本功回来。")}`,
+      "",
+      "### 什么条件下事情会发生",
+      ...winLines,
+      "",
+      "### 观察到的模式",
+      ...patternLines,
+      "",
+      "### 决策与 Open Loops",
+      ...decisionLines,
+      "",
+      "### 下周最小入口",
+      `- ${suggestedEntry}`,
+      "",
+      "说明：这里优先使用 Daily Notes 和本地 ledger 中已经存在的证据；信息不足的地方保持 unknown，不补故事。",
+      `更新于：${formatLocalTimestamp(now, this.config.timeZone || this.config.diaryTimeZone || "UTC")}`,
+    ].join("\n");
+  }
+
+  async buildMonthlyBridgeReview(monthKey, now) {
+    const range = monthRange(monthKey);
+    const dates = datesBetween(range.start, range.end);
+    const notes = await this.readDailyNotes(dates);
+    const wins = this.readLedgerItems(this.config.winsLedgerFile, "wins")
+      .filter((item) => dateInRange(item.date, range.start, range.end));
+    const decisions = this.readLedgerItems(this.config.decisionJournalFile, "decisions")
+      .filter((item) => dateInRange(item.date, range.start, range.end) || dateInRange(item.review_date, range.start, range.end));
+    const patterns = this.readLedgerItems(this.config.patternLedgerFile, "patterns");
+    const evidence = buildEvidenceSummary(notes);
+    const patternLines = summarizePatterns(patterns, range.start, range.end, 5);
+    const winLines = summarizeWins(wins, 5);
+    const decisionLines = summarizeDecisions(decisions, 5);
+
+    return [
+      `数据范围：${range.start} 到 ${range.end}`,
+      "",
+      "### 月度 Big Picture",
+      `- 有 Daily Note 证据的天数：${notes.length}/${dates.length} 天。`,
+      `- 身份证据：健康体能 ${evidence.health.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天，职业 / 学术 ${evidence.academic.positiveDays} 天，舞蹈表达 ${evidence.dance.positiveDays} 天。`,
+      "",
+      "### 身份体检 / Be-Do-Have",
+      `- 健康体能：${identityLine(evidence.health, "这个身份本月有持续证据", "这个身份本月证据偏少，下月应保留最低版本。")}`,
+      `- 语言能力：英语 ${identityLine(evidence.english, "有输入或练习证据", "英语需要一个更小的可重复入口。")} 德语 ${identityLine(evidence.german, "有输入或练习证据", "德语需要一个更小的可重复入口。")}`,
+      `- 护理科学 / 教学科研：${identityLine(evidence.academic, "有专业成长证据", "本月学术资产证据不足，适合安排小规模文献或课程复盘。")}`,
+      `- 舞蹈表达：${identityLine(evidence.dance, "有身体表达证据", "这个身份容易被工作和恢复挤掉，可以先用短练习回来。")}`,
+      "",
+      "### 成功条件",
+      ...winLines,
+      "",
+      "### 长期模式",
+      ...patternLines,
+      "",
+      "### 决策回顾",
+      ...decisionLines,
+      "",
+      "### 下月一个调整",
+      `- 先保护证据最少、但和未来身份最相关的一条主线：${chooseSmallestEntry(evidence)}`,
+      "",
+      "说明：这里优先使用本月 Daily Notes 和本地 ledger 中已经存在的证据；信息不足的地方保持 unknown，不补故事。",
+      `更新于：${formatLocalTimestamp(now, this.config.timeZone || this.config.diaryTimeZone || "UTC")}`,
+    ].join("\n");
+  }
+
+  async readDailyNotes(dates) {
+    const folder = this.config.obsidianDailyFolder || "03. 🔵 Tagebuch/01. 日记";
+    const notes = [];
+    for (const date of dates) {
+      try {
+        const note = await this.obsidianNote.read({ relativePath: path.join(folder, `${date}.md`) });
+        if (note.exists && note.text.trim()) {
+          notes.push({ date, text: note.text });
+        }
+      } catch {
+        // Keep unattended reviews robust: missing or unreadable notes simply mean unknown.
+      }
+    }
+    return notes;
+  }
+
+  readLedgerItems(filePath, key) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      return Array.isArray(parsed?.[key]) ? parsed[key] : [];
+    } catch {
+      return [];
+    }
+  }
+
   buildWeeklyPrompt(weekKey, todayDate) {
     const weeklyFolder = this.config.obsidianWeeklyFolder || "03. 🔵 Tagebuch/02. 周记";
     const dailyFolder = this.config.obsidianDailyFolder || "03. 🔵 Tagebuch/01. 日记";
     return `[WEEKLY REVIEW PIPELINE week=${weekKey}] [COMPLEX_TASK requires_tools=true no_deepseek_fallback=true]
 
 如果你是 DeepSeek fallback 而非主 runtime，请直接回复 {"action":"silent"}。
+如果任何 Obsidian 读写工具不可用或失败，不要给 Jane 发送“工具断了 / 没法写入”之类消息；直接返回 {"action":"silent"}，bridge 会自动重试或兜底写入。
 
 ---
 
@@ -149,6 +302,7 @@ class PeriodicReviewPipelineService {
     return `[MONTHLY REVIEW PIPELINE month=${monthKey}] [COMPLEX_TASK requires_tools=true no_deepseek_fallback=true]
 
 如果你是 DeepSeek fallback 而非主 runtime，请直接回复 {"action":"silent"}。
+如果任何 Obsidian 读写工具不可用或失败，不要给 Jane 发送“工具断了 / 没法写入”之类消息；直接返回 {"action":"silent"}，bridge 会自动重试或兜底写入。
 
 ---
 
@@ -273,6 +427,221 @@ function localDateParts(date, timeZone) {
     hour: Number(parts.hour),
     weekday: ({ Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 })[parts.weekday] || 0,
   };
+}
+
+function isoWeekRange(weekKey) {
+  const match = /^(\d{4})-W(\d{2})$/.exec(String(weekKey || ""));
+  if (!match) {
+    const today = new Date();
+    const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    return { start: toDateText(date), end: toDateText(addDays(date, 6)) };
+  }
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const monday = addDays(jan4, 1 - jan4Day + (week - 1) * 7);
+  return { start: toDateText(monday), end: toDateText(addDays(monday, 6)) };
+}
+
+function monthRange(monthKey) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || ""));
+  if (!match) {
+    const today = new Date();
+    const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+    return { start: toDateText(start), end: toDateText(end) };
+  }
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const start = new Date(Date.UTC(year, monthIndex, 1));
+  const end = new Date(Date.UTC(year, monthIndex + 1, 0));
+  return { start: toDateText(start), end: toDateText(end) };
+}
+
+function datesBetween(startText, endText) {
+  const dates = [];
+  let cursor = parseDateText(startText);
+  const end = parseDateText(endText);
+  while (cursor.getTime() <= end.getTime()) {
+    dates.push(toDateText(cursor));
+    cursor = addDays(cursor, 1);
+  }
+  return dates;
+}
+
+function parseDateText(value) {
+  const text = String(value || "").slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) {
+    return new Date(Date.UTC(1970, 0, 1));
+  }
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+function addDays(date, days) {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function toDateText(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function dateInRange(value, start, end) {
+  const text = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) && text >= start && text <= end;
+}
+
+function buildEvidenceSummary(notes) {
+  return {
+    health: summarizeEvidence(notes, /(运动|sport|健身|有氧操|武当|足弓|力量训练|基本功|美容灯)/i),
+    english: summarizeEvidence(notes, /(英语|englisch|english|rachel|发音)/i),
+    german: summarizeEvidence(notes, /(德语|deutsch|语法|影子跟读)/i),
+    academic: summarizeEvidence(notes, /(praxisanleitung|wundmanagement|python|nursing digest|护理科学|文献|论文|科研|研究|课程|网课)/i),
+    dance: summarizeEvidence(notes, /(舞蹈|跳舞|爵士|成品舞|基本功)/i),
+    recovery: summarizeEvidence(notes, /(睡|睡眠|夜班|早班|晚班|疲惫|能量|休息|恢复|疼痛)/i),
+  };
+}
+
+function summarizeEvidence(notes, regex) {
+  const positiveDates = [];
+  const mentionDates = [];
+  for (const note of notes) {
+    const lines = String(note.text || "").split(/\r?\n/);
+    const mentioned = lines.some((line) => regex.test(line));
+    const positive = lines.some((line) => regex.test(line) && lineHasPositiveEvidence(line));
+    if (mentioned) {
+      mentionDates.push(note.date);
+    }
+    if (positive) {
+      positiveDates.push(note.date);
+    }
+  }
+  return {
+    positiveDays: new Set(positiveDates).size,
+    mentionDays: new Set(mentionDates).size,
+    positiveDates: uniqueSortedDates(positiveDates),
+    mentionDates: uniqueSortedDates(mentionDates),
+  };
+}
+
+function lineHasPositiveEvidence(line) {
+  const text = String(line || "").trim();
+  if (!text) {
+    return false;
+  }
+  if (/(未完成|没做|沒有做|没有做|没有记录|還沒有|还没有|未记录|放弃|延期|取消|缺席|not done|didn't|did not|no record)/i.test(text)) {
+    return false;
+  }
+  return /(\[x\]|✅|完成|已完成|做了|练了|學了|学了|推进|结束|sport|englisch|english|deutsch|python|praxisanleitung|wundmanagement|nursing digest|运动|健身|有氧操|武当|足弓|基本功|成品舞|跳舞|舞蹈|发音|语法|影子跟读|文献|论文|科研|课程|网课|美容灯)/i.test(text);
+}
+
+function identityLine(summary, positiveText, lowText) {
+  if (summary.positiveDays > 0) {
+    const dates = summary.positiveDates.slice(0, 5).join(", ");
+    const more = summary.positiveDates.length > 5 ? "..." : "";
+    return `${positiveText}（${summary.positiveDays} 天：${dates}${more}）。`;
+  }
+  if (summary.mentionDays > 0) {
+    return `有相关线索但完成证据不清楚（${summary.mentionDays} 天），先按 unknown 处理。`;
+  }
+  return lowText;
+}
+
+function summarizeWins(wins, limit = 3) {
+  if (!wins.length) {
+    return ["- Wins Ledger 本期没有新的成功因素记录；哪些条件真正帮到了你仍然是 unknown。"];
+  }
+  const factorCounts = countBy(wins, (win) => normalizeText(win.success_factor) || "unknown");
+  const taskCounts = countBy(wins, (win) => normalizeText(win.task) || "unknown");
+  return [
+    `- 成功因素记录 ${wins.length} 条：${formatCounts(factorCounts, limit)}。`,
+    `- 出现的完成任务：${formatCounts(taskCounts, limit)}。`,
+  ];
+}
+
+function summarizePatterns(patterns, start, end, limit = 3) {
+  const relevant = patterns.filter((pattern) => {
+    if (dateInRange(pattern.lastSeenAt, start, end)) {
+      return true;
+    }
+    return Array.isArray(pattern.evidence)
+      && pattern.evidence.some((item) => dateInRange(item.date, start, end));
+  }).slice(0, limit);
+  if (!relevant.length) {
+    return ["- 本期没有新的 Pattern Ledger 证据；长期模式保持待观察，不做强结论。"];
+  }
+  return relevant.map((pattern) => {
+    const confidence = Number.isFinite(Number(pattern.confidence))
+      ? `confidence ${Number(pattern.confidence).toFixed(2)}`
+      : "confidence unknown";
+    const hypothesis = normalizeText(pattern.hypothesis) || normalizeText(pattern.summary) || "hypothesis unknown";
+    return `- Observation: ${normalizeText(pattern.title) || "未命名模式"}（${normalizeText(pattern.domain) || "unknown"}，${confidence}）。Hypothesis: ${trimForNote(hypothesis)}。`;
+  });
+}
+
+function summarizeDecisions(decisions, limit = 3) {
+  if (!decisions.length) {
+    return ["- 本期没有新的 Decision Journal 条目或到期复查决策。"];
+  }
+  return decisions.slice(0, limit).map((decision) => {
+    const title = normalizeText(decision.decision) || normalizeText(decision.context) || "未命名决定";
+    const reviewDate = normalizeText(decision.review_date) || "unknown";
+    const outcome = normalizeText(decision.later_outcome) ? "已有后续结果" : "等待后续观察";
+    return `- ${trimForNote(title)}；复查日：${reviewDate}；状态：${outcome}。`;
+  });
+}
+
+function chooseSmallestEntry(evidence) {
+  const candidates = [
+    { score: evidence.health.positiveDays, priority: 1, text: "运动先回到 10 分钟版本，重点是重新出现，不是一次做满。" },
+    { score: evidence.german.positiveDays, priority: 2, text: "德语先做 5-10 分钟影子跟读或语法小块，保护专业沟通这条线。" },
+    { score: evidence.english.positiveDays, priority: 3, text: "英语发音先做 5 分钟，继续保护未来阅读国际文献的基础。" },
+    { score: evidence.academic.positiveDays, priority: 4, text: "护理科学 / Praxisanleitung 先保留一个 15 分钟阅读或整理入口。" },
+    { score: evidence.dance.positiveDays, priority: 5, text: "舞蹈先用一首歌或 10 分钟基本功回来，让身体表达不要断太久。" },
+  ];
+  candidates.sort((left, right) => left.score - right.score || left.priority - right.priority);
+  return candidates[0].text;
+}
+
+function countBy(items, keyFn) {
+  const counts = new Map();
+  for (const item of items) {
+    const key = keyFn(item);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+}
+
+function formatCounts(counts, limit) {
+  return counts.slice(0, limit).map(([label, count]) => `${label} ${count}`).join("，") || "unknown";
+}
+
+function trimForNote(value, maxLength = 120) {
+  const text = normalizeText(value).replace(/\s+/g, " ");
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+}
+
+function uniqueSortedDates(dates) {
+  return [...new Set(dates.filter(Boolean))].sort();
+}
+
+function formatLocalTimestamp(date, timeZone) {
+  try {
+    return new Intl.DateTimeFormat("sv-SE", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(date);
+  } catch {
+    return date.toISOString();
+  }
 }
 
 function normalizeText(value) {
