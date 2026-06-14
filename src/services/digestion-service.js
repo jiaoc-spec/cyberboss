@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
+const { ObsidianNoteService } = require("./obsidian-note-service");
 
 const MAX_CANDIDATES = 6;
 const STATE_RETENTION_DAYS = 90;
@@ -20,6 +21,7 @@ class DigestionService {
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.stateFile = this.config.digestionStateFile;
+    this.obsidianNote = new ObsidianNoteService({ config: this.config });
     this.lastCheckAtMs = 0;
   }
 
@@ -130,6 +132,89 @@ class DigestionService {
     };
   }
 
+  // Local bridge fallback: Jane has explicitly chosen the notes. The bridge
+  // should guarantee a durable draft even if the model/tool turn fails later.
+  async promoteLocally(chosen = [], now = new Date()) {
+    const dateText = localParts(now, this.config.timeZone || this.config.diaryTimeZone || "UTC").date;
+    const promoted = [];
+    const failures = [];
+    for (const candidate of chosen) {
+      try {
+        const sourcePath = String(candidate?.path || "");
+        if (!sourcePath || !fs.existsSync(sourcePath)) {
+          throw new Error("source note not found");
+        }
+        const rawText = fs.readFileSync(sourcePath, "utf8");
+        const sourceTitle = normalizeTitle(candidate?.title || path.basename(sourcePath, ".md"));
+        const conceptTitle = normalizeConceptTitle(sourceTitle);
+        const relativePath = this.uniqueConceptRelativePath(conceptTitle);
+        const sourceRelativePath = vaultRelativePath(sourcePath, this.resolveVaultDir());
+        const content = buildLocalConceptContent({
+          conceptTitle,
+          sourceTitle,
+          sourceRelativePath,
+          rawText,
+          dateText,
+        });
+        const written = await this.obsidianNote.write({ relativePath, content, mode: "append" });
+        promoted.push({
+          title: conceptTitle,
+          sourceTitle,
+          relativePath: written.relativePath,
+          filePath: written.filePath,
+          sourceRelativePath,
+        });
+      } catch (error) {
+        failures.push({
+          title: candidate?.title || "",
+          path: candidate?.path || "",
+          error: error?.message || String(error),
+        });
+      }
+    }
+    if (promoted.length) {
+      await this.appendMocLinks(promoted);
+    }
+    return { promoted, failures };
+  }
+
+  uniqueConceptRelativePath(conceptTitle) {
+    const folder = this.config.knowledgeFolder || "01. ⚪ Wissenskarte";
+    const base = safeFileStem(conceptTitle) || "未命名概念";
+    const vault = this.resolveVaultDir();
+    for (let index = 1; index <= 99; index += 1) {
+      const stem = index === 1 ? base : `${base}-${index}`;
+      const relativePath = `${folder}/${stem}.md`;
+      if (!fs.existsSync(path.join(vault, relativePath))) {
+        return relativePath;
+      }
+    }
+    return `${folder}/${base}-${Date.now()}.md`;
+  }
+
+  async appendMocLinks(promoted) {
+    const knowledgeFolder = this.config.knowledgeFolder || "01. ⚪ Wissenskarte";
+    const mocRelativePath = `${knowledgeFolder}/00. 知识地图.md`;
+    const existing = await this.obsidianNote.read({ relativePath: mocRelativePath }).catch(() => ({ exists: false, text: "" }));
+    const lines = [];
+    if (!/##\s*待整理概念卡/.test(existing.text || "")) {
+      lines.push("## 待整理概念卡", "");
+    }
+    for (const item of promoted) {
+      const link = `[[${path.basename(item.relativePath, ".md")}]]`;
+      if (!String(existing.text || "").includes(link)) {
+        lines.push(`- ${link}（source: [[${item.sourceTitle}]])`);
+      }
+    }
+    if (lines.length) {
+      await this.obsidianNote.write({
+        relativePath: mocRelativePath,
+        content: lines.join("\n"),
+        mode: "append",
+      });
+    }
+  }
+
   scanCandidates(todayDate, state) {
     const vault = this.resolveVaultDir();
     const inboxDir = path.join(vault, this.config.knowledgeInboxFolder || "");
@@ -233,6 +318,40 @@ function buildPromotionTrigger(chosen, config = {}) {
   ].join("\n");
 }
 
+function buildLocalConceptContent({ conceptTitle, sourceTitle, sourceRelativePath, rawText, dateText }) {
+  const excerpt = trimForNote(stripFrontmatter(rawText), 1200);
+  return [
+    "---",
+    `created: ${dateText}`,
+    "type: concept",
+    "status: draft",
+    "tags: [self-observation, behavior-design]",
+    `source: ${yamlQuote(sourceTitle)}`,
+    `source_path: ${yamlQuote(sourceRelativePath)}`,
+    "generated_by: cyberboss_digest_bridge_fallback",
+    "---",
+    "",
+    `# ${conceptTitle}`,
+    "",
+    "## 一句话核心",
+    `${conceptTitle} 是一条值得继续观察的个人模式。当前版本先作为概念卡草稿保存，后续可以在周/月复盘中继续打磨。`,
+    "",
+    "## 原始证据",
+    quoteBlock(excerpt || "(原始笔记为空)"),
+    "",
+    "## 观察",
+    "- 这是从原始笔记升级而来的初始观察，先作为证据保存，不直接当作结论。",
+    "- 后续需要结合更多日期、身体状态、习惯完成情况和环境线索再判断它是否稳定。",
+    "",
+    "## 可继续验证",
+    "- 未来几周观察这个模式是否反复出现。",
+    "- 如果它和运动、塑形、学习启动或恢复状态有关，可以在 Weekly / Monthly Review 中升级为更稳定的 Pattern。",
+    "",
+    "## 来源",
+    `- [[${sourceTitle}]]`,
+  ].join("\n");
+}
+
 function parseDigestionReply(text, count) {
   let body = String(text || "").trim();
   if (!body || body.length > 40) return null;
@@ -248,6 +367,56 @@ function parseDigestionReply(text, count) {
   const indices = [...new Set(nums.map(Number).filter((n) => n >= 1 && n <= count))];
   if (!indices.length) return null;
   return { indices };
+}
+
+function normalizeConceptTitle(title) {
+  return normalizeTitle(title)
+    .replace(/^\d{4}-\d{2}-\d{2}\s+/, "")
+    .replace(/^Knowledge Inbox\s*[-_]\s*/i, "")
+    .trim()
+    || "未命名概念";
+}
+
+function normalizeTitle(value) {
+  return String(value || "").trim().replace(/\.md$/i, "");
+}
+
+function safeFileStem(title) {
+  return normalizeConceptTitle(title)
+    .replace(/[\\/:*?"<>|#^[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function vaultRelativePath(filePath, vaultDir) {
+  const relative = path.relative(vaultDir, filePath);
+  return relative && !relative.startsWith("..")
+    ? relative.split(path.sep).join("/")
+    : filePath;
+}
+
+function stripFrontmatter(text) {
+  return String(text || "").replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+}
+
+function trimForNote(text, maxLength) {
+  const normalized = String(text || "").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 3).trim()}...`;
+}
+
+function quoteBlock(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function yamlQuote(value) {
+  return JSON.stringify(String(value || ""));
 }
 
 function listMd(dir) {

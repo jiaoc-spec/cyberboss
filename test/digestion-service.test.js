@@ -81,6 +81,28 @@ test("digit reply maps to chosen files and queues a promotion trigger", async ()
   assert.equal(next.count, 1);
 });
 
+test("local promotion fallback writes concept drafts and updates the MOC", async () => {
+  const { service, vault } = makeFixture();
+  await service.check({ accountId: "a" }, new Date("2026-06-14T21:30:00+02:00"));
+  const result = service.handleReply("全部升级", new Date("2026-06-14T21:40:00+02:00"));
+
+  const fallback = await service.promoteLocally(result.chosen, new Date("2026-06-14T21:41:00+02:00"));
+  assert.equal(fallback.promoted.length, 2);
+  assert.equal(fallback.failures.length, 0);
+  assert.ok(fallback.promoted[0].relativePath.startsWith("01. ⚪ Wissenskarte/"));
+
+  const conceptText = fs.readFileSync(fallback.promoted[0].filePath, "utf8");
+  assert.match(conceptText, /type: concept/);
+  assert.match(conceptText, /status: draft/);
+  assert.match(conceptText, /generated_by: cyberboss_digest_bridge_fallback/);
+  assert.match(conceptText, /## 原始证据/);
+  assert.match(conceptText, /\[\[2026-06-10 渗液管理与感染预防\]\]/);
+
+  const moc = fs.readFileSync(path.join(vault, "01. ⚪ Wissenskarte/00. 知识地图.md"), "utf8");
+  assert.match(moc, /## 待整理概念卡/);
+  assert.match(moc, /\[\[渗液管理与感染预防\]\]/);
+});
+
 test("skip dismisses all candidates and they never come back", async () => {
   const { service } = makeFixture();
   await service.check({ accountId: "a" }, new Date("2026-06-14T21:30:00+02:00"));

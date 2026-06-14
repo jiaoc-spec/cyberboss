@@ -6,6 +6,7 @@
 {"id":"tracker_plan_is_not_completion","kind":"tracker","note":"# 2026-06-12\n\n今天希望可以运动，也希望把德语补上，但目前还没有做。","expect":{"entries":{"Sport":"__absent","德语语法":"__absent","德语影子跟读":"__absent"}}}
 {"id":"periodic_weekly_quiet_on_sunday","kind":"periodic","now":"2026-06-14T21:00:00+02:00","expect":{"actions":0,"queued":0}}
 {"id":"periodic_weekly_runs_after_week_ends","kind":"periodic","now":"2026-06-15T04:30:00+02:00","expect":{"actions":1,"action":"queued","runKey":"weekly:2026-W24","queuedPromptIncludes":"WEEKLY REVIEW PIPELINE week=2026-W24"}}
+{"id":"digestion_all_upgrade_writes_local_draft","kind":"digestion","reply":"全部升级","now":"2026-06-14T21:40:00+02:00","sourceName":"2026-06-12 地毯上的工作位更容易带动身体.md","sourceText":"地毯上的工作位更容易带动身体，坐在地毯上更自然会拉伸、移动和调整姿势。","expect":{"promoted":1,"mocContains":"[[地毯上的工作位更容易带动身体]]"}}
 {"id":"source_guard_backend_leak_patterns","kind":"source_guard","file":"src/core/stream-delivery.js","expect":{"mustContain":["OPERATIONAL_LEAK_PATTERNS","后台|内部|tool|pipeline|数据层|记录层","低脑力整理块"],"mustNotContain":[]}}
 {"id":"reply_on_shift_no_sleep_advice","kind":"reply_quality","input":"我在上夜班，怎么睡觉","expect":{"requiredPatterns":["夜班|上班|值班"],"forbiddenPatterns":["现在.*睡|先睡|马上睡|回去睡|睡一觉"]}}
 {"id":"reply_shift_end_asks_rating","kind":"reply_quality","input":"6:50下班，6:58坐车回家","expect":{"requiredPatterns":["疲惫|疲劳|累","0\\s*(到|-|~)\\s*10|10\\s*分|几分"],"forbiddenPatterns":["我先把|我再看一眼|时间线|timeline|记录层"]}}

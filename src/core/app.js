@@ -1846,6 +1846,25 @@ class CyberbossApp {
         });
         return true;
       }
+      if (this.config.digestionBridgeFallbackEnabled !== false) {
+        const fallback = await digestion.promoteLocally(result.chosen, parseDateOrNow(normalized.receivedAt));
+        if (fallback.promoted.length) {
+          const titles = fallback.promoted.map((item) => `- ${item.title}`).join("\n");
+          const suffix = fallback.failures.length
+            ? `\n\n另外有 ${fallback.failures.length} 条没写成，我会留在日志里，不让它悄悄丢掉。`
+            : "";
+          await this.channelAdapter.sendText({
+            userId: normalized.senderId,
+            text: `升级好了，先落成概念卡草稿：\n\n${titles}\n\n这版先保证进知识卡区，之后周/月复盘还可以继续打磨。${suffix}`,
+            contextToken: normalized.contextToken || normalized.senderId,
+          });
+          console.log(`[cyberboss] digestion bridge fallback wrote count=${fallback.promoted.length}`);
+          return true;
+        }
+        if (fallback.failures.length) {
+          console.error(`[cyberboss] digestion bridge fallback failed: ${JSON.stringify(fallback.failures).slice(0, 500)}`);
+        }
+      }
       this.systemMessageQueue.enqueue({
         id: `digestion-promote:${crypto.randomUUID()}`,
         accountId: this.activeAccountId,

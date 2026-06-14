@@ -11,6 +11,7 @@ const {
 } = require("../src/services/current-state-service");
 const { extractTrackerEntries } = require("../src/services/obsidian-tracker-sync-service");
 const { PeriodicReviewPipelineService } = require("../src/services/periodic-review-pipeline-service");
+const { DigestionService } = require("../src/services/digestion-service");
 
 const ROOT = path.resolve(__dirname, "..");
 const DEFAULT_CASE_FILE = path.join(ROOT, "evals", "cyberboss", "cases.jsonl");
@@ -49,6 +50,8 @@ async function runCase(testCase, context) {
       return runTrackerCase(testCase);
     case "periodic":
       return runPeriodicCase(testCase);
+    case "digestion":
+      return runDigestionCase(testCase);
     case "source_guard":
       return runSourceGuardCase(testCase);
     case "reply_quality":
@@ -98,6 +101,24 @@ function runTrackerCase(testCase) {
     } else {
       assertEqual(entries[name], expectedValue, name);
     }
+  }
+  return { status: "pass" };
+}
+
+async function runDigestionCase(testCase) {
+  const { service, vault } = makeDigestionFixture(testCase);
+  await service.check({ accountId: "eval-account" }, new Date(testCase.offerAt || "2026-06-14T21:30:00+02:00"));
+  const result = service.handleReply(testCase.reply || "全部升级", new Date(testCase.now || "2026-06-14T21:40:00+02:00"));
+  assertEqual(result?.action || "", "promote", "digestion action");
+  const fallback = await service.promoteLocally(result.chosen, new Date(testCase.now || "2026-06-14T21:40:00+02:00"));
+  const expected = testCase.expect || {};
+  if (Object.prototype.hasOwnProperty.call(expected, "promoted")) {
+    assertEqual(fallback.promoted.length, expected.promoted, "promoted.length");
+  }
+  if (expected.mocContains) {
+    const mocPath = path.join(vault, "01. ⚪ Wissenskarte", "00. 知识地图.md");
+    const moc = fs.existsSync(mocPath) ? fs.readFileSync(mocPath, "utf8") : "";
+    assertIncludes(moc, expected.mocContains, "digestion MOC");
   }
   return { status: "pass" };
 }
@@ -154,6 +175,41 @@ function runReplyQualityCase(testCase, { responses }) {
     assertNotRegex(response, pattern, `forbidden ${pattern}`);
   }
   return { status: "pass" };
+}
+
+function makeDigestionFixture(testCase) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-eval-digestion-"));
+  const vault = path.join(dir, "vault");
+  const stateDir = path.join(dir, "state");
+  const inbox = path.join(vault, "01. ⚪ Wissenskarte", "00. Knowledge Inbox");
+  const notizen = path.join(vault, "02. 🟡 Notizen");
+  fs.mkdirSync(inbox, { recursive: true });
+  fs.mkdirSync(notizen, { recursive: true });
+  const sourceName = testCase.sourceName || "2026-06-12 地毯上的工作位更容易带动身体.md";
+  fs.writeFileSync(path.join(inbox, sourceName), testCase.sourceText || "地毯上的工作位更容易带动身体。", "utf8");
+  const sent = [];
+  const config = {
+    timeZone: "Europe/Berlin",
+    workspaceRoot: "/workspace",
+    obsidianVaultDir: vault,
+    knowledgeInboxFolder: "01. ⚪ Wissenskarte/00. Knowledge Inbox",
+    knowledgeFolder: "01. ⚪ Wissenskarte",
+    notizenFolder: "02. 🟡 Notizen",
+    digestionStateFile: path.join(stateDir, "digestion.json"),
+    digestionHour: 21,
+    digestionCheckIntervalMs: 1,
+  };
+  const service = new DigestionService({
+    config,
+    channelAdapter: {
+      getKnownContextTokens: () => ({ jane: "ctx" }),
+      async sendText(payload) { sent.push(payload.text); },
+    },
+    sessionStore: { buildBindingKey: () => "eval-binding", getActiveWorkspaceRoot: () => "/workspace" },
+    systemMessageQueue: { enqueue: (message) => message, hasPendingForAccount: () => false },
+  });
+  service.resolveTarget = () => ({ senderId: "jane", workspaceRoot: "/workspace" });
+  return { service, vault, sent };
 }
 
 function makePeriodicFixture() {

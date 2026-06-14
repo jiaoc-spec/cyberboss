@@ -108,6 +108,7 @@ function readConfig() {
     digestionHour: readIntEnv("CYBERBOSS_DIGESTION_HOUR") ?? 21,
     digestionCheckIntervalMs: readIntEnv("CYBERBOSS_DIGESTION_CHECK_INTERVAL_MS") || 1_800_000,
     digestionStateFile: readTextEnv("CYBERBOSS_DIGESTION_STATE_FILE") || path.join(stateDir, "digestion-state.json"),
+    digestionBridgeFallbackEnabled: readOptionalBoolEnv("CYBERBOSS_DIGESTION_BRIDGE_FALLBACK_ENABLED") !== false,
     knowledgeRecallAcademicTags: readListEnv("CYBERBOSS_KNOWLEDGE_RECALL_ACADEMIC_TAGS"),
     researchLedgerFile: readTextEnv("CYBERBOSS_RESEARCH_LEDGER_FILE") || path.join(stateDir, "research-ledger.json"),
     campaignsFile: readTextEnv("CYBERBOSS_CAMPAIGNS_FILE") || path.join(stateDir, "campaigns.json"),
