@@ -13,7 +13,8 @@ function makeFixture() {
     timeZone: "Europe/Berlin",
     workspaceRoot: "/workspace",
     periodicReviewPipelineStateFile: path.join(dir, "periodic.json"),
-    weeklyReviewPipelineHour: 20,
+    weeklyReviewPipelineWeekday: 1,
+    weeklyReviewPipelineHour: 4,
     monthlyReviewPipelineHour: 9,
     periodicReviewPipelineMaxAttempts: 3,
     periodicReviewPipelineRetryDelayMs: 60_000,
@@ -40,10 +41,10 @@ function makeFixture() {
   return { dir, queued, config, service };
 }
 
-test("weekly review queues on Sunday evening", async () => {
+test("weekly review queues on Monday after the previous week has fully ended", async () => {
   const { queued, service } = makeFixture();
-  // 2026-06-14 is a Sunday
-  const result = await service.check({ accountId: "a" }, new Date("2026-06-14T20:30:00+02:00"));
+  // 2026-06-15 is a Monday; the target is the completed previous week.
+  const result = await service.check({ accountId: "a" }, new Date("2026-06-15T04:30:00+02:00"));
   assert.equal(result.actions.length, 1);
   assert.equal(result.actions[0].kind, "weekly");
   assert.equal(result.actions[0].action, "queued");
@@ -54,11 +55,11 @@ test("weekly review queues on Sunday evening", async () => {
   assert.match(queued[0].text, /健康体能、语言能力、护理科学\/教学科研、舞蹈表达/);
 });
 
-test("weekly review stays quiet before Sunday evening and on other days", async () => {
+test("weekly review stays quiet before Monday window and on Sunday evening", async () => {
   const { queued, service } = makeFixture();
-  assert.equal((await service.check({ accountId: "a" }, new Date("2026-06-14T19:00:00+02:00"))).actions.length, 0);
+  assert.equal((await service.check({ accountId: "a" }, new Date("2026-06-15T03:00:00+02:00"))).actions.length, 0);
   service.lastCheckAtMs = 0;
-  assert.equal((await service.check({ accountId: "a" }, new Date("2026-06-13T21:00:00+02:00"))).actions.length, 0);
+  assert.equal((await service.check({ accountId: "a" }, new Date("2026-06-14T21:00:00+02:00"))).actions.length, 0);
   assert.equal(queued.length, 0);
 });
 
@@ -68,7 +69,7 @@ test("weekly review completes when the marker exists", async () => {
   fs.mkdirSync(weekDir, { recursive: true });
   fs.writeFileSync(path.join(weekDir, "2026-W24.md"), "已有模板\n\n## 每周复盘\n内容\n", "utf8");
 
-  const result = await service.check({ accountId: "a" }, new Date("2026-06-14T20:30:00+02:00"));
+  const result = await service.check({ accountId: "a" }, new Date("2026-06-15T04:30:00+02:00"));
   assert.equal(result.actions[0].action, "complete");
   assert.equal(queued.length, 0);
   assert.equal(service.statusFor("weekly:2026-W24").status, "complete");
@@ -93,7 +94,7 @@ test("weekly review bridge fallback writes the note after a model-side attempt d
     },
   }), "utf8");
 
-  const result = await service.check({ accountId: "a" }, new Date("2026-06-14T20:45:00+02:00"));
+  const result = await service.check({ accountId: "a" }, new Date("2026-06-15T04:45:00+02:00"));
   assert.equal(result.actions.length, 1);
   assert.equal(result.actions[0].action, "bridge_fallback");
   assert.equal(queued.length, 0);
@@ -102,7 +103,7 @@ test("weekly review bridge fallback writes the note after a model-side attempt d
   assert.match(note, /## 每周复盘/);
   assert.match(note, /本周 Big Picture/);
   assert.match(note, /运动 0 天，英语 1 天，德语 1 天/);
-  assert.match(note, /身体照顾证据：1 天/);
+  assert.match(note, /塑形 \/ 身体结构维护证据：1 天/);
   assert.match(note, /英语 1 天/);
   assert.doesNotMatch(note, /工具断了|没法写入/);
   assert.equal(service.statusFor("weekly:2026-W24").status, "complete");

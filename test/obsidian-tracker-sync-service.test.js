@@ -91,6 +91,26 @@ test("tracker extraction records requested body and care habits", () => {
   assert.equal(entries["Nursing Digest"], true);
 });
 
+test("tracker extraction treats wudang and foot arch as shaping, not Sport", () => {
+  const entries = extractTrackerEntries(`
+## 自动统计
+
+- 塑形：武当1+2 完成，足弓 10 分钟。
+
+## 时间轴数据
+
+\`\`\`json
+{
+  "date": "2026-06-14"
+}
+\`\`\`
+`);
+
+  assert.equal(entries.Sport, undefined);
+  assert.equal(entries["武当1+2"], true);
+  assert.equal(entries["足弓"], true);
+});
+
 test("tracker extraction prefers structured tracker completed lists over review prose", () => {
   const entries = extractTrackerEntries(`
 ## Growth Log

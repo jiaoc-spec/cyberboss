@@ -9,7 +9,7 @@ const WEEKLY_MARKER = "## 每周复盘";
 const MONTHLY_MARKER = "## 每月复盘";
 const STATE_RETENTION = 20;
 
-// Deterministic weekly (Sunday evening) and monthly (1st-3rd morning) review
+// Deterministic weekly (after the week has fully ended) and monthly (1st-3rd morning) review
 // pipelines. Like the daily pipeline: queue a contract, verify the artifact,
 // retry with delay, give up loudly in the log instead of silently never running.
 class PeriodicReviewPipelineService {
@@ -37,10 +37,12 @@ class PeriodicReviewPipelineService {
     const local = localDateParts(now, timeZone);
     const actions = [];
 
+    const weeklyWeekday = this.config.weeklyReviewPipelineWeekday ?? 1;
     if (this.config.weeklyReviewPipelineEnabled !== false
-      && local.weekday === 7
-      && local.hour >= (this.config.weeklyReviewPipelineHour ?? 20)) {
-      const weekKey = isoWeekKey(local.date);
+      && local.weekday === weeklyWeekday
+      && local.hour >= (this.config.weeklyReviewPipelineHour ?? 4)) {
+      const weekKey = previousIsoWeekKey(local.date);
+      const range = isoWeekRange(weekKey);
       const relativePath = path.join(this.config.obsidianWeeklyFolder || "", `${weekKey}.md`);
       actions.push(await this.runCadence(account, now, {
         kind: "weekly",
@@ -49,7 +51,7 @@ class PeriodicReviewPipelineService {
         relativePath,
         targetFile: path.join(this.resolveVaultDir(), relativePath),
         marker: WEEKLY_MARKER,
-        prompt: this.buildWeeklyPrompt(weekKey, local.date),
+        prompt: this.buildWeeklyPrompt(weekKey, range.end),
       }));
     }
 
@@ -174,7 +176,7 @@ class PeriodicReviewPipelineService {
       "### 本周 Big Picture",
       `- 有 Daily Note 证据的天数：${notes.length}/${dates.length} 天。`,
       `- Level A / 基础身份证据：运动 ${evidence.sport.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天。`,
-      `- 身体照顾证据：${evidence.health.positiveDays} 天；职业与学术成长证据：${evidence.academic.positiveDays} 天；舞蹈 / 身体表达证据：${evidence.dance.positiveDays} 天；恢复与班次线索：${evidence.recovery.mentionDays} 天。`,
+      `- 塑形 / 身体结构维护证据：${evidence.bodyShaping.positiveDays} 天；身体照顾总证据：${evidence.health.positiveDays} 天；职业与学术成长证据：${evidence.academic.positiveDays} 天；舞蹈 / 身体表达证据：${evidence.dance.positiveDays} 天；恢复与班次线索：${evidence.recovery.mentionDays} 天。`,
       "",
       "### 身份主线",
       `- 健康体能的人：${identityLine(evidence.health, "本周有身体照顾的证据", "本周健康体能线索偏少，适合用 10 分钟版本重新回来。")}`,
@@ -218,7 +220,7 @@ class PeriodicReviewPipelineService {
       "",
       "### 月度 Big Picture",
       `- 有 Daily Note 证据的天数：${notes.length}/${dates.length} 天。`,
-      `- 身份证据：运动 ${evidence.sport.positiveDays} 天，身体照顾 ${evidence.health.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天，职业 / 学术 ${evidence.academic.positiveDays} 天，舞蹈表达 ${evidence.dance.positiveDays} 天。`,
+      `- 身份证据：运动 ${evidence.sport.positiveDays} 天，塑形 / 身体结构维护 ${evidence.bodyShaping.positiveDays} 天，身体照顾总证据 ${evidence.health.positiveDays} 天，英语 ${evidence.english.positiveDays} 天，德语 ${evidence.german.positiveDays} 天，职业 / 学术 ${evidence.academic.positiveDays} 天，舞蹈表达 ${evidence.dance.positiveDays} 天。`,
       "",
       "### 身份体检 / Be-Do-Have",
       `- 健康体能：${identityLine(evidence.health, "这个身份本月有持续证据", "这个身份本月证据偏少，下月应保留最低版本。")}`,
@@ -399,6 +401,10 @@ function isoWeekKey(dateText) {
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
+function previousIsoWeekKey(dateText) {
+  return isoWeekKey(toDateText(addDays(parseDateText(dateText), -7)));
+}
+
 function previousMonthKey(dateText) {
   const [year, month] = dateText.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 2, 15));
@@ -496,8 +502,9 @@ function dateInRange(value, start, end) {
 
 function buildEvidenceSummary(notes) {
   return {
-    sport: summarizeEvidence(notes, /(运动|sport|健身|有氧操|武当|力量训练|跑步|workout|training)/i),
-    health: summarizeEvidence(notes, /(运动|sport|健身|有氧操|武当|足弓|力量训练|基本功|美容灯|跑步|workout|training)/i),
+    sport: summarizeEvidence(notes, /(运动|sport|健身|有氧操|力量训练|跑步|workout|training)/i),
+    bodyShaping: summarizeEvidence(notes, /(塑形|骨盆|武当\s*1\s*\+?\s*2|武当|足弓|pelvic|foot arch)/i),
+    health: summarizeEvidence(notes, /(运动|sport|健身|有氧操|塑形|骨盆|武当\s*1\s*\+?\s*2|武当|足弓|力量训练|基本功|美容灯|跑步|workout|training|pelvic|foot arch)/i),
     english: summarizeEvidence(notes, /(英语|englisch|english|rachel|发音)/i),
     german: summarizeEvidence(notes, /(德语|deutsch|语法|影子跟读)/i),
     academic: summarizeEvidence(notes, /(praxisanleitung|wundmanagement|python|nursing digest|护理科学|文献|论文|科研|研究|课程|网课)/i),
@@ -536,7 +543,7 @@ function lineHasPositiveEvidence(line) {
   if (/(未完成|没做|沒有做|没有做|没有记录|還沒有|还没有|未记录|放弃|延期|取消|缺席|not done|didn't|did not|no record)/i.test(text)) {
     return false;
   }
-  return /(\[x\]|✅|完成|已完成|做了|练了|學了|学了|推进|结束|sport|englisch|english|deutsch|python|praxisanleitung|wundmanagement|nursing digest|运动|健身|有氧操|武当|足弓|基本功|成品舞|跳舞|舞蹈|发音|语法|影子跟读|文献|论文|科研|课程|网课|美容灯)/i.test(text);
+  return /(\[x\]|✅|完成|已完成|做了|练了|學了|学了|推进|结束|sport|englisch|english|deutsch|python|praxisanleitung|wundmanagement|nursing digest|运动|健身|有氧操|塑形|骨盆|武当|足弓|基本功|成品舞|跳舞|舞蹈|发音|语法|影子跟读|文献|论文|科研|课程|网课|美容灯)/i.test(text);
 }
 
 function identityLine(summary, positiveText, lowText) {

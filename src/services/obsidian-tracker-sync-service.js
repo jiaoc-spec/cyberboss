@@ -162,7 +162,7 @@ function extractTrackerEntries(text) {
   const levelA = data?.level_a || data?.levelA || {};
   const habitData = normalizeStructuredHabitData(data);
   setBoolean(entries, "Sport", resolveHabitStatus(valueWithFallback(habitData, "Sport", levelA.sport), text, [
-    /(?:运动|Sport|健身|力量训练|有氧操|基本功|成品舞|武当|足弓)[^\n]*(?:已完成|完成|completed|done|\d+\s*分钟)/i,
+    /(?:运动|Sport|健身|力量训练|有氧操|跑步|锻炼)[^\n]*(?:已完成|完成|completed|done|\d+\s*分钟)/i,
   ], [
     /(?:运动|Sport)[：:][^\n]*(?:未完成|未记录|not_recorded|not completed)/i,
   ]));
