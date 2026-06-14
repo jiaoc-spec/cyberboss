@@ -52,6 +52,26 @@ test("observeMessage records assertion and busy state gates while fresh", () => 
   assert.equal(muchLater.busy, false);
 });
 
+test("timed early-shift departure report means she is already at work", () => {
+  assert.equal(matchStateRule("今日 05:17 出发上的早班").state, "at_work");
+  assert.equal(matchStateRule("今早05:17出发上早班").state, "at_work");
+  assert.equal(matchStateRule("早上 05:17 出发去上早班").state, "at_work");
+
+  const service = makeService();
+  const result = service.observeMessage({
+    text: "今日 05:17 出发上的早班",
+    receivedAt: "2026-06-14T09:33:00+02:00",
+    provider: "telegram",
+    senderId: "jane",
+  });
+  assert.equal(result.stateUpdated, true);
+  assert.equal(result.state, "at_work");
+
+  const busy = service.isBusyNow({ now: new Date("2026-06-14T10:00:00+02:00") });
+  assert.equal(busy.busy, true);
+  assert.equal(busy.state, "at_work");
+});
+
 test("state transitions: off work clears busy", () => {
   const service = makeService();
   service.observeMessage({ text: "开始早班", receivedAt: "2026-06-11T07:00:00+02:00", provider: "telegram", senderId: "jane" });

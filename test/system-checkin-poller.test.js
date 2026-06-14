@@ -82,3 +82,27 @@ test("check-in is skipped during active focus protection", () => {
   assert.equal(result.skip, true);
   assert.match(result.reason, /focus protection active/);
 });
+
+test("check-in is skipped during explicit timed early-shift work state", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-checkin-work-"));
+  const stateFile = path.join(dir, "current-state.json");
+  fs.writeFileSync(stateFile, `${JSON.stringify({
+    assertions: [{
+      state: "at_work",
+      label: "正在上班",
+      assertedAt: "2026-06-14T07:33:00.000Z",
+      sourceText: "今日 05:17 出发上的早班",
+      senderKey: "telegram:jane",
+    }],
+    sleep: {},
+  })}\n`);
+
+  const result = getProtectedCheckinState({
+    config: { currentStateFile: stateFile },
+    target: { senderId: "jane" },
+    now: new Date("2026-06-14T10:00:00+02:00"),
+  });
+
+  assert.equal(result.skip, true);
+  assert.match(result.reason, /explicit busy state active state=at_work/);
+});

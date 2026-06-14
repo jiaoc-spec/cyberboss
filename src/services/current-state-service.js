@@ -6,6 +6,12 @@ const path = require("path");
 // single message like "我现在去上早班，四点半就起床" contains both.
 const STATE_RULES = [
   {
+    state: "at_work",
+    label: "正在上班",
+    pattern: /(今早|今天|今日|早上|清晨)?.{0,8}\d{1,2}[:：]\d{2}.{0,10}(出发|出门|离开).{0,6}(上|去上).{0,4}(早|晚|夜)?班/,
+    freshMinutes: 600,
+  },
+  {
     state: "commuting_to_work",
     label: "正在去上班的路上",
     pattern: /(出门了|在路上|去上(早|晚|夜)?班|赶(车|地铁|公交)去?|坐车去(上班|医院|单位)|上班路上)/,
