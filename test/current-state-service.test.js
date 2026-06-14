@@ -91,6 +91,7 @@ test("commands and ordinary chat do not create assertions", () => {
 test("various phrasings map to expected states", () => {
   assert.equal(matchStateRule("出门了").state, "commuting_to_work");
   assert.equal(matchStateRule("我去上夜班了").state, "commuting_to_work");
+  assert.equal(matchStateRule("我在上夜班，怎么睡觉").state, "at_work");
   assert.equal(matchStateRule("到医院了，准备交接").state, "at_work");
   assert.equal(matchStateRule("夜班结束了，坐车回家").state, "commuting_home");
   assert.equal(matchStateRule("到家了").state, "arrived_home");
