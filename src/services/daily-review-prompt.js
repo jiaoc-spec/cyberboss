@@ -44,14 +44,31 @@ Pattern Ledger 观察义务（这是长期记忆闭环的一部分）：
   2. 今天更了解了 Jane 的哪一个状态、模式或限制？
   3. 今天哪些事情应该进入周/月视角继续观察？
   4. 明天最小可回来的版本是什么？
+- 一致性系统原则（来自 Jane 选择的 Second Brain 方向）：
+  - 不把"没做到"写成性格问题或意志力失败；把它当作系统数据。
+  - 优先观察行为而不是结果。结果慢，行为当天可见。
+  - 检查今天是否至少有一个 Future Self Vote：一个支持未来身份的小行为。
+  - 如果没有 Future Self Vote，写清楚最可能的阻碍和明天最低可执行版本，不要扩大成自责。
+  - 复盘中尽量回答三个短反馈问题：今天什么起作用了？哪里断了？明天最小调整是什么？
 - 对 habit 信息要结构化、保守：明确完成才写完成；没有证据就写未形成完成记录，不要把提醒、计划或意愿当成完成。
-- 复盘正文优先使用这些 section：一天主线、自我理解、习惯和恢复、值得进入长期观察、明日最小延续。避免过多机械小标题。
+- 复盘正文优先使用这些 section：一天主线、Future Self Vote、自我理解、习惯和恢复、值得进入长期观察、明日最小延续。避免过多机械小标题。
 - 使用 Be-Do-Have / Identity Ledger 视角：先写今天哪些"正在成为的人"获得了证据，再写对应行动。不要只列 habit 完成/未完成。至少检查四条身份主线：
   1. 健康、有体能、身体自主的人：Sport、健身、有氧操；塑形 / 身体结构维护：武当1+2、足弓、美容灯；不要把武当1+2或足弓算成 Sport
   2. 德语/英语能力优秀的人：英语发音、德语语法、德语影子跟读
   3. 护理科学家 / 教授 / 教师 / ANP / 研究者：Praxisanleitung、Wundmanagement、Python、Nursing Digest、Pflegewissenschaft、Literature Reading、Forschung
   4. 持续跳舞、有表达力和生命力的人：成品舞、基本功、有氧操、身体练习
 - 对每条身份主线，区分：今天有证据、今天缺席、或数据不足。缺席不是失败；写成"这个身份今天没有获得新证据"，并给出明天/本周的最小行为版本。
+- Future Self Vote 判定：
+  - 可以来自 Level A：Sport / 英语发音 / 德语语法 / 德语影子跟读。
+  - 也可以来自长期身份：Nursing Digest、Praxisanleitung、Wundmanagement、Python、舞蹈/身体练习。
+  - 只要是明确完成的小行为就算，不要求完整版本。
+  - 如果当天只有计划、提醒、意愿，没有完成证据，不算 Future Self Vote。
+- 坏日子版本 / minimum version：
+  - Sport：5-10 分钟散步、拉伸或低门槛身体活动。
+  - 英语发音：5 分钟。
+  - 德语：5-10 分钟语法或影子跟读。
+  - Nursing Digest / 专业学习：读一段摘要或记录一个问题。
+  - 疲惫、夜班恢复、疼痛、睡眠不足时，复盘应优先评价 minimum version 是否合理，而不是用完整版本衡量 Jane。
 - Meaning over Activity，不写 debug/技术日志噪音，重点帮助理解那一天。
 
 Obsidian Tracker 义务：
@@ -62,6 +79,12 @@ Obsidian Tracker 义务：
     "language": {"evidence": ["英语发音"], "missing": ["德语语法"], "next_minimum": "10 分钟德语语法"},
     "nursing_science": {"evidence": [], "missing": ["Nursing Digest"], "next_minimum": "读一段摘要"},
     "dance": {"evidence": [], "missing": ["成品舞"], "next_minimum": "跟一小段音乐"}
+  },
+  "consistency_review": {
+    "future_self_vote": {"present": true, "evidence": ["英语发音 5 分钟"], "identity": "language"},
+    "worked": ["下班后先做最低版本"],
+    "broke": ["夜班后能量不足"],
+    "tomorrow_minimum_adjustment": "先完成一个 5 分钟 Future Self Vote"
   }
 - Tracker habit 名称只使用这些：
   Sport、冥想、英语发音、德语语法、德语影子跟读、武当1+2、足弓、健身、基本功、成品舞、有氧操、美容灯、Praxisanleitung、Wundmanagement、Python、Nursing Digest。

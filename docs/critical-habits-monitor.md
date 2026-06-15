@@ -16,6 +16,25 @@ Level A and Level B reminders explicitly allow a minimum version now,
 postponement, or consciously skipping. Missing activity is not treated as
 failure.
 
+## Consistency Protocol
+
+Critical Habits are designed for real life, not ideal days.
+
+- Each habit should define a minimum version that survives bad days.
+- Level A is not re-decided every day; only the version changes.
+- When Daily State recommends `minimum`, the reminder must suggest the minimum
+  version first, not the full version.
+- A completed minimum version counts as a Future Self Vote: a small behavior
+  that gives evidence to an identity Jane already chose.
+- Track behavior, not outcomes. Slow outcomes are not a reason to change the
+  plan too early.
+
+Default Level A minimum versions:
+
+- Sport: 5-10 minutes of walking, stretching, or any low-friction body activity.
+- Englisch: 5 minutes of pronunciation.
+- Deutsch: 5-10 minutes of grammar or shadowing.
+
 ## Configuration
 
 ```bash

@@ -5,22 +5,55 @@ const path = require("path");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 
 const DEFAULT_LEVEL_A = [
-  habit("sport", "Sport", ["sport", "运动", "workout", "training", "健身", "跑步", "瑜伽", "拉伸", "锻炼"], ["exercise.workout", "exercise.sport"], "未来的健康、能量、身体自主性和独立生活能力", 60),
-  habit("english", "Englisch", ["englisch", "english", "英语"], [], "未来学习、国际文献阅读和更广阔的知识世界", 25),
-  habit("german", "Deutsch", ["deutsch", "german", "德语"], [], "专业沟通、教学、护理文书、职业发展和未来学术工作", 30),
+  habit("sport", "Sport", ["sport", "运动", "workout", "training", "健身", "跑步", "瑜伽", "拉伸", "锻炼"], ["exercise.workout", "exercise.sport"], "未来的健康、能量、身体自主性和独立生活能力", 60, {
+    minimumAction: "5-10 分钟散步、拉伸或任意低门槛身体活动",
+    standardAction: "40-60 分钟正式运动或健身",
+    stretchAction: "完整训练加一点恢复整理",
+  }),
+  habit("english", "Englisch", ["englisch", "english", "英语"], [], "未来学习、国际文献阅读和更广阔的知识世界", 25, {
+    minimumAction: "5 分钟英语发音",
+    standardAction: "25 分钟 Rachel's English / 英语发音训练",
+    stretchAction: "25 分钟发音加一句复述或跟读复盘",
+  }),
+  habit("german", "Deutsch", ["deutsch", "german", "德语"], [], "专业沟通、教学、护理文书、职业发展和未来学术工作", 30, {
+    minimumAction: "5-10 分钟德语语法或影子跟读",
+    standardAction: "20-30 分钟德语语法或影子跟读",
+    stretchAction: "标准学习后补一句主动输出",
+  }),
 ];
 
 const DEFAULT_LEVEL_B = [
-  habit("praxisanleitung", "Praxisanleitung", ["praxisanleitung", "praxisleiter"], [], "专业教学能力、护理实践成长和未来教育者身份", 30),
-  habit("wundmanagement", "Wundmanagement", ["wundmanagement", "伤口管理"], [], "临床专业能力和护理职业发展", 30),
-  habit("python", "Python", ["python"], [], "研究能力、数据思维和未来护理科学工作", 30),
+  habit("praxisanleitung", "Praxisanleitung", ["praxisanleitung", "praxisleiter"], [], "专业教学能力、护理实践成长和未来教育者身份", 30, {
+    minimumAction: "10 分钟 Praxisanleitung 材料或一个教学想法",
+    standardAction: "30 分钟 Praxisanleitung 学习",
+  }),
+  habit("wundmanagement", "Wundmanagement", ["wundmanagement", "伤口管理"], [], "临床专业能力和护理职业发展", 30, {
+    minimumAction: "10 分钟伤口管理知识点",
+    standardAction: "30 分钟 Wundmanagement 学习",
+  }),
+  habit("python", "Python", ["python"], [], "研究能力、数据思维和未来护理科学工作", 30, {
+    minimumAction: "10 分钟 Python 练习或读一小段代码",
+    standardAction: "30 分钟 Python 学习",
+  }),
 ];
 
 const DEFAULT_LEVEL_C = [
-  habit("pflegewissenschaft", "Pflegewissenschaft", ["pflegewissenschaft", "护理科学"], [], "成为护理科学家并持续建立学术基础", 30),
-  habit("literature-reading", "Literature Reading", ["literature reading", "文献阅读", "论文阅读"], [], "终身学习、国际视野和研究能力", 30),
-  habit("nursing-digest", "Nursing Digest", ["nursing digest"], [], "持续积累护理知识和长期专业判断", 30),
-  habit("forschung", "Forschung", ["forschung", "research", "研究"], [], "未来研究者、护理科学家和教授身份", 30),
+  habit("pflegewissenschaft", "Pflegewissenschaft", ["pflegewissenschaft", "护理科学"], [], "成为护理科学家并持续建立学术基础", 30, {
+    minimumAction: "读一个护理科学概念或一句摘要",
+    standardAction: "30 分钟护理科学学习",
+  }),
+  habit("literature-reading", "Literature Reading", ["literature reading", "文献阅读", "论文阅读"], [], "终身学习、国际视野和研究能力", 30, {
+    minimumAction: "读一段论文摘要",
+    standardAction: "30 分钟文献阅读",
+  }),
+  habit("nursing-digest", "Nursing Digest", ["nursing digest"], [], "持续积累护理知识和长期专业判断", 30, {
+    minimumAction: "读一条 Nursing Digest",
+    standardAction: "整理一条 Nursing Digest",
+  }),
+  habit("forschung", "Forschung", ["forschung", "research", "研究"], [], "未来研究者、护理科学家和教授身份", 30, {
+    minimumAction: "记录一个研究问题或方法想法",
+    standardAction: "30 分钟研究相关推进",
+  }),
 ];
 
 const PATTERN_CONTEXT_RULES = [
@@ -254,8 +287,8 @@ class CriticalHabitsMonitor {
 
   enqueueHabitMessage({ account, target, level, item, key, now }) {
     const text = level === "A"
-      ? `Critical Habits Monitor: DELIVERY REQUIRED. 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请以温和而坚定的 Long-Term Values Guardian + Reality-Aware Guardian 方式提醒：先连接意义和她正在成为的自己，再判断这是需要最小一步回来，还是她真的需要休息。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做一个最小版本、延期、或今天有意识地休息/放弃。强调 Always Return：重点不是完美连续，而是之后怎么回来。Return send_message, not silent.`
-      : `Critical Habits Monitor: DELIVERY REQUIRED. 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议一个很小的回来入口，也允许延期或本周休息/放弃。强调 Always Return，而不是完美连续。Return send_message, not silent.`;
+      ? `Critical Habits Monitor: DELIVERY REQUIRED. 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。最小可执行版本：${minimumActionText(item)}。请以温和而坚定的 Long-Term Values Guardian + Reality-Aware Guardian 方式提醒：先连接意义和她正在成为的自己，再判断这是需要最小一步回来，还是她真的需要休息。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做最小版本、延期、或今天有意识地休息/放弃。强调 Always Return：重点不是完美连续，而是之后怎么回来。Return send_message, not silent.`
+      : `Critical Habits Monitor: DELIVERY REQUIRED. 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。最小回来入口：${minimumActionText(item)}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议这个很小的回来入口，也允许延期或本周休息/放弃。强调 Always Return，而不是完美连续。Return send_message, not silent.`;
     const message = this.systemMessageQueue.enqueue({
       id: `critical-habit:${key}:${crypto.randomUUID()}`,
       accountId: account.accountId,
@@ -302,9 +335,12 @@ class CriticalHabitsMonitor {
       `Critical Habits Monitor: DELIVERY REQUIRED. Level A ${promptKind === "midday" ? "midday soft rhythm check" : "daily guardian trigger"}.`,
       `Today still has no recorded Level A activity for: ${items.map((item) => item.label).join(", ")}.`,
       "These are not ordinary tasks. They are the foundation habits Jane already chose for her future self.",
+      "Consistency protocol: do not ask whether the habit matters; it already matters. Decide only which version fits today's reality: minimum, standard, stretch, postpone, or conscious rest.",
       "Use the Be-Do-Have frame: reconnect her to who she is becoming first, then suggest the smallest action that identity can take today.",
       "Identity mapping: Sport -> healthy, fit, physically autonomous future self; Englisch -> future studies and international literature reader; Deutsch -> professional communicator, teacher, academic worker in Germany.",
       ...items.map((item) => `${item.label}: ${item.meaning || "她已经选择的长期成长方向"}.`),
+      "Minimum versions available today:",
+      ...items.map((item) => `- ${item.label}: ${minimumActionText(item)}`),
       ...(supportStrategies.length
         ? [
           "Pattern Ledger support strategies that match today's context (use them to shape the suggestion, do not quote them verbatim):",
@@ -315,7 +351,7 @@ class CriticalHabitsMonitor {
         ? "Return send_message, not silent. Send one concise, natural, warm-but-grounded message that restores priority awareness without treating this as a failure. This is a rhythm check, not a scolding."
         : "Return send_message, not silent. Send one concise, natural, warm-but-grounded message that restores priority awareness without guilt.",
       "Do not supervise, command, scold, or make it sound like a checklist app.",
-      "Offer a realistic choice: one minimum version now, postpone, or consciously rest/skip today.",
+      "Offer a realistic choice: one minimum version now, postpone, or consciously rest/skip today. Do not suggest a full version when Daily State indicates minimum mode.",
       "Always Return matters more than a perfect streak.",
     ].join("\n");
     const key = missing.map(({ key: itemKey }) => itemKey).join("+");
@@ -346,8 +382,18 @@ class CriticalHabitsMonitor {
   }
 }
 
-function habit(id, label, keywords, categoryPrefixes, meaning = "", estimatedMinutes = 30) {
-  return { id, label, keywords, categoryPrefixes, meaning, estimatedMinutes };
+function habit(id, label, keywords, categoryPrefixes, meaning = "", estimatedMinutes = 30, actions = {}) {
+  return {
+    id,
+    label,
+    keywords,
+    categoryPrefixes,
+    meaning,
+    estimatedMinutes,
+    minimumAction: actions.minimumAction || `${Math.min(10, estimatedMinutes)} 分钟最小版本`,
+    standardAction: actions.standardAction || `${estimatedMinutes} 分钟标准版本`,
+    stretchAction: actions.stretchAction || "",
+  };
 }
 
 function buildLevelADirectMessage(items, dailyState = null, supportStrategies = [], { promptKind = "guardian" } = {}) {
@@ -367,17 +413,27 @@ function buildLevelADirectMessage(items, dailyState = null, supportStrategies = 
   const strategyText = supportStrategies.length
     ? `我们之前观察到的规律也支持这一点：${supportStrategies.map((entry) => entry.supportStrategy).join(" ")}`
     : "";
+  const minimumText = formatMinimumOptions(items);
+  const actionText = mode === "minimum"
+    ? `今天如果身体和脑子都在省电，就只做坏日子版本：${minimumText}。挑一个碰一下，也算给未来自己投了一票。`
+    : `如果现在还来得及，先从最低版本开始：${minimumText}。状态好再加量，不需要一开始就追求完整。`;
   return [
     intro,
     meanings ? `它们不是打卡，是你给未来自己的地基：${meanings}。` : "它们不是打卡，是你给未来自己的地基。",
     promptKind === "midday"
-      ? "现在不是要你立刻把全部做完，只是别让今天从手边溜过去。挑一个最小入口就很好：运动 10 分钟、英语 5 分钟、德语 5 到 10 分钟，哪个更顺手就先碰哪个。"
-      : mode === "minimum"
-      ? "今天如果身体和脑子都在省电，就做最小版本：运动 10 分钟、英语 5 分钟、德语 5 到 10 分钟，挑一个碰一下也算回来。"
-      : "如果现在还来得及，挑一个最小版本碰一下就好；如果今天真的不合适，也可以明确延期或休息。",
+      ? `现在不是要你立刻把全部做完，只是别让今天从手边溜过去。挑一个最低版本就够：${minimumText}。`
+      : actionText,
     strategyText,
     "重点不是完美，是回来。",
   ].filter(Boolean).join("\n\n");
+}
+
+function minimumActionText(item) {
+  return item?.minimumAction || `${Math.min(10, item?.estimatedMinutes || 10)} 分钟最小版本`;
+}
+
+function formatMinimumOptions(items) {
+  return items.map((item) => `${item.label}：${minimumActionText(item)}`).join("；");
 }
 
 function buildLevelAIntro({ labels, completed, mode, timingReason, boundaryLabel, fatigue, promptKind }) {

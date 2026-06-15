@@ -81,6 +81,9 @@ test("pipeline queues a review request with the output contract", async () => {
   assert.match(queued[0].text, /nextObservation/);
   assert.match(queued[0].text, /Be-Do-Have \/ Identity Ledger/);
   assert.match(queued[0].text, /健康、有体能、身体自主的人/);
+  assert.match(queued[0].text, /Future Self Vote/);
+  assert.match(queued[0].text, /consistency_review/);
+  assert.match(queued[0].text, /今天什么起作用了？哪里断了？明天最小调整是什么？/);
 });
 
 test("pipeline retries with delay and gives up after max attempts", async () => {
