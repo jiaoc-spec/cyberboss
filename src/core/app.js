@@ -38,6 +38,7 @@ const { DeepSeekFallbackService } = require("../services/deepseek-fallback-servi
 const { DailyReviewPipelineService } = require("../services/daily-review-pipeline-service");
 const { buildPlaybookTrigger, ANCHOR_LABELS: PLAYBOOK_ANCHOR_LABELS } = require("../services/playbook-service");
 const { PeriodicReviewPipelineService } = require("../services/periodic-review-pipeline-service");
+const { SleepRecoveryUpdateService } = require("../services/sleep-recovery-update-service");
 const { StateBackupService } = require("../services/state-backup-service");
 const { KnowledgeResurfaceService } = require("../services/knowledge-resurface-service");
 const { DigestionService, buildPromotionTrigger } = require("../services/digestion-service");
@@ -145,6 +146,11 @@ class CyberbossApp {
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
+    });
+    this.sleepRecoveryUpdate = new SleepRecoveryUpdateService({
+      config,
+      calendar: this.projectServices.calendar,
+      obsidianNote: this.projectServices.obsidianNote,
     });
     this.stateBackup = new StateBackupService({ config });
     this.digestion = new DigestionService({
@@ -286,6 +292,7 @@ class CyberbossApp {
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
             this.flushDailyReviewPipeline(account),
+            this.flushSleepRecoveryUpdate(),
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
             this.flushKnowledgeResurface(account),
@@ -320,6 +327,7 @@ class CyberbossApp {
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
             this.flushDailyReviewPipeline(account),
+            this.flushSleepRecoveryUpdate(),
             this.flushPeriodicReviewPipeline(account),
             this.flushStateBackup(),
             this.flushKnowledgeResurface(account),
@@ -1702,6 +1710,14 @@ class CyberbossApp {
       await this.dailyReviewPipeline?.check(account);
     } catch (error) {
       console.error(`[cyberboss] daily review pipeline failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushSleepRecoveryUpdate() {
+    try {
+      await this.sleepRecoveryUpdate?.check();
+    } catch (error) {
+      console.error(`[cyberboss] sleep recovery update failed: ${formatErrorMessage(error)}`);
     }
   }
 
