@@ -20,37 +20,45 @@ class DeepSeekFallbackService {
     }
 
     const controller = new AbortController();
-    const timeoutMs = Number(this.config.deepseekTimeoutMs) || 30_000;
+    const timeoutMs = Math.max(1_000, Number(this.config.deepseekTimeoutMs) || 30_000);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await this.fetchImpl(`${this.apiBaseUrl()}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.config.deepseekApiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.config.deepseekModel || "deepseek-v4-flash",
-          messages: [
-            {
-              role: "system",
-              content: buildFallbackSystemPrompt(this.config, {
-                reason,
-                provider,
-                systemMessage,
-                mode,
-                context,
-              }),
-            },
-            ...normalizeHistory(history),
-            { role: "user", content: prompt },
-          ],
-          stream: false,
-          temperature: 0.4,
-          max_tokens: Number(this.config.deepseekMaxOutputTokens) || 1200,
-        }),
-        signal: controller.signal,
-      });
+      let response;
+      try {
+        response = await this.fetchImpl(`${this.apiBaseUrl()}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${this.config.deepseekApiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.config.deepseekModel || "deepseek-v4-flash",
+            messages: [
+              {
+                role: "system",
+                content: buildFallbackSystemPrompt(this.config, {
+                  reason,
+                  provider,
+                  systemMessage,
+                  mode,
+                  context,
+                }),
+              },
+              ...normalizeHistory(history),
+              { role: "user", content: prompt },
+            ],
+            stream: false,
+            temperature: 0.4,
+            max_tokens: Number(this.config.deepseekMaxOutputTokens) || 1200,
+          }),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          throw new Error(`DeepSeek request timed out after ${timeoutMs}ms`);
+        }
+        throw new Error(`DeepSeek network error: ${formatNetworkError(error)}`);
+      }
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(`DeepSeek HTTP ${response.status}: ${extractApiError(payload) || response.statusText}`);
@@ -151,6 +159,16 @@ function numberOrZero(value) {
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function formatNetworkError(error) {
+  const message = normalizeText(error?.message) || String(error || "unknown error");
+  const cause = error?.cause;
+  const causeParts = [
+    normalizeText(cause?.code),
+    normalizeText(cause?.message),
+  ].filter(Boolean);
+  return causeParts.length ? `${message} (${causeParts.join(": ")})` : message;
 }
 
 module.exports = {

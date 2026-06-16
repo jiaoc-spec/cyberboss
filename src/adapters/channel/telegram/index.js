@@ -88,7 +88,9 @@ function createTelegramChannelAdapter(config) {
         offset: offset || undefined,
         timeout,
         allowed_updates: ["message", "edited_message"],
-      }, config);
+      }, config, {
+        timeoutMs: (timeout * 1000) + (Number(config.telegramLongPollGraceMs) || 10_000),
+      });
       const result = Array.isArray(updates?.result) ? updates.result : [];
       const nextOffset = result.reduce((max, update) => Math.max(max, Number(update?.update_id || 0) + 1), offset);
       if (nextOffset && nextOffset !== offset) {
@@ -286,19 +288,33 @@ async function resolveTelegramAccountFromToken(config) {
   };
 }
 
-async function telegramApi(token, method, payload = {}, config, attempt = 0) {
+async function telegramApi(token, method, payload = {}, config, options = {}, attempt = 0) {
   const url = `${config.telegramApiBaseUrl}/bot${token}/${method}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload || {}),
-  });
+  const timeoutMs = resolveTelegramApiTimeoutMs(config, options.timeoutMs);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload || {}),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`telegram ${method} timed out after ${timeoutMs}ms`);
+    }
+    throw new Error(`telegram ${method} network error: ${formatNetworkError(error)}`);
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await response.json().catch(() => null);
   if (!response.ok || data?.ok === false) {
     const retryAfterSeconds = Number(data?.parameters?.retry_after);
     if (response.status === 429 && Number.isFinite(retryAfterSeconds) && attempt < 2) {
       await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfterSeconds, 60) * 1000));
-      return telegramApi(token, method, payload, config, attempt + 1);
+      return telegramApi(token, method, payload, config, options, attempt + 1);
     }
     throw new Error(`telegram ${method} failed: ${data?.description || response.statusText}`);
   }
@@ -315,15 +331,44 @@ async function sendTelegramFile({ token, chatId, filePath, config }) {
   const form = new FormData();
   form.append("chat_id", chatId);
   form.append(fieldName, new Blob([bytes]), fileName);
-  const response = await fetch(`${config.telegramApiBaseUrl}/bot${token}/${method}`, {
-    method: "POST",
-    body: form,
-  });
+  const timeoutMs = resolveTelegramApiTimeoutMs(config, config.telegramFileUploadTimeoutMs || 120_000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(`${config.telegramApiBaseUrl}/bot${token}/${method}`, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`telegram ${method} timed out after ${timeoutMs}ms`);
+    }
+    throw new Error(`telegram ${method} network error: ${formatNetworkError(error)}`);
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await response.json().catch(() => null);
   if (!response.ok || data?.ok === false) {
     throw new Error(`telegram ${method} failed: ${data?.description || response.statusText}`);
   }
   return data;
+}
+
+function resolveTelegramApiTimeoutMs(config = {}, override) {
+  const value = Number(override) || Number(config.telegramApiTimeoutMs) || 45_000;
+  return Math.max(1_000, Math.min(value, 300_000));
+}
+
+function formatNetworkError(error) {
+  const message = normalizeText(error?.message) || String(error || "unknown error");
+  const cause = error?.cause;
+  const causeParts = [
+    normalizeText(cause?.code),
+    normalizeText(cause?.message),
+  ].filter(Boolean);
+  return causeParts.length ? `${message} (${causeParts.join(": ")})` : message;
 }
 
 function loadTelegramAccount(config) {

@@ -50,6 +50,25 @@ test("deepseek fallback is disabled without an API key", async () => {
   assert.equal(result.reason, "disabled");
 });
 
+test("deepseek fallback reports network causes clearly", async () => {
+  const service = new DeepSeekFallbackService({
+    config: {
+      deepseekFallbackEnabled: true,
+      deepseekApiKey: "secret-key",
+    },
+    async fetchImpl() {
+      const error = new TypeError("fetch failed");
+      error.cause = { code: "ECONNRESET", message: "socket hang up" };
+      throw error;
+    },
+  });
+
+  await assert.rejects(
+    () => service.generate({ userText: "hello" }),
+    /DeepSeek network error: fetch failed \(ECONNRESET: socket hang up\)/,
+  );
+});
+
 test("deepseek daily mode includes recent conversation and local priority context", async () => {
   const calls = [];
   const service = new DeepSeekFallbackService({

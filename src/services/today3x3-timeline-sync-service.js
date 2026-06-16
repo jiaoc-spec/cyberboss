@@ -5,9 +5,11 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const CORE_DATA_EPOCH_SECONDS = 978_307_200;
+const DEFAULT_SQLITE_TIMEOUT_MS = 20_000;
+const DEFAULT_SQLITE_TIMEOUT_COOLDOWN_MS = 3_600_000;
 const DEFAULT_DB_PATH = path.join(
   os.homedir(),
-  "Library/Group Containers/8774ZX9976.3x3.today/Model_3x3.sqlite/Model_3x3.sqlite",
+  "Library/Group Containers/8774ZX9976.3x3.today/Model_3x3.sqlite",
 );
 
 class Today3x3TimelineSyncService {
@@ -15,6 +17,7 @@ class Today3x3TimelineSyncService {
     this.config = config || {};
     this.timeline = timeline;
     this.lastError = null;
+    this.sqliteTimeoutCooldownUntilMs = 0;
   }
 
   async sync({ start = "", end = "", days = 0, now = new Date() } = {}) {
@@ -27,11 +30,43 @@ class Today3x3TimelineSyncService {
     }
 
     const timeZone = this.config.timeZone || this.config.diaryTimeZone || "UTC";
+    const nowMs = toTimestampMs(now) || Date.now();
+    if (this.sqliteTimeoutCooldownUntilMs && nowMs < this.sqliteTimeoutCooldownUntilMs) {
+      return {
+        imported: [],
+        skipped: 0,
+        reason: "sqlite_timeout_cooldown",
+        databasePath,
+        cooldownUntil: new Date(this.sqliteTimeoutCooldownUntilMs).toISOString(),
+        lastError: this.lastError,
+      };
+    }
+
     const dates = resolveDateRange({ start, end, days: days || this.config.today3x3TimelineSyncDays || 2, now, timeZone });
     const imported = [];
     let skipped = 0;
     for (const date of dates) {
-      const rows = this.readRowsForDate({ date, timeZone, databasePath });
+      let rows = [];
+      try {
+        rows = this.readRowsForDate({ date, timeZone, databasePath });
+      } catch (error) {
+        if (isSqliteTimeoutError(error)) {
+          this.lastError = formatSqliteError(error);
+          this.sqliteTimeoutCooldownUntilMs = Date.now() + resolveSqliteTimeoutCooldownMs(this.config);
+          return {
+            provider: "today-3x3",
+            databasePath,
+            imported,
+            skipped,
+            dates,
+            reason: "sqlite_timeout",
+            timeoutMs: resolveSqliteTimeoutMs(this.config),
+            cooldownUntil: new Date(this.sqliteTimeoutCooldownUntilMs).toISOString(),
+            lastError: this.lastError,
+          };
+        }
+        throw error;
+      }
       const events = scheduleRowsToTimelineEvents(rows, { date, timeZone });
       skipped += rows.length - countSourceRows(events);
       const existing = await this.timeline.read({ date }).catch(() => ({ data: { events: [] } }));
@@ -47,6 +82,8 @@ class Today3x3TimelineSyncService {
       });
       imported.push(...events);
     }
+    this.lastError = null;
+    this.sqliteTimeoutCooldownUntilMs = 0;
     return { provider: "today-3x3", databasePath, imported, skipped, dates };
   }
 
@@ -77,7 +114,7 @@ class Today3x3TimelineSyncService {
       sqliteBin: this.config.today3x3SqliteBin || "sqlite3",
       databasePath,
       sql,
-      timeoutMs: this.config.today3x3SqliteTimeoutMs || 20_000,
+      timeoutMs: resolveSqliteTimeoutMs(this.config),
     }).map((row) => ({
       id: Number(row.id),
       title: normalizeText(row.title),
@@ -233,7 +270,10 @@ function runSqliteJson({ sqliteBin, databasePath, sql, timeoutMs }) {
     maxBuffer: 10 * 1024 * 1024,
   });
   if (result.error) {
-    throw result.error;
+    const error = new Error(`today3x3 sqlite failed: ${formatSqliteError(result.error)}`);
+    error.code = result.error.code;
+    error.cause = result.error;
+    throw error;
   }
   if (result.status !== 0) {
     throw new Error(`today3x3 sqlite failed: ${(result.stderr || result.stdout || "").trim()}`);
@@ -244,13 +284,43 @@ function runSqliteJson({ sqliteBin, databasePath, sql, timeoutMs }) {
 
 function resolveToday3x3DatabasePath(config = {}) {
   const configured = normalizeText(config.today3x3DatabasePath);
-  if (!configured) {
-    return DEFAULT_DB_PATH;
+  const candidate = configured || DEFAULT_DB_PATH;
+  const legacyNestedSuffix = `${path.sep}Model_3x3.sqlite${path.sep}Model_3x3.sqlite`;
+  if (candidate.endsWith(legacyNestedSuffix)) {
+    return candidate.slice(0, -`${path.sep}Model_3x3.sqlite`.length);
   }
-  if (fs.existsSync(configured) && fs.statSync(configured).isDirectory()) {
-    return path.join(configured, "Model_3x3.sqlite");
+  if (path.extname(candidate) !== ".sqlite") {
+    return path.join(candidate, "Model_3x3.sqlite");
   }
-  return configured;
+  return candidate;
+}
+
+function resolveSqliteTimeoutMs(config = {}) {
+  return Math.max(1_000, Number(config.today3x3SqliteTimeoutMs) || DEFAULT_SQLITE_TIMEOUT_MS);
+}
+
+function resolveSqliteTimeoutCooldownMs(config = {}) {
+  return Math.max(0, Number(config.today3x3SqliteTimeoutCooldownMs) || DEFAULT_SQLITE_TIMEOUT_COOLDOWN_MS);
+}
+
+function isSqliteTimeoutError(error) {
+  return error?.code === "ETIMEDOUT"
+    || error?.cause?.code === "ETIMEDOUT"
+    || /ETIMEDOUT|timed out/i.test(String(error?.message || ""));
+}
+
+function formatSqliteError(error) {
+  const message = normalizeText(error?.message) || String(error || "unknown error");
+  const code = normalizeText(error?.code || error?.cause?.code);
+  return code && !message.includes(code) ? `${code}: ${message}` : message;
+}
+
+function toTimestampMs(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? 0 : value.getTime();
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 }
 
 function resolveDateRange({ start = "", end = "", days = 2, now = new Date(), timeZone = "UTC" }) {

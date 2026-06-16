@@ -306,6 +306,9 @@ class CyberbossApp {
             timeoutMs: this.resolveLongPollTimeoutMs(),
           });
           assertChannelUpdateResponse(response, this.channelAdapter.describe().id);
+          if (consecutiveFailures > 0) {
+            console.log(`[cyberboss] poll recovered after ${consecutiveFailures} failure${consecutiveFailures === 1 ? "" : "s"}`);
+          }
           consecutiveFailures = 0;
           const messages = sortInboundUpdateMessages(Array.isArray(response?.msgs) ? response.msgs : []);
           for (const message of messages) {
@@ -346,7 +349,9 @@ class CyberbossApp {
           }
 
           consecutiveFailures += 1;
-          console.error(`[cyberboss] poll failed: ${formatErrorMessage(error)}`);
+          if (shouldLogPollFailure(consecutiveFailures)) {
+            console.error(`[cyberboss] poll failed count=${consecutiveFailures}: ${formatErrorMessage(error)}`);
+          }
           await sleep(consecutiveFailures >= MAX_CONSECUTIVE_FAILURES ? BACKOFF_DELAY_MS : RETRY_DELAY_MS);
         }
       }
@@ -414,11 +419,13 @@ class CyberbossApp {
           sourceText: "定位：到家了",
           at,
         });
-        this.maybeQueuePlaybookTrigger({
-          senderId,
-          provider: this.channelAdapter.describe().id,
-          receivedAt: at,
-        }, "arrived_home");
+        if (typeof this.maybeQueuePlaybookTrigger === "function") {
+          this.maybeQueuePlaybookTrigger({
+            senderId,
+            provider: this.channelAdapter?.describe?.()?.id || this.config.channel || "channel",
+            receivedAt: at,
+          }, "arrived_home");
+        }
       } catch (error) {
         console.error(`[cyberboss] location anchor handling failed: ${formatErrorMessage(error)}`);
       }
@@ -3589,6 +3596,10 @@ function formatErrorMessage(error) {
     return "The WeChat session has expired. Run `npm run login` again.";
   }
   return raw;
+}
+
+function shouldLogPollFailure(count) {
+  return count <= 3 || count % 10 === 0;
 }
 
 function sleep(ms) {
