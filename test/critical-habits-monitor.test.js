@@ -225,6 +225,60 @@ test("queued level A fallback includes identity-ledger instructions", () => {
   assert.match(queued[0].text, /Sport: 5-10 分钟散步、拉伸或任意低门槛身体活动/);
 });
 
+test("level B check queues at most one habit per eligible day", async () => {
+  const { monitor, queued } = createMonitor({
+    config: {
+      criticalHabitsLevelAMiddayHour: 23,
+      criticalHabitsLevelBWeekdays: [2, 4, 7],
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-09T18:03:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.equal(queued.length, 1);
+  assert.match(queued[0].text, /Praxisanleitung/);
+  assert.doesNotMatch(queued[0].text, /Python/);
+  assert.doesNotMatch(queued[0].text, /Wundmanagement/);
+});
+
+test("level B check staggers remaining habits across eligible days", async () => {
+  const { monitor, queued } = createMonitor({
+    config: {
+      criticalHabitsLevelAMiddayHour: 23,
+      criticalHabitsLevelBWeekdays: [2, 4, 7],
+    },
+  });
+
+  const tuesday = await monitor.check({ accountId: "account-1" }, new Date("2026-06-09T18:03:00+02:00"));
+  const thursday = await monitor.check({ accountId: "account-1" }, new Date("2026-06-11T18:03:00+02:00"));
+  const sunday = await monitor.check({ accountId: "account-1" }, new Date("2026-06-14T18:03:00+02:00"));
+
+  assert.equal(tuesday.queued.length, 1);
+  assert.equal(thursday.queued.length, 1);
+  assert.equal(sunday.queued.length, 1);
+  assert.equal(queued.length, 3);
+  assert.match(queued[0].text, /Praxisanleitung/);
+  assert.match(queued[1].text, /Wundmanagement/);
+  assert.match(queued[2].text, /Python/);
+});
+
+test("level B check does not backfill another habit on the same date", async () => {
+  const { monitor, queued } = createMonitor({
+    config: {
+      criticalHabitsLevelAMiddayHour: 23,
+      criticalHabitsLevelBWeekdays: [2, 4, 7],
+    },
+  });
+
+  const first = await monitor.check({ accountId: "account-1" }, new Date("2026-06-09T18:03:00+02:00"));
+  const second = await monitor.check({ accountId: "account-1" }, new Date("2026-06-09T18:30:00+02:00"));
+
+  assert.equal(first.queued.length, 1);
+  assert.equal(second.queued.length, 0);
+  assert.equal(queued.length, 1);
+});
+
 test("level A midday rhythm check respects the wake-up grace window", async () => {
   const { monitor, sent } = createMonitor({
     config: {

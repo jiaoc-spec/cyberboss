@@ -154,12 +154,19 @@ class CriticalHabitsMonitor {
     ) {
       const dates = trailingDates(local.date, 7);
       const events = await this.readEventsForDates(dates);
+      const dailyKey = `B_DAY:${local.date}`;
+      const missing = [];
       for (const item of this.config.criticalHabitsLevelB) {
         const key = `B:${local.isoWeek}:${item.id}`;
         if (!state.sent[key] && !events.some((event) => matchesHabit(event, item))) {
-          queued.push(this.enqueueHabitMessage({ account, target, level: "B", item, key, now }));
-          state.sent[key] = now.toISOString();
+          missing.push({ item, key });
         }
+      }
+      if (!state.sent[dailyKey] && missing.length) {
+        const { item, key } = missing[0];
+        queued.push(this.enqueueHabitMessage({ account, target, level: "B", item, key, now }));
+        state.sent[key] = now.toISOString();
+        state.sent[dailyKey] = now.toISOString();
       }
     }
 

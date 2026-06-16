@@ -8,7 +8,9 @@ forgotten. It reads timeline events and queues shame-aware system messages.
 - Level A, soft rhythm check around 12:30 and guardian check at 20:00:
   Sport, Englisch, Deutsch
 - Level B, trailing seven-day check on Tuesday, Thursday, and Sunday at 18:00:
-  Praxisanleitung, Wundmanagement, Python
+  Praxisanleitung, Wundmanagement, Python. Level B is staggered: at most one
+  missing Level B habit is prompted per eligible day, so these do not become a
+  same-day task bundle.
 - Level C, statistics only: Pflegewissenschaft, Literature Reading,
   Nursing Digest, Forschung
 
