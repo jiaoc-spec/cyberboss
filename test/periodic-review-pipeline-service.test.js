@@ -53,6 +53,8 @@ test("weekly review queues on Monday after the previous week has fully ended", a
   assert.match(queued[0].text, /不要给 Jane 发送“工具断了/);
   assert.match(queued[0].text, /Identity Ledger \/ Be-Do-Have/);
   assert.match(queued[0].text, /健康体能、语言能力、护理科学\/教学科研、舞蹈表达/);
+  assert.match(queued[0].text, /短期看信号，中期看趋势，长期看资产/);
+  assert.match(queued[0].text, /认知资产、关系资产、身体资产、人格资产/);
 });
 
 test("weekly review stays quiet before Monday window and on Sunday evening", async () => {
@@ -120,6 +122,8 @@ test("monthly review targets the previous month on the 1st", async () => {
   assert.match(monthlyText, /month=2026-06/);
   assert.match(monthlyText, /身份体检 \/ Be-Do-Have/);
   assert.match(monthlyText, /护理科学家\/教授\/教师\/ANP\/研究者/);
+  assert.match(monthlyText, /长期资产盘点/);
+  assert.match(monthlyText, /特定知识 \/ 杠杆检查/);
 });
 
 test("monthly review does not run mid-month", async () => {

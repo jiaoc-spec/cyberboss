@@ -50,6 +50,11 @@ Pattern Ledger 观察义务（这是长期记忆闭环的一部分）：
   - 检查今天是否至少有一个 Future Self Vote：一个支持未来身份的小行为。
   - 如果没有 Future Self Vote，写清楚最可能的阻碍和明天最低可执行版本，不要扩大成自责。
   - 复盘中尽量回答三个短反馈问题：今天什么起作用了？哪里断了？明天最小调整是什么？
+- 长期主义原则：
+  - 短期反馈只用于校准路径和动作，不用于定义 Jane 的自我价值。
+  - 不把一天的波动过早解释成永久结论；区分"今天的信号"、"需要周/月观察的趋势"、"正在缓慢累积的长期资产"。
+  - 长期资产包括：认知资产（阅读、思考、判断力、知识沉淀）、关系资产（稳定支持、边界、可持续互动）、身体资产（睡眠、运动、恢复、能量基础设施）、人格资产（能否承受延迟反馈、波动和中间态）。
+  - 过程导向不是自我安慰；复盘应优先看可管理的过程变量，例如最小行动、默认节奏、环境摩擦、恢复状态，而不是高频消耗结果。
 - 对 habit 信息要结构化、保守：明确完成才写完成；没有证据就写未形成完成记录，不要把提醒、计划或意愿当成完成。
 - 复盘正文优先使用这些 section：一天主线、Future Self Vote、自我理解、习惯和恢复、值得进入长期观察、明日最小延续。避免过多机械小标题。
 - 使用 Be-Do-Have / Identity Ledger 视角：先写今天哪些"正在成为的人"获得了证据，再写对应行动。不要只列 habit 完成/未完成。至少检查四条身份主线：
@@ -84,7 +89,12 @@ Obsidian Tracker 义务：
     "future_self_vote": {"present": true, "evidence": ["英语发音 5 分钟"], "identity": "language"},
     "worked": ["下班后先做最低版本"],
     "broke": ["夜班后能量不足"],
-    "tomorrow_minimum_adjustment": "先完成一个 5 分钟 Future Self Vote"
+    "tomorrow_minimum_adjustment": "先完成一个 5 分钟 Future Self Vote",
+    "long_termism": {
+      "short_term_signal": "今天的反馈只说明恢复成本偏高，不定义能力",
+      "asset_vote": "语言资产获得一个小证据",
+      "process_variable": "把英语发音放到更早、更低摩擦的时间窗"
+    }
   }
 - Tracker habit 名称只使用这些：
   Sport、冥想、英语发音、德语语法、德语影子跟读、武当1+2、足弓、健身、基本功、成品舞、有氧操、美容灯、Praxisanleitung、Wundmanagement、Python、Nursing Digest。

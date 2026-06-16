@@ -30,6 +30,9 @@ Critical Habits are designed for real life, not ideal days.
   that gives evidence to an identity Jane already chose.
 - Track behavior, not outcomes. Slow outcomes are not a reason to change the
   plan too early.
+- Critical habits protect long-term assets. They are not daily proof of Jane's
+  worth. Missing a habit is a signal for rhythm, friction, recovery, or timing;
+  it is not a character verdict.
 
 Default Level A minimum versions:
 
