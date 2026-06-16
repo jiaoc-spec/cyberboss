@@ -33,6 +33,9 @@ Critical Habits are designed for real life, not ideal days.
 - Critical habits protect long-term assets. They are not daily proof of Jane's
   worth. Missing a habit is a signal for rhythm, friction, recovery, or timing;
   it is not a character verdict.
+- Plan from the worst realistic day, not the best day. The minimum version is
+  the baseline plan; standard and stretch versions are optional upgrades when
+  the day has enough energy, time, and recovery.
 
 Default Level A minimum versions:
 

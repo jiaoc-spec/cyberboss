@@ -422,13 +422,13 @@ function buildLevelADirectMessage(items, dailyState = null, supportStrategies = 
     : "";
   const minimumText = formatMinimumOptions(items);
   const actionText = mode === "minimum"
-    ? `今天如果身体和脑子都在省电，就只做坏日子版本：${minimumText}。挑一个碰一下，也算给未来自己投了一票。`
-    : `如果现在还来得及，先从最低版本开始：${minimumText}。状态好再加量，不需要一开始就追求完整。`;
+    ? `今天如果身体和脑子都在省电，就只做最差日基线版本：${minimumText}。这不是补救，是计划本来就应该能活过坏日子。挑一个碰一下，也算给未来自己投了一票。`
+    : `如果现在还来得及，先从最差日基线开始：${minimumText}。状态好再加量，不需要一开始就追求完整。`;
   return [
     intro,
     meanings ? `它们不是打卡，是你给未来自己的地基：${meanings}。` : "它们不是打卡，是你给未来自己的地基。",
     promptKind === "midday"
-      ? `现在不是要你立刻把全部做完，只是别让今天从手边溜过去。挑一个最低版本就够：${minimumText}。`
+      ? `现在不是要你立刻把全部做完，只是别让今天从手边溜过去。挑一个最差日基线版本就够：${minimumText}。`
       : actionText,
     strategyText,
     "重点不是完美，是回来。",

@@ -102,6 +102,8 @@ test("deepseek daily mode includes recent conversation and local priority contex
   assert.match(body.messages[0].content, /short-term feedback is for calibrating the next action/);
   assert.match(body.messages[0].content, /cognitive assets, relationship assets, body assets, and character assets/);
   assert.match(body.messages[0].content, /Protect process orientation/);
+  assert.match(body.messages[0].content, /Worst-day planning protocol/);
+  assert.match(body.messages[0].content, /minimum version is the baseline plan/);
   assert.match(body.messages[0].content, /close old friend/);
   assert.match(body.messages[0].content, /realistic romantic CyberBoss tone/);
   assert.match(body.messages[0].content, /real person texting, not fiction/);

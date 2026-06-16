@@ -88,6 +88,9 @@ test("pipeline queues a review request with the output contract", async () => {
   assert.match(queued[0].text, /长期资产包括：认知资产/);
   assert.match(queued[0].text, /过程导向不是自我安慰/);
   assert.match(queued[0].text, /long_termism/);
+  assert.match(queued[0].text, /最差日计划原则/);
+  assert.match(queued[0].text, /minimum version 是基线计划/);
+  assert.match(queued[0].text, /worst_day_baseline/);
 });
 
 test("pipeline retries with delay and gives up after max attempts", async () => {

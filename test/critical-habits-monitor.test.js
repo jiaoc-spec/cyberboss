@@ -76,6 +76,7 @@ test("level A missing habits are combined into one direct guardian reminder", as
   assert.match(sent[0].text, /Sport：5-10 分钟散步、拉伸或任意低门槛身体活动/);
   assert.match(sent[0].text, /Englisch：5 分钟英语发音/);
   assert.match(sent[0].text, /Deutsch：5-10 分钟德语语法或影子跟读/);
+  assert.match(sent[0].text, /最差日基线/);
   assert.match(sent[0].text, /重点不是完美，是回来/);
 });
 
