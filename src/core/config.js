@@ -197,7 +197,7 @@ function readConfig() {
     today3x3TimelineSync: readOptionalBoolEnv("CYBERBOSS_TODAY3X3_TIMELINE_SYNC") !== false,
     today3x3DatabasePath: readTextEnv("CYBERBOSS_TODAY3X3_DATABASE_PATH") || path.join(os.homedir(), "Library/Group Containers/8774ZX9976.3x3.today/Model_3x3.sqlite"),
     today3x3SqliteBin: readTextEnv("CYBERBOSS_TODAY3X3_SQLITE_BIN") || "sqlite3",
-    today3x3SqliteTimeoutMs: readIntEnv("CYBERBOSS_TODAY3X3_SQLITE_TIMEOUT_MS") || 20_000,
+    today3x3SqliteTimeoutMs: readIntEnv("CYBERBOSS_TODAY3X3_SQLITE_TIMEOUT_MS") || 10_000,
     today3x3SqliteTimeoutCooldownMs: readIntEnv("CYBERBOSS_TODAY3X3_SQLITE_TIMEOUT_COOLDOWN_MS") || 3_600_000,
     today3x3TimelineSyncIntervalMs: readIntEnv("CYBERBOSS_TODAY3X3_TIMELINE_SYNC_INTERVAL_MS") || 600_000,
     today3x3TimelineSyncDays: readIntEnv("CYBERBOSS_TODAY3X3_TIMELINE_SYNC_DAYS") || 2,

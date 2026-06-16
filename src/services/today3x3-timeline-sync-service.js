@@ -5,7 +5,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const CORE_DATA_EPOCH_SECONDS = 978_307_200;
-const DEFAULT_SQLITE_TIMEOUT_MS = 20_000;
+const DEFAULT_SQLITE_TIMEOUT_MS = 10_000;
 const DEFAULT_SQLITE_TIMEOUT_COOLDOWN_MS = 3_600_000;
 const DEFAULT_DB_PATH = path.join(
   os.homedir(),
