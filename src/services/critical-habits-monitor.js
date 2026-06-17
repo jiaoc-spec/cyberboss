@@ -64,13 +64,14 @@ const PATTERN_CONTEXT_RULES = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, focusProtection, patternLedger, currentState, campaign }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, dayOperationsPlanner, focusProtection, patternLedger, currentState, campaign }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.dailyState = dailyState;
+    this.dayOperationsPlanner = dayOperationsPlanner;
     this.focusProtection = focusProtection;
     this.patternLedger = patternLedger;
     this.currentState = currentState;
@@ -119,6 +120,10 @@ class CriticalHabitsMonitor {
     if (isCalendarBusyNow(todayState)) {
       return { queued: [], deferred: "calendar_event" };
     }
+    const operationsPlan = await this.planOperations({ date: local.date, now, analysis: todayState });
+    if (this.dayOperationsPlanner?.shouldDefer?.(operationsPlan)) {
+      return { queued: [], deferred: `day_operations_${operationsPlan.currentPhase.kind}` };
+    }
     const guardianDue = local.hour >= this.config.criticalHabitsLevelAHour
       || todayState?.priorityTiming?.isDue === true;
     const softMiddayDue = !hasDayStrategySentToday(this.config.dayStrategyStateFile, local.date)
@@ -138,7 +143,7 @@ class CriticalHabitsMonitor {
         }
       }
       if (missing.length) {
-        queued.push(await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState, promptKind }));
+        queued.push(await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState, operationsPlan, promptKind }));
         if (promptKind !== "midday") {
           this.recordPatternEvidence({ dailyState: todayState, missing, now });
         }
@@ -215,6 +220,18 @@ class CriticalHabitsMonitor {
       return await this.dailyState.analyze({ date, now });
     } catch (error) {
       console.error(`[cyberboss] critical habits daily state failed date=${date}: ${error.message}`);
+      return null;
+    }
+  }
+
+  async planOperations({ date, now, analysis = null }) {
+    if (!this.dayOperationsPlanner || typeof this.dayOperationsPlanner.plan !== "function") {
+      return null;
+    }
+    try {
+      return await this.dayOperationsPlanner.plan({ date, now, analysis });
+    } catch (error) {
+      console.error(`[cyberboss] critical habits operations plan failed date=${date}: ${error.message}`);
       return null;
     }
   }

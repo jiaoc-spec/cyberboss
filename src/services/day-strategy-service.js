@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
+const { summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
 
 const WORK_SHIFT_PATTERN = /(frühdienst|fruehdienst|spätdienst|spaetdienst|nachtdienst|nachtwache|early\s*shift|late\s*shift|night\s*shift|早班|晚班|夜班)/i;
 const EARLY_SHIFT_PATTERN = /(frühdienst|fruehdienst|early\s*shift|早班)/i;
@@ -12,6 +13,7 @@ class DayStrategyService {
   constructor({
     config,
     dailyState = null,
+    dayOperationsPlanner = null,
     calendar = null,
     campaign = null,
     channelAdapter = null,
@@ -22,6 +24,7 @@ class DayStrategyService {
   } = {}) {
     this.config = config || {};
     this.dailyState = dailyState;
+    this.dayOperationsPlanner = dayOperationsPlanner;
     this.calendar = calendar;
     this.campaign = campaign;
     this.channelAdapter = channelAdapter;
@@ -73,6 +76,10 @@ class DayStrategyService {
     if (analysis?.temporalContext?.currentEvent) {
       return { queued: [], deferred: "calendar_event" };
     }
+    const operationsPlan = await this.planOperations({ date: local.date, now, analysis });
+    if (this.dayOperationsPlanner?.shouldDefer?.(operationsPlan)) {
+      return { queued: [], deferred: `day_operations_${operationsPlan.currentPhase.kind}` };
+    }
 
     const state = this.loadState();
     const campaignStatus = await this.readCampaignStatus(local.date);
@@ -98,6 +105,7 @@ class DayStrategyService {
     const text = buildDayStrategyTrigger({
       strategy,
       analysis,
+      operationsPlan,
       campaignStatus,
       tomorrow,
       config: this.config,
@@ -125,6 +133,18 @@ class DayStrategyService {
     } catch (error) {
       console.error(`[cyberboss] day strategy campaign read failed date=${date}: ${error.message}`);
       return { date, activeCampaigns: [], upcomingDeadlines: [] };
+    }
+  }
+
+  async planOperations({ date, now, analysis = null }) {
+    if (!this.dayOperationsPlanner || typeof this.dayOperationsPlanner.plan !== "function") {
+      return null;
+    }
+    try {
+      return await this.dayOperationsPlanner.plan({ date, now, analysis });
+    } catch (error) {
+      console.error(`[cyberboss] day strategy operations plan failed date=${date}: ${error.message}`);
+      return null;
     }
   }
 
@@ -291,7 +311,7 @@ function chooseStrategyCheckpoint({ analysis, campaignStatus, tomorrow, local, c
   return null;
 }
 
-function buildDayStrategyTrigger({ strategy, analysis, campaignStatus, tomorrow, config = {} }) {
+function buildDayStrategyTrigger({ strategy, analysis, operationsPlan = null, campaignStatus, tomorrow, config = {} }) {
   const userName = String(config.userName || "Jane").trim();
   const levelA = analysis?.levelA || [];
   const completed = levelA.filter((item) => item.completed).map((item) => item.label);
@@ -310,6 +330,7 @@ function buildDayStrategyTrigger({ strategy, analysis, campaignStatus, tomorrow,
     `Reason: ${strategy.reason}`,
     `Schedule mode: ${strategy.mode}.`,
     `Local day state: ${analysis?.temporalContext?.localNow || analysis?.generatedAt || "unknown"}.`,
+    operationsPlan ? `Day Operations Plan: ${summarizeOperationsPlanForPrompt(operationsPlan)}.` : "",
     `Level A completed: ${completed.length ? completed.join(", ") : "none recorded"}.`,
     `Level A still open: ${missing.length ? missing.join(", ") : "none"}.`,
     todaySchedule.length ? `Today schedule context: ${todaySchedule.join("; ")}.` : "Today schedule context: none known.",
@@ -322,6 +343,7 @@ function buildDayStrategyTrigger({ strategy, analysis, campaignStatus, tomorrow,
     "If this is an off day, explicitly recognize that today has more flexible time than a workday and gently suggest using one good window for a chosen long-term value.",
     "If this is a course_day, explicitly recognize that today has Weiterbildung/course commitments and use an after-course re-entry tone. Do not call it an off day.",
     "If Level A still open is not none, mention every open Level A label once before offering options. Do not omit Sport when Sport is still open; Sport may be framed as a 5-10 minute minimum version.",
+    "Follow the Day Operations Plan. Do not suggest packing, home setup, sleeping, or other location-bound actions during a work/course block. If the useful window is later, name it briefly and stay practical.",
     "Do not assign a rigid order. Do not say she failed. Do not ask what she is doing. Offer one realistic first block or two small options, and keep the tone intimate, grounded, and not novelistic.",
     "If tomorrow has an early shift, protect the evening and sleep: suggest doing the smallest important thing earlier rather than dragging it late.",
     "Return send_message, not silent.",

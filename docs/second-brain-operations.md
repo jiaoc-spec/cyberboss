@@ -8,6 +8,7 @@ CyberBoss uses Telegram as the daily inbox and Obsidian as the durable output li
 - Daily Inbox: factual capture buffer for the current day.
 - Timeline: structured events, including meaningful low-friction blocks such as sleep, commute, work, phone use, and meals.
 - Daily State Engine: reads Daily Inbox, timeline, and Apple Calendar to understand today's practical constraints.
+- Day Operations Planner: converts Daily State into a background secretary plan with fixed blocks, do-not-disturb windows, recovery buffers, and usable priority windows.
 - Day Strategy Assistant: converts today's calendar mode into proactive assistant timing.
 - Critical Habits Monitor: protects Level A/B/C long-term values.
 - Failure Watchdog: checks whether midnight review and archive finished.
@@ -31,6 +32,11 @@ It currently detects:
 
 Day Strategy is the Personal Executive Assistant layer. It decides whether
 today has a useful action window before the fixed habit guardian fires.
+
+It now relies on Day Operations Planner before speaking. The planner is the
+quiet background step a human secretary would do first: read the calendar,
+identify fixed commitments, protect work/course/focus/recovery time, and only
+then decide whether a proactive prompt fits the current moment.
 
 Default schedule modes:
 

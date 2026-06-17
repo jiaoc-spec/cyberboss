@@ -57,6 +57,7 @@ const {
   splitCommandLine,
 } = require("../adapters/runtime/shared/approval-command");
 const { runSystemCheckinPoller } = require("../app/system-checkin-poller");
+const { summarizeOperationsPlanForPrompt } = require("../services/day-operations-planner-service");
 const { createProjectTooling } = require("../tools/create-project-tooling");
 const { detectDecisionTrigger, buildDecisionTriggerAnnotation } = require("./decision-trigger");
 const { DecisionJournalState, isDecisionJournalConfirmation } = require("./decision-journal-state");
@@ -121,6 +122,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       dailyState: this.projectServices.dailyState,
+      dayOperationsPlanner: this.projectServices.dayOperationsPlanner,
       focusProtection: this.projectServices.focusProtection,
       patternLedger: this.projectServices.patternLedger,
       currentState: this.projectServices.currentState,
@@ -1080,12 +1082,22 @@ class CyberbossApp {
       const local = resolveCaptureLocalDateTime(receivedAt.toISOString(), this.config);
       const analysis = await dailyState.analyze({ date: local.date, now: receivedAt });
       const ctx = analysis?.temporalContext || {};
+      const operationsPlan = await this.buildDayOperationsPlanContext({ date: local.date, now: receivedAt, analysis });
       const tomorrowMorning = await this.readTomorrowMorningCalendarContext(local.date);
       const lines = [
         `Local now: ${ctx.localNow || `${local.date} ${local.time}`}`,
         `Day type / schedule mode: ${ctx.dayType || "unknown"}`,
         `Work/off-day schedule mode: ${ctx.scheduleMode || "unknown"}`,
       ];
+      if (operationsPlan) {
+        lines.push(`Day Operations Plan: ${summarizeOperationsPlanForPrompt(operationsPlan)}`);
+        if (operationsPlan.currentPhase?.kind === "do_not_disturb") {
+          lines.push("HARD RULE: the Day Operations Plan says Jane is inside a fixed work/course block now. Do not suggest sleep, packing, home setup, chores, or other actions that conflict with being in that block. Reply to her actual message and keep location-aware.");
+        }
+        if (operationsPlan.currentPhase?.kind === "recovery") {
+          lines.push("HARD RULE: the Day Operations Plan says Jane is in a recovery buffer. Keep suggestions small and do not stack multiple habits/tasks.");
+        }
+      }
       if (ctx.currentEvent) {
         lines.push(`Currently in calendar event: ${formatTemporalCalendarEvent(ctx.currentEvent)}`);
       } else {
@@ -1138,6 +1150,19 @@ class CyberbossApp {
     } catch (error) {
       console.error(`[cyberboss] temporal context build failed: ${formatErrorMessage(error)}`);
       return "";
+    }
+  }
+
+  async buildDayOperationsPlanContext({ date, now, analysis }) {
+    const planner = this.projectServices?.dayOperationsPlanner;
+    if (!planner || typeof planner.plan !== "function") {
+      return null;
+    }
+    try {
+      return await planner.plan({ date, now, analysis });
+    } catch (error) {
+      console.error(`[cyberboss] runtime day operations plan failed: ${formatErrorMessage(error)}`);
+      return null;
     }
   }
 

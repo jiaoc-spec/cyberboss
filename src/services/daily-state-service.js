@@ -428,6 +428,8 @@ function summarizeCalendarEvent(event, timeZone) {
   return {
     title: normalizeText(event.title) || "(untitled)",
     calendar: normalizeText(event.calendar),
+    startDate: localDateParts(start, timeZone).date,
+    endDate: localDateParts(end, timeZone).date,
     start: formatLocalTime(start, timeZone),
     end: formatLocalTime(end, timeZone),
     isAllDay: Boolean(event.isAllDay),

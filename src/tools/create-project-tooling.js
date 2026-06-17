@@ -12,6 +12,7 @@ const { CalendarTimelineSyncService } = require("../services/calendar-timeline-s
 const { ChannelFileService } = require("../services/channel-file-service");
 const { DailyInboxService } = require("../services/daily-inbox-service");
 const { DailyStateService } = require("../services/daily-state-service");
+const { DayOperationsPlannerService } = require("../services/day-operations-planner-service");
 const { DayStrategyService } = require("../services/day-strategy-service");
 const { DiaryService } = require("../services/diary-service");
 const { FocusProtectionService } = require("../services/focus-protection-service");
@@ -50,6 +51,7 @@ function createProjectTooling(config, options = {}) {
   const calendar = new CalendarService({ config });
   const health = new HealthService({ config, diary });
   const dailyState = new DailyStateService({ config, dailyInbox, timeline, calendar, health });
+  const dayOperationsPlanner = new DayOperationsPlannerService({ config, dailyState });
   const campaign = new CampaignService({ config });
   const patternLedger = new PatternLedgerService({ config });
   const currentState = new CurrentStateService({ config });
@@ -64,10 +66,12 @@ function createProjectTooling(config, options = {}) {
     focusProtection,
     currentState,
     dailyState,
+    dayOperationsPlanner,
   });
   const dayStrategy = new DayStrategyService({
     config,
     dailyState,
+    dayOperationsPlanner,
     calendar,
     campaign,
     channelAdapter,
@@ -88,6 +92,7 @@ function createProjectTooling(config, options = {}) {
     calendarTimelineSync: new CalendarTimelineSyncService({ config, calendar, timeline }),
     dailyInbox,
     dailyState,
+    dayOperationsPlanner,
     diary,
     focusProtection,
     health,

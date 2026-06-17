@@ -14,8 +14,43 @@ Critical Habits Monitor knows what matters.
 
 Daily State Engine knows what happened and what is on the calendar.
 
-Day Strategy connects them. Without it, CyberBoss can know that Apple Calendar
-says `Frei` but still behave like a passive recorder.
+Day Operations Planner turns the daily facts into a background operating plan:
+fixed blocks, do-not-disturb windows, recovery buffers, and usable priority
+windows.
+
+Day Strategy connects these layers. Without it, CyberBoss can know that Apple
+Calendar says `Frei` but still behave like a passive recorder.
+
+## Day Operations Planner
+
+Day Operations Planner is the "secretary looks at the day first" layer.
+
+It writes a small daily plan to `day-operations-plan.json` and exposes it to:
+
+- ordinary Telegram replies, as runtime context;
+- Day Strategy, before it chooses a proactive prompt;
+- Priority Awareness, before it reminds about user-declared priorities;
+- Critical Habits, before direct Level A reminders;
+- random check-ins, through the persisted plan file.
+
+The planner does not decide life goals and does not generate chat prose. It
+only answers:
+
+- What fixed commitments are on the calendar today?
+- Is Jane currently in work, course, focus, recovery, or a usable priority
+  window?
+- Should non-urgent assistant messages defer right now?
+- If speaking is useful, what kind of window is this?
+
+Default config:
+
+```dotenv
+CYBERBOSS_DAY_OPERATIONS_PLANNER_ENABLED=true
+CYBERBOSS_DAY_OPERATIONS_PLAN_STATE_FILE=~/.cyberboss/day-operations-plan.json
+CYBERBOSS_DAY_OPERATIONS_COURSE_RECOVERY_MINUTES=30
+CYBERBOSS_DAY_OPERATIONS_SHIFT_RECOVERY_MINUTES=60
+CYBERBOSS_DAY_OPERATIONS_PRIORITY_WINDOW_END_HOUR=21
+```
 
 ## Schedule Modes
 

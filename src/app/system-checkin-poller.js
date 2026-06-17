@@ -7,6 +7,7 @@ const { CheckinConfigStore, resolveDefaultCheckinRange } = require("../core/chec
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { SystemMessageQueueStore } = require("../core/system-message-queue-store");
 const { readCurrentStateFile, evaluateBusyState } = require("../services/current-state-service");
+const { evaluatePlanPhase, readPlanForDate, shouldDeferForOperationsPlan } = require("../services/day-operations-planner-service");
 const { getActiveFocusSession } = require("../services/focus-protection-service");
 
 const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = [
@@ -120,6 +121,26 @@ function formatLocalTime(value, timeZone = "UTC") {
   }).format(date).replace(/\//g, "-");
 }
 
+function localDateText(value, timeZone = "UTC") {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const parts = {};
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: normalizeText(timeZone) || "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type !== "literal") {
+      parts[part.type] = part.value;
+    }
+  }
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function formatRangeMinutes(range) {
   return `${Math.round(range.minIntervalMs / 60000)}m-${Math.round(range.maxIntervalMs / 60000)}m`;
 }
@@ -152,6 +173,10 @@ function getProtectedCheckinState({ config = {}, target = {}, now = new Date() }
         reason: `explicit busy state active state=${busy.state} age=${busy.ageMinutes}m`,
       };
     }
+  }
+  const operations = getProtectedOperationsPlanState({ config, now });
+  if (operations.skip) {
+    return operations;
   }
   const state = readTimelineAutoCaptureState(config.timelineAutoCaptureStateFile);
   const pending = state.pending || {};
@@ -187,6 +212,28 @@ function getProtectedCheckinState({ config = {}, target = {}, now = new Date() }
   return { skip: false };
 }
 
+function getProtectedOperationsPlanState({ config = {}, now = new Date() } = {}) {
+  const filePath = normalizeText(config.dayOperationsPlanStateFile);
+  if (!filePath) {
+    return { skip: false };
+  }
+  const timeZone = normalizeText(config.timeZone || config.diaryTimeZone) || "UTC";
+  const date = localDateText(now, timeZone);
+  const plan = readPlanForDate(filePath, date);
+  if (!plan) {
+    return { skip: false };
+  }
+  const currentPhase = evaluatePlanPhase({ plan, now });
+  const evaluatedPlan = { ...plan, currentPhase };
+  if (!shouldDeferForOperationsPlan(evaluatedPlan)) {
+    return { skip: false };
+  }
+  return {
+    skip: true,
+    reason: `day operations protected phase=${currentPhase.kind} reason=${currentPhase.reason}`,
+  };
+}
+
 function readJsonState(filePath, fallback) {
   const normalized = normalizeText(filePath);
   if (!normalized || !fs.existsSync(normalized)) {
@@ -218,4 +265,4 @@ function isSleepLikePending({ subcategoryId = "", title = "", text = "" } = {}) 
   return /(rest\.nap|sleep|睡|补觉|午睡|休息|躺床|躺下|nap)/i.test(combined);
 }
 
-module.exports = { runSystemCheckinPoller, getProtectedCheckinState };
+module.exports = { runSystemCheckinPoller, getProtectedCheckinState, getProtectedOperationsPlanState };

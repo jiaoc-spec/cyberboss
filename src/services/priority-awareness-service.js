@@ -4,13 +4,14 @@ const path = require("path");
 
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { DEFAULT_LEVEL_A, DEFAULT_LEVEL_B, DEFAULT_LEVEL_C, matchesHabit } = require("./critical-habits-monitor");
+const { summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
 
 const ACTIVE_STATUSES = new Set(["pending", "unknown"]);
 const CLOSED_STATUSES = new Set(["completed", "postponed", "skipped", "cancelled"]);
 const VALID_STATUSES = new Set([...ACTIVE_STATUSES, ...CLOSED_STATUSES]);
 
 class PriorityAwarenessService {
-  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null, dailyState = null }) {
+  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null, dailyState = null, dayOperationsPlanner = null }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -19,6 +20,7 @@ class PriorityAwarenessService {
     this.focusProtection = focusProtection;
     this.currentState = currentState;
     this.dailyState = dailyState;
+    this.dayOperationsPlanner = dayOperationsPlanner;
     this.stateFile = this.config.priorityAwarenessStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -192,6 +194,10 @@ class PriorityAwarenessService {
     if (todayState?.temporalContext?.currentEvent) {
       return { queued: [], deferred: "calendar_event" };
     }
+    const operationsPlan = await this.planOperations({ date: targetDate, now, analysis: todayState });
+    if (this.dayOperationsPlanner?.shouldDefer?.(operationsPlan)) {
+      return { queued: [], deferred: `day_operations_${operationsPlan.currentPhase.kind}` };
+    }
 
     const focus = this.focusProtection?.isProtected?.({
       senderId: target.senderId,
@@ -228,7 +234,7 @@ class PriorityAwarenessService {
       return { queued: [] };
     }
 
-    const message = this.enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState: todayState });
+    const message = this.enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState: todayState, operationsPlan });
     awareness.lastPromptAt = now.toISOString();
     awareness.needsReevaluationAt = "";
     awareness.promptedCheckpoints = awareness.promptedCheckpoints || {};
@@ -401,7 +407,19 @@ class PriorityAwarenessService {
     }
   }
 
-  enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState = null }) {
+  async planOperations({ date, now, analysis = null }) {
+    if (!this.dayOperationsPlanner || typeof this.dayOperationsPlanner.plan !== "function") {
+      return null;
+    }
+    try {
+      return await this.dayOperationsPlanner.plan({ date, now, analysis });
+    } catch (error) {
+      console.error(`[cyberboss] priority awareness day operations plan failed date=${date}: ${error.message}`);
+      return null;
+    }
+  }
+
+  enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState = null, operationsPlan = null }) {
     const completed = day.priorities.filter((item) => item.status === "completed");
     const closed = day.priorities.filter((item) => CLOSED_STATUSES.has(item.status) && item.status !== "completed");
     const schedule = summarizeScheduleContext(dailyState);
@@ -412,6 +430,7 @@ class PriorityAwarenessService {
       `Still open: ${pending.map((item) => item.label).join(", ")}.`,
       closed.length ? `Consciously closed or postponed: ${closed.map((item) => `${item.label} (${item.status})`).join(", ")}.` : "",
       schedule ? `Today's schedule context: ${schedule}.` : "",
+      operationsPlan ? `Day Operations Plan: ${summarizeOperationsPlanForPrompt(operationsPlan)}.` : "",
       `Time remaining until the boundary: ${formatRemaining(remainingMs)}.`,
       `Estimated full-version time for open priorities: ${formatRemaining(feasibility.activityMinutes * 60_000)} (${pending.map((item) => `${item.label} ${estimatePriorityMinutes(item)}m`).join(", ")}).`,
       `Reserved boundary preparation buffer: ${feasibility.bufferMinutes} minutes.`,
@@ -423,6 +442,7 @@ class PriorityAwarenessService {
           : "There is no longer enough estimated time for all full versions before the boundary. Do not imply that full completion is still realistic; offer a conscious choice between a minimum version, postponing, skipping, or revising the plan.",
       "DELIVERY REQUIRED. Send one short, gentle but steadfast priority-awareness message. Return send_message, not silent. Reconnect her with what she already chose, summarize completed and open items, and offer a choice about which one to advance. Be reality-aware: distinguish whether this is a smallest-return moment or a real-rest moment. Emotional support is welcome, but do not comfort her in a way that makes the chosen priorities disappear. Do not command, supervise, shame, or invent an execution order. A list is unordered unless she explicitly specified an order. Always Return matters more than perfect streaks.",
       "Respect the schedule context. If today has a course, shift, or work boundary, do not call it an off day and do not suggest home-only actions during those blocks.",
+      "Respect the Day Operations Plan. If current_phase is do_not_disturb or recovery, this trigger should not have been delivered; if it is a priority window, use that window and avoid home-only suggestions during work/course blocks.",
     ].filter(Boolean).join("\n");
     const message = this.systemMessageQueue.enqueue({
       id: `priority-awareness:${day.date}:${crypto.randomUUID()}`,

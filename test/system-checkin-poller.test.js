@@ -4,7 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { getProtectedCheckinState } = require("../src/app/system-checkin-poller");
+const { getProtectedCheckinState, getProtectedOperationsPlanState } = require("../src/app/system-checkin-poller");
 
 test("check-in is skipped during a recent sleep/rest pending state", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-checkin-protect-"));
@@ -105,4 +105,41 @@ test("check-in is skipped during explicit timed early-shift work state", () => {
 
   assert.equal(result.skip, true);
   assert.match(result.reason, /explicit busy state active state=at_work/);
+});
+
+test("check-in is skipped when the day operations plan says this is protected time", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-checkin-operations-"));
+  const stateFile = path.join(dir, "day-operations-plan.json");
+  fs.writeFileSync(stateFile, `${JSON.stringify({
+    plans: {
+      "2026-06-17": {
+        date: "2026-06-17",
+        timeZone: "Europe/Berlin",
+        doNotDisturbWindows: [
+          {
+            label: "Weiterbildung",
+            reason: "course_calendar_block",
+            start: "08:30",
+            end: "15:00",
+            startMinutes: 510,
+            endMinutes: 900,
+          },
+        ],
+        recoveryWindows: [],
+        priorityWindows: [],
+        levelA: { open: [{ id: "sport", label: "Sport" }], completed: [] },
+      },
+    },
+  })}\n`);
+
+  const result = getProtectedOperationsPlanState({
+    config: {
+      timeZone: "Europe/Berlin",
+      dayOperationsPlanStateFile: stateFile,
+    },
+    now: new Date("2026-06-17T10:00:00+02:00"),
+  });
+
+  assert.equal(result.skip, true);
+  assert.match(result.reason, /day operations protected phase=do_not_disturb/);
 });

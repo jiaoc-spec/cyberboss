@@ -47,6 +47,7 @@ function createService(overrides = {}) {
     focusProtection: overrides.focusProtection,
     currentState: overrides.currentState,
     dailyState: overrides.dailyState,
+    dayOperationsPlanner: overrides.dayOperationsPlanner,
   });
   return { service, queued };
 }
@@ -281,6 +282,51 @@ test("monitor defers during current calendar events and includes schedule contex
   assert.equal(queuedResult.queued.length, 1);
   assert.match(queued[0].text, /Today's schedule context: mode=course_day; Weiterbildung zur PA 08:30-15:00/);
   assert.match(queued[0].text, /do not call it an off day/);
+});
+
+test("monitor defers during day operations protected recovery windows", async () => {
+  const { service, queued } = createService({
+    dailyState: {
+      async analyze() {
+        return {
+          scheduleMode: "early_shift",
+          temporalContext: {
+            scheduleMode: "early_shift",
+            currentEvent: null,
+            scheduleEventsToday: [
+              { title: "Frühdienst", calendar: "Arbeit", start: "05:30", end: "14:00" },
+            ],
+          },
+        };
+      },
+    },
+    dayOperationsPlanner: {
+      async plan() {
+        return {
+          currentPhase: {
+            kind: "recovery",
+            shouldDefer: true,
+            reason: "early_shift_recovery_buffer",
+          },
+        };
+      },
+      shouldDefer(plan) {
+        return Boolean(plan?.currentPhase?.shouldDefer);
+      },
+    },
+  });
+  service.set({
+    date: "2026-06-18",
+    deadlineAt: "2026-06-18T20:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-18T14:20:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(result.deferred, "day_operations_recovery");
+  assert.equal(queued.length, 0);
 });
 
 test("wake-up reentry waits for the grace window before queuing priority awareness", async () => {
