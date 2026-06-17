@@ -305,3 +305,94 @@ test("daily state exposes off-day schedule mode from Apple Calendar Frei", async
   assert.equal(state.scheduleMode, "off_day");
   assert.equal(state.temporalContext.scheduleMode, "off_day");
 });
+
+test("daily state treats explicit today rest wording as off day without calendar", async () => {
+  const service = new DailyStateService({
+    config: { timeZone: "Europe/Berlin" },
+    dailyInbox: {
+      read() {
+        return {
+          exists: true,
+          filePath: "/tmp/day.md",
+          text: "### 10:00\n> 今天休息，想慢慢整理一下。",
+        };
+      },
+    },
+    timeline: {
+      async read() {
+        return { data: { events: [] } };
+      },
+    },
+    calendar: {
+      async read() {
+        return { events: [] };
+      },
+    },
+  });
+
+  const state = await service.analyze({
+    date: "2026-06-12",
+    now: new Date("2026-06-12T12:30:00+02:00"),
+  });
+
+  assert.equal(state.signals.hasOffDay, true);
+  assert.equal(state.scheduleMode, "off_day");
+});
+
+test("daily state treats Weiterbildung as course day even with sleep/rest text", async () => {
+  const service = new DailyStateService({
+    config: { timeZone: "Europe/Berlin" },
+    dailyInbox: {
+      read() {
+        return {
+          exists: true,
+          filePath: "/tmp/2026-06-17.md",
+          text: "### 09:00\n> 今天有 Weiterbildung zur PA，昨晚睡眠 / 休息不够。",
+        };
+      },
+    },
+    timeline: {
+      async read() {
+        return {
+          data: {
+            events: [
+              { title: "睡眠 / 休息", categoryId: "rest.sleep" },
+            ],
+          },
+        };
+      },
+    },
+    calendar: {
+      async read() {
+        return {
+          events: [
+            {
+              title: "Weiterbildung zur PA",
+              start: "2026-06-17T08:30:00+02:00",
+              end: "2026-06-17T15:00:00+02:00",
+              calendar: "Arbeit",
+            },
+            {
+              title: "📱刷手机",
+              start: "2026-06-17T14:56:00+02:00",
+              end: "2026-06-17T15:04:00+02:00",
+              calendar: "Bildschirmzeit",
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const state = await service.analyze({
+    date: "2026-06-17",
+    now: new Date("2026-06-17T15:03:00+02:00"),
+  });
+
+  assert.equal(state.signals.hasCourseDay, true);
+  assert.equal(state.signals.hasOffDay, false);
+  assert.equal(state.scheduleMode, "course_day");
+  assert.equal(state.temporalContext.scheduleMode, "course_day");
+  assert.equal(state.temporalContext.currentEvent, null);
+  assert.deepEqual(state.temporalContext.scheduleEventsToday.map((event) => event.title), ["Weiterbildung zur PA"]);
+});

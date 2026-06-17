@@ -6,6 +6,7 @@ const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../
 
 const WORK_SHIFT_PATTERN = /(frühdienst|fruehdienst|spätdienst|spaetdienst|nachtdienst|nachtwache|early\s*shift|late\s*shift|night\s*shift|早班|晚班|夜班)/i;
 const EARLY_SHIFT_PATTERN = /(frühdienst|fruehdienst|early\s*shift|早班)/i;
+const COURSE_DAY_PATTERN = /(weiterbildung|fortbildung|seminar|kurs|course|class|lecture|praxisanleitung|网课|课程|上课|培训|继续教育)/i;
 
 class DayStrategyService {
   constructor({
@@ -220,6 +221,19 @@ function chooseStrategyCheckpoint({ analysis, campaignStatus, tomorrow, local, c
     return null;
   }
 
+  if (mode === "course_day") {
+    const courseDue = resolveCourseDayDueMinutes(analysis, config);
+    if (localMinutes >= courseDue) {
+      return {
+        id: "course_day_after_learning_window",
+        mode,
+        reason: "Apple Calendar shows a Weiterbildung/course day, so this is an after-course window rather than an off day.",
+        tone: "after_course_reentry",
+      };
+    }
+    return null;
+  }
+
   if (mode === "late_shift") {
     const morningDue = due("dayStrategyLateShiftHour", "dayStrategyLateShiftMinute", 10, 30);
     if (localMinutes >= morningDue) {
@@ -282,6 +296,9 @@ function buildDayStrategyTrigger({ strategy, analysis, campaignStatus, tomorrow,
   const levelA = analysis?.levelA || [];
   const completed = levelA.filter((item) => item.completed).map((item) => item.label);
   const missing = levelA.filter((item) => !item.completed).map((item) => `${item.label} (${item.estimatedMinutes || "?"}m)`);
+  const todaySchedule = (analysis?.temporalContext?.scheduleEventsToday || [])
+    .slice(0, 5)
+    .map((event) => `${event.title} ${event.start}-${event.end}`);
   const deadlines = (campaignStatus?.upcomingDeadlines || [])
     .filter((item) => item.daysLeft <= 14)
     .slice(0, 3)
@@ -295,6 +312,7 @@ function buildDayStrategyTrigger({ strategy, analysis, campaignStatus, tomorrow,
     `Local day state: ${analysis?.temporalContext?.localNow || analysis?.generatedAt || "unknown"}.`,
     `Level A completed: ${completed.length ? completed.join(", ") : "none recorded"}.`,
     `Level A still open: ${missing.length ? missing.join(", ") : "none"}.`,
+    todaySchedule.length ? `Today schedule context: ${todaySchedule.join("; ")}.` : "Today schedule context: none known.",
     deadlines.length ? `Upcoming campaign/deadline context: ${deadlines.join("; ")}.` : "Upcoming campaign/deadline context: none known.",
     tomorrowWork.length ? `Tomorrow morning work context: ${tomorrowWork.join("; ")}.` : "Tomorrow morning work context: none known.",
     "This is not a random check-in and not a scolding. It is the Personal Executive Assistant layer deciding that today's schedule has a useful window.",
@@ -302,6 +320,8 @@ function buildDayStrategyTrigger({ strategy, analysis, campaignStatus, tomorrow,
     "Identity Ledger: health/fitness, language ability, nursing scientist/professor/teacher/ANP/researcher, and dancer/body-expression identity.",
     `Send one short, natural, warm message to ${userName}. Do not mention backend, strategy ids, calendar parsing, or tools.`,
     "If this is an off day, explicitly recognize that today has more flexible time than a workday and gently suggest using one good window for a chosen long-term value.",
+    "If this is a course_day, explicitly recognize that today has Weiterbildung/course commitments and use an after-course re-entry tone. Do not call it an off day.",
+    "If Level A still open is not none, mention every open Level A label once before offering options. Do not omit Sport when Sport is still open; Sport may be framed as a 5-10 minute minimum version.",
     "Do not assign a rigid order. Do not say she failed. Do not ask what she is doing. Offer one realistic first block or two small options, and keep the tone intimate, grounded, and not novelistic.",
     "If tomorrow has an early shift, protect the evening and sleep: suggest doing the smallest important thing earlier rather than dragging it late.",
     "Return send_message, not silent.",
@@ -309,11 +329,28 @@ function buildDayStrategyTrigger({ strategy, analysis, campaignStatus, tomorrow,
 }
 
 function resolveScheduleMode(signals = {}) {
-  if (signals.hasOffDay) return "off_day";
   if (signals.hasNightShift) return "night_shift";
   if (signals.hasLateShift) return "late_shift";
   if (signals.hasEarlyShift) return "early_shift";
+  if (signals.hasCourseDay) return "course_day";
+  if (signals.hasOffDay) return "off_day";
   return "normal_day";
+}
+
+function resolveCourseDayDueMinutes(analysis, config = {}) {
+  const fallback = readHourConfig(config, "dayStrategyCourseDayAfterHour", 16) * 60
+    + readMinuteConfig(config, "dayStrategyCourseDayAfterMinute", 0);
+  const grace = readPositiveIntConfig(config, "dayStrategyCourseDayGraceMinutes", 30);
+  const scheduleEvents = analysis?.temporalContext?.scheduleEventsToday || [];
+  const courseEndMinutes = scheduleEvents
+    .filter((event) => COURSE_DAY_PATTERN.test(`${event.title || ""} ${event.calendar || ""}`))
+    .map((event) => parseClockMinutes(event.end))
+    .filter(Number.isInteger);
+  if (!courseEndMinutes.length) {
+    return fallback;
+  }
+  const latestCourseEnd = Math.max(...courseEndMinutes);
+  return Math.min(20 * 60, Math.max(fallback, latestCourseEnd + grace));
 }
 
 function isQuietCurrentState(current, config = {}) {
@@ -392,6 +429,27 @@ function readHourConfig(config, key, fallback) {
 function readMinuteConfig(config, key, fallback) {
   const value = Number(config?.[key]);
   return Number.isFinite(value) && value >= 0 && value <= 59 ? Math.floor(value) : fallback;
+}
+
+function readPositiveIntConfig(config, key, fallback) {
+  const value = Number(config?.[key]);
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
+}
+
+function parseClockMinutes(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+  return hour * 60 + minute;
 }
 
 function pruneSent(sent = {}, today = "") {

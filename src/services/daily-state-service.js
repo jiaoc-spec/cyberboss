@@ -14,6 +14,8 @@ const NIGHT_SHIFT_PATTERN = /(night\s*shift|nachtdienst|nachtwache|夜班)/i;
 const EARLY_SHIFT_PATTERN = /(frühdienst|fruehdienst|early\s*shift|早班)/i;
 const LATE_SHIFT_PATTERN = /(spätdienst|spaetdienst|late\s*shift|晚班)/i;
 const OFF_DAY_PATTERN = /(\bfrei\b|休息|休假|不上班|urlaub|vacation|holiday)/i;
+const EXPLICIT_OFF_DAY_TEXT_PATTERN = /((今天|今日|我今天|这一天|这天).{0,12}(\bfrei\b|休息日|休假|不上班|不用上班|没有上班|没班|off\s*day|urlaub|休息(?!不够|一下|一会|会儿|\/))|(\bfrei\b|off\s*day|休息日).{0,8}(今天|今日))/i;
+const COURSE_DAY_PATTERN = /(weiterbildung|fortbildung|seminar|kurs|course|class|lecture|praxisanleitung|网课|课程|上课|培训|继续教育)/i;
 const PHONE_PATTERN = /(screen\s*time|bildschirmzeit|刷手机|看手机|手机时间|手机使用|scroll)/i;
 const COMMUTE_PATTERN = /(commute|通勤|出门|到家|回家|去上班|下班|路上|fahrt|weg)/i;
 const SLEEP_PATTERN = /(sleep|睡觉|睡眠|补觉|躺床|休息|nap|schlaf)/i;
@@ -51,6 +53,7 @@ class DailyStateService {
     const nightShiftEvents = calendarEvents.filter(isNightShiftCalendarEvent);
     const earlyShiftEvents = calendarEvents.filter(isEarlyShiftCalendarEvent);
     const lateShiftEvents = calendarEvents.filter(isLateShiftCalendarEvent);
+    const courseEvents = calendarEvents.filter(isCourseCalendarEvent);
     const offDayEvents = calendarEvents.filter(isOffDayCalendarEvent);
     const phoneUseEvents = timelineEvents.filter((event) => PHONE_PATTERN.test(eventToText(event)));
     const commuteEvents = timelineEvents.filter((event) => COMMUTE_PATTERN.test(eventToText(event)));
@@ -59,11 +62,17 @@ class DailyStateService {
     const calendarSaysEarlyShift = earlyShiftEvents.length > 0;
     const calendarSaysNightShift = nightShiftEvents.length > 0;
     const calendarSaysLateShift = lateShiftEvents.length > 0;
+    const calendarSaysCourseDay = courseEvents.length > 0;
+    const calendarSaysScheduledCommitment = calendarSaysEarlyShift
+      || calendarSaysNightShift
+      || calendarSaysLateShift
+      || calendarSaysCourseDay;
     const signals = {
       hasNightShift: calendarSaysNightShift || (!calendarSaysEarlyShift && NIGHT_SHIFT_PATTERN.test(allText)),
       hasEarlyShift: calendarSaysEarlyShift || EARLY_SHIFT_PATTERN.test(allText),
       hasLateShift: calendarSaysLateShift || LATE_SHIFT_PATTERN.test(allText),
-      hasOffDay: offDayEvents.length > 0 || OFF_DAY_PATTERN.test(allText),
+      hasCourseDay: calendarSaysCourseDay || COURSE_DAY_PATTERN.test(inbox.text),
+      hasOffDay: !calendarSaysScheduledCommitment && (offDayEvents.length > 0 || EXPLICIT_OFF_DAY_TEXT_PATTERN.test(inbox.text)),
       hasPhoneUse: phoneUseEvents.length > 0 || PHONE_PATTERN.test(allText),
       hasCommute: commuteEvents.length > 0 || COMMUTE_PATTERN.test(allText),
       hasSleepOrRest: sleepEvents.length > 0 || SLEEP_PATTERN.test(allText),
@@ -283,6 +292,9 @@ function resolveContextQuestionBaseMinutes(signals, config) {
   if (signals.hasNightShift) {
     return readHourConfig(config, "missingContextNightShiftHour", 20) * 60;
   }
+  if (signals.hasCourseDay) {
+    return readHourConfig(config, "missingContextCourseDayHour", 18) * 60;
+  }
   if (signals.hasOffDay) {
     return readHourConfig(config, "missingContextOffDayHour", 20) * 60;
   }
@@ -293,6 +305,7 @@ function resolveContextQuestionReason(signals) {
   if (signals.hasEarlyShift) return "early_shift_after_work";
   if (signals.hasLateShift) return "late_shift_after_work";
   if (signals.hasNightShift) return "night_shift_pre_shift";
+  if (signals.hasCourseDay) return "course_day_after_learning";
   if (signals.hasOffDay) return "off_day_evening";
   return "default_evening";
 }
@@ -306,6 +319,7 @@ function findBlockingEvent(events, now) {
   const nowMs = now.getTime();
   return (events || [])
     .filter((event) => !event?.isAllDay)
+    .filter((event) => !isNonBlockingTelemetryCalendarEvent(event))
     .filter((event) => {
       const start = parseDate(event.start);
       const end = parseDate(event.end);
@@ -330,6 +344,11 @@ function buildTemporalContext({ now, timeZone, targetDate, calendarEvents, signa
     .map((event) => summarizeCalendarEvent(event, timeZone))
     .filter(Boolean)
     .sort((a, b) => a.start.localeCompare(b.start));
+  const scheduleEventsToday = (calendarEvents || [])
+    .filter(isScheduleCommitmentCalendarEvent)
+    .map((event) => summarizeCalendarEvent(event, timeZone))
+    .filter(Boolean)
+    .sort((a, b) => a.start.localeCompare(b.start));
   const current = findBlockingEvent(calendarEvents, now);
   const nextEvents = todayEvents.filter((event) => event.end >= formatLocalTime(now, timeZone)).slice(0, 5);
   return {
@@ -339,15 +358,17 @@ function buildTemporalContext({ now, timeZone, targetDate, calendarEvents, signa
     scheduleMode: scheduleMode || resolveScheduleMode(signals),
     currentEvent: current ? summarizeCalendarEvent(current, timeZone) : null,
     remainingEventsToday: nextEvents,
+    scheduleEventsToday,
     contextQuestionTiming,
   };
 }
 
 function resolveScheduleMode(signals = {}) {
-  if (signals.hasOffDay) return "off_day";
   if (signals.hasNightShift) return "night_shift";
   if (signals.hasLateShift) return "late_shift";
   if (signals.hasEarlyShift) return "early_shift";
+  if (signals.hasCourseDay) return "course_day";
+  if (signals.hasOffDay) return "off_day";
   return "normal_day";
 }
 
@@ -379,8 +400,25 @@ function isLateShiftCalendarEvent(event) {
   return LATE_SHIFT_PATTERN.test(calendarEventToText(event));
 }
 
+function isCourseCalendarEvent(event) {
+  return !event?.isAllDay && COURSE_DAY_PATTERN.test(calendarEventToText(event));
+}
+
 function isOffDayCalendarEvent(event) {
   return Boolean(event?.isAllDay) && OFF_DAY_PATTERN.test(calendarEventToText(event));
+}
+
+function isScheduleCommitmentCalendarEvent(event) {
+  return !event?.isAllDay
+    && !isNonBlockingTelemetryCalendarEvent(event)
+    && (isNightShiftCalendarEvent(event)
+      || isEarlyShiftCalendarEvent(event)
+      || isLateShiftCalendarEvent(event)
+      || isCourseCalendarEvent(event));
+}
+
+function isNonBlockingTelemetryCalendarEvent(event) {
+  return PHONE_PATTERN.test(calendarEventToText(event));
 }
 
 function summarizeCalendarEvent(event, timeZone) {

@@ -173,6 +173,41 @@ test("late shift day queues a morning-window strategy", async () => {
   assert.match(queued[0].text, /Schedule mode: late_shift/);
 });
 
+test("course day queues after-course strategy and keeps all open Level A visible", async () => {
+  const { service, queued } = createService({
+    dailyState: {
+      async analyze() {
+        return analysisFixture({ hasCourseDay: true });
+      },
+    },
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-17T16:01:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.equal(result.strategy.id, "course_day_after_learning_window");
+  assert.match(queued[0].text, /Schedule mode: course_day/);
+  assert.match(queued[0].text, /Today schedule context: Weiterbildung zur PA 08:30-15:00/);
+  assert.match(queued[0].text, /Level A still open: Sport \(60m\), Englisch \(25m\), Deutsch \(30m\)/);
+  assert.match(queued[0].text, /Do not omit Sport/);
+  assert.match(queued[0].text, /Do not call it an off day/);
+});
+
+test("course day waits until the after-course window", async () => {
+  const { service, queued } = createService({
+    dailyState: {
+      async analyze() {
+        return analysisFixture({ hasCourseDay: true });
+      },
+    },
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-17T15:20:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(queued.length, 0);
+});
+
 test("strategy stays quiet when all Level A habits are already complete and no deadline is near", async () => {
   const { service, queued } = createService({
     dailyState: {
@@ -188,13 +223,23 @@ test("strategy stays quiet when all Level A habits are already complete and no d
   assert.equal(queued.length, 0);
 });
 
-function analysisFixture({ hasOffDay = false, hasEarlyShift = false, hasLateShift = false, hasNightShift = false, allDone = false } = {}) {
+function analysisFixture({ hasOffDay = false, hasCourseDay = false, hasEarlyShift = false, hasLateShift = false, hasNightShift = false, allDone = false } = {}) {
   return {
     generatedAt: "2026-06-12T10:31:00.000Z",
-    signals: { hasOffDay, hasEarlyShift, hasLateShift, hasNightShift },
+    signals: { hasOffDay, hasCourseDay, hasEarlyShift, hasLateShift, hasNightShift },
     temporalContext: {
       localNow: "2026-06-12 12:31",
       currentEvent: null,
+      scheduleEventsToday: hasCourseDay
+        ? [
+          {
+            title: "Weiterbildung zur PA",
+            calendar: "Arbeit",
+            start: "08:30",
+            end: "15:00",
+          },
+        ]
+        : [],
     },
     priorityTiming: {
       dueAtMinutes: 20 * 60,
