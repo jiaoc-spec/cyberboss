@@ -4,7 +4,7 @@ const path = require("path");
 
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { DEFAULT_LEVEL_A, DEFAULT_LEVEL_B, DEFAULT_LEVEL_C, matchesHabit } = require("./critical-habits-monitor");
-const { summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
+const { getCanonicalDayType, summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
 
 const ACTIVE_STATUSES = new Set(["pending", "unknown"]);
 const CLOSED_STATUSES = new Set(["completed", "postponed", "skipped", "cancelled"]);
@@ -422,7 +422,7 @@ class PriorityAwarenessService {
   enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState = null, operationsPlan = null }) {
     const completed = day.priorities.filter((item) => item.status === "completed");
     const closed = day.priorities.filter((item) => CLOSED_STATUSES.has(item.status) && item.status !== "completed");
-    const schedule = summarizeScheduleContext(dailyState);
+    const schedule = summarizeScheduleContext(dailyState, operationsPlan);
     const text = [
       "Priority Awareness Assistant trigger.",
       `Today ${this.config.userName} explicitly chose these priorities before ${day.deadlineLabel}: ${day.priorities.map((item) => item.label).join(", ")}.`,
@@ -620,9 +620,10 @@ function formatRemaining(ms) {
   return rest ? `${hours} hours ${rest} minutes` : `${hours} hours`;
 }
 
-function summarizeScheduleContext(dailyState = null) {
+function summarizeScheduleContext(dailyState = null, operationsPlan = null) {
+  const canonicalDayType = getCanonicalDayType(operationsPlan);
   const ctx = dailyState?.temporalContext || {};
-  const mode = normalizeText(ctx.scheduleMode || dailyState?.scheduleMode);
+  const mode = canonicalDayType || normalizeText(ctx.scheduleMode || dailyState?.scheduleMode);
   const events = Array.isArray(ctx.scheduleEventsToday) ? ctx.scheduleEventsToday : [];
   const eventText = events
     .slice(0, 3)

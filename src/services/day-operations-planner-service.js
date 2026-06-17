@@ -131,6 +131,8 @@ function buildDayOperationsPlan({ analysis, now = new Date(), date = "", config 
     timeZone,
     generatedAt: now.toISOString(),
     scheduleMode,
+    dayType: scheduleMode,
+    day_type: scheduleMode,
     summary: buildSummary({ scheduleMode, fixedBlocks, currentPhase, openLevelA }),
     fixedBlocks,
     doNotDisturbWindows,
@@ -224,6 +226,12 @@ function shouldDeferForOperationsPlan(plan, { allowPriorityBoundary = false } = 
   return true;
 }
 
+function getCanonicalDayType(plan) {
+  return normalizeText(plan?.dayType)
+    || normalizeText(plan?.day_type)
+    || normalizeText(plan?.scheduleMode);
+}
+
 function summarizeOperationsPlanForPrompt(plan) {
   if (!plan) {
     return "";
@@ -240,7 +248,7 @@ function summarizeOperationsPlanForPrompt(plan) {
     ? `${plan.currentPhase.kind} (${plan.currentPhase.reason || "unknown"})`
     : "unknown";
   return [
-    `mode=${plan.scheduleMode || "unknown"}`,
+    `mode=${getCanonicalDayType(plan) || "unknown"}`,
     fixed ? `fixed=${fixed}` : "fixed=none",
     priority ? `priority_windows=${priority}` : "priority_windows=none",
     `current_phase=${phase}`,
@@ -557,6 +565,7 @@ module.exports = {
   evaluatePlanPhase,
   readLatestDayOperationsPlan,
   readPlanForDate,
+  getCanonicalDayType,
   shouldDeferForOperationsPlan,
   summarizeOperationsPlanForPrompt,
 };

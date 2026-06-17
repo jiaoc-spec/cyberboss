@@ -57,6 +57,7 @@ function createMonitor(overrides = {}) {
       },
     },
     dailyState: overrides.dailyState,
+    dayOperationsPlanner: overrides.dayOperationsPlanner,
     focusProtection: overrides.focusProtection,
     patternLedger: overrides.patternLedger,
     currentState: overrides.currentState,
@@ -127,6 +128,51 @@ test("level A reminder is paused during active focus protection", async () => {
   const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T20:04:00+02:00"));
 
   assert.equal(result.queued.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test("level A reminder defers to the day operations plan over conflicting daily state", async () => {
+  const { monitor, sent } = createMonitor({
+    dailyState: {
+      async analyze() {
+        return {
+          scheduleMode: "off_day",
+          temporalContext: {
+            scheduleMode: "off_day",
+            currentEvent: null,
+            scheduleEventsToday: [],
+          },
+          priorityTiming: { isDue: true, reason: "fixed_daily_guardian_time" },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: false },
+            { id: "german", label: "Deutsch", completed: false },
+          ],
+        };
+      },
+    },
+    dayOperationsPlanner: {
+      async plan() {
+        return {
+          dayType: "course_day",
+          scheduleMode: "course_day",
+          currentPhase: {
+            kind: "recovery",
+            shouldDefer: true,
+            reason: "course_recovery_buffer",
+          },
+        };
+      },
+      shouldDefer(plan) {
+        return Boolean(plan?.currentPhase?.shouldDefer);
+      },
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-17T15:10:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(result.deferred, "day_operations_recovery");
   assert.equal(sent.length, 0);
 });
 

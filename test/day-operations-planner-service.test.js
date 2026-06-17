@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   buildDayOperationsPlan,
   evaluatePlanPhase,
+  getCanonicalDayType,
   shouldDeferForOperationsPlan,
   summarizeOperationsPlanForPrompt,
 } = require("../src/services/day-operations-planner-service");
@@ -23,6 +24,9 @@ test("course day protects the course block, recovery buffer, and after-course pr
   });
   assert.equal(duringCourse.currentPhase.kind, "do_not_disturb");
   assert.equal(shouldDeferForOperationsPlan(duringCourse), true);
+  assert.equal(duringCourse.dayType, "course_day");
+  assert.equal(duringCourse.day_type, "course_day");
+  assert.equal(getCanonicalDayType(duringCourse), "course_day");
 
   const recovering = buildDayOperationsPlan({
     analysis,
