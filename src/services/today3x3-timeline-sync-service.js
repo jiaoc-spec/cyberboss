@@ -47,10 +47,34 @@ class Today3x3TimelineSyncService {
     const dates = resolveDateRange({ start, end, days: days || this.config.today3x3TimelineSyncDays || 2, now, timeZone });
     const imported = [];
     let skipped = 0;
+    // Read from a private snapshot copy of the store rather than the live file.
+    // The Today 3x3 app + its CloudKit sync hold locks on the real db that make
+    // even a read-only open block and time out; a plain file copy never touches
+    // sqlite locking, so the sync becomes immune to that contention.
+    let snapshot = null;
+    try {
+      snapshot = createDatabaseSnapshot(databasePath);
+    } catch (error) {
+      this.lastError = formatSqliteError(error);
+      this.lastErrorReason = "snapshot_failed";
+      this.sqliteTimeoutCooldownUntilMs = Date.now() + resolveSqliteTimeoutCooldownMs(this.config);
+      return {
+        provider: "today-3x3",
+        databasePath,
+        imported,
+        skipped,
+        dates,
+        reason: "snapshot_failed",
+        cooldownUntil: new Date(this.sqliteTimeoutCooldownUntilMs).toISOString(),
+        lastError: this.lastError,
+      };
+    }
+    const readPath = snapshot.snapshotPath;
+    try {
     for (const date of dates) {
       let rows = [];
       try {
-        rows = this.readRowsForDate({ date, timeZone, databasePath });
+        rows = this.readRowsForDate({ date, timeZone, databasePath: readPath });
       } catch (error) {
         const transientReason = resolveSqliteTransientReason(error);
         if (transientReason) {
@@ -85,6 +109,9 @@ class Today3x3TimelineSyncService {
         source: { provider: "today-3x3", databasePath },
       });
       imported.push(...events);
+    }
+    } finally {
+      snapshot.cleanup();
     }
     this.lastError = null;
     this.lastErrorReason = "";
@@ -321,6 +348,31 @@ function resolveToday3x3DatabasePath(config = {}) {
     return path.join(resolved, "Model_3x3.sqlite");
   }
   return resolved;
+}
+
+// Copy the sqlite store (main file + -wal/-shm sidecars) into a private temp
+// directory so we can read a consistent point-in-time snapshot without ever
+// acquiring a lock on the live, app-owned database.
+function createDatabaseSnapshot(databasePath) {
+  const snapshotDir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-3x3-snap-"));
+  const baseName = path.basename(databasePath);
+  const sourceDir = path.dirname(databasePath);
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const source = path.join(sourceDir, `${baseName}${suffix}`);
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, path.join(snapshotDir, `${baseName}${suffix}`));
+    }
+  }
+  return {
+    snapshotPath: path.join(snapshotDir, baseName),
+    cleanup() {
+      try {
+        fs.rmSync(snapshotDir, { recursive: true, force: true });
+      } catch {
+        // best effort
+      }
+    },
+  };
 }
 
 function findNestedSqliteFile(dir) {
