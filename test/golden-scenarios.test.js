@@ -195,3 +195,18 @@ test("scenario 9: active recall is academic-only and question-first", () => {
   assert.match(ops, /Active recall is academic-only and question-first/);
   assert.match(ops, /do NOT hand her the answer/);
 });
+
+test("scenario 10: Weiterbildung day must never be treated as an off day", () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "src/core/app.js"), "utf8");
+  assert.match(appSource, /today has Weiterbildung\/course commitments/);
+  assert.match(appSource, /Do not call it an off day/);
+  assert.match(appSource, /Today's work\/course schedule anchors/);
+
+  const strategySource = fs.readFileSync(path.join(repoRoot, "src/services/day-strategy-service.js"), "utf8");
+  assert.match(strategySource, /course_day_after_learning_window/);
+  assert.match(strategySource, /Do not omit Sport/);
+
+  const prioritySource = fs.readFileSync(path.join(repoRoot, "src/services/priority-awareness-service.js"), "utf8");
+  assert.match(prioritySource, /Respect the schedule context/);
+  assert.match(prioritySource, /do not call it an off day/);
+});

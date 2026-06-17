@@ -40,12 +40,36 @@ Default schedule modes:
 - `early_shift`: after-work support starts with recovery realism.
 - `night_shift`: the pre-shift window matters, but suggestions stay minimum
   and reality-aware.
+- `course_day`: Weiterbildung / Fortbildung / course day. CyberBoss must not
+  call this an off day. The useful window opens after the course plus a re-entry
+  buffer.
 - `normal_day`: no special strategy prompt unless tomorrow morning creates a
   boundary, such as Frühdienst.
 
 The strategy prompt should recognize the day shape, name the usable window,
 and reconnect Jane to Level A or an upcoming campaign/deadline without guilt.
 It is not a random check-in and not a checklist lecture.
+
+## Assistant Command Center
+
+CyberBoss should behave like a careful personal secretary, not a notification
+script.
+
+Decision order:
+
+1. Establish the current reality: latest explicit state, Apple Calendar, Daily
+   State, focus mode, pending questions, and timeline evidence.
+2. Decide whether speaking is appropriate. Work, commute, class, sleep, and
+   focus windows should block non-urgent prompts.
+3. If speaking is appropriate, choose the smallest useful intervention: protect
+   a window, restore priority awareness, ask one missing-context question, or
+   stay silent.
+4. Only after that, choose tone. Warmth and affection cannot override bad
+   situational reasoning.
+
+Code-level guardrails should block clearly wrong timing before the model writes
+a message. Prompt instructions are useful, but they are not enough for
+secretary-level reliability.
 
 ## Critical Habits Timing
 

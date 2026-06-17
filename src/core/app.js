@@ -1091,6 +1091,15 @@ class CyberbossApp {
       } else {
         lines.push("Currently in calendar event: none known");
       }
+      const scheduleEvents = Array.isArray(ctx.scheduleEventsToday) ? ctx.scheduleEventsToday : [];
+      if (scheduleEvents.length) {
+        lines.push("Today's work/course schedule anchors:");
+        for (const event of scheduleEvents.slice(0, 5)) {
+          lines.push(`- ${formatTemporalCalendarEvent(event)}`);
+        }
+      } else {
+        lines.push("Today's work/course schedule anchors: none known");
+      }
       const remaining = Array.isArray(ctx.remainingEventsToday) ? ctx.remainingEventsToday : [];
       if (remaining.length) {
         lines.push("Remaining known events today:");
@@ -1117,6 +1126,9 @@ class CyberbossApp {
       const signals = analysis?.signals || {};
       if (signals.hasOffDay && !signals.hasNightShift && !signals.hasEarlyShift && !signals.hasLateShift) {
         lines.push("HARD RULE: today is an OFF day per her calendar. She is not working and did not come from any shift today. Never use after-shift framing (下班回来 / 下早班 / 辛苦了今天的班). It is a rest day.");
+      }
+      if (ctx.scheduleMode === "course_day" || signals.hasCourseDay) {
+        lines.push("HARD RULE: today has Weiterbildung/course commitments. Do not call it an off day, do not imply the whole day is free, and do not suggest home-only actions during course time. Treat the useful window as after-course re-entry unless Jane states a newer current state.");
       }
       lines.push(...this.buildCurrentStateContextLines(receivedAt));
       lines.push("Use this context to reason about today/tonight/tomorrow. Do not treat past calendar events as future tasks. If the user explicitly states a current state, it overrides older assumptions.");

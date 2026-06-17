@@ -46,6 +46,7 @@ function createService(overrides = {}) {
     },
     focusProtection: overrides.focusProtection,
     currentState: overrides.currentState,
+    dailyState: overrides.dailyState,
   });
   return { service, queued };
 }
@@ -222,6 +223,64 @@ test("monitor can still surface a hard-boundary warning during focus protection"
   assert.equal(result.queued.length, 1);
   assert.equal(queued.length, 1);
   assert.match(queued[0].text, /Still open: Sport, Deutsch/);
+});
+
+test("monitor defers while the user is currently at work", async () => {
+  const { service, queued } = createService({
+    currentState: {
+      isBusyNow() {
+        return { busy: true, state: "at_work", label: "正在上班", ageMinutes: 30 };
+      },
+    },
+  });
+  service.set({
+    date: "2026-06-04",
+    deadlineAt: "2026-06-04T16:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-04T13:01:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(result.deferred, "at_work");
+  assert.equal(queued.length, 0);
+});
+
+test("monitor defers during current calendar events and includes schedule context later", async () => {
+  let duringEvent = true;
+  const { service, queued } = createService({
+    dailyState: {
+      async analyze() {
+        return {
+          scheduleMode: "course_day",
+          temporalContext: {
+            scheduleMode: "course_day",
+            currentEvent: duringEvent ? { title: "Weiterbildung zur PA", start: "08:30", end: "15:00" } : null,
+            scheduleEventsToday: [
+              { title: "Weiterbildung zur PA", calendar: "Arbeit", start: "08:30", end: "15:00" },
+            ],
+          },
+        };
+      },
+    },
+  });
+  service.set({
+    date: "2026-06-17",
+    deadlineAt: "2026-06-17T20:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  const blocked = await service.check({ accountId: "account-1" }, new Date("2026-06-17T14:01:00+02:00"));
+  assert.equal(blocked.queued.length, 0);
+  assert.equal(blocked.deferred, "calendar_event");
+
+  duringEvent = false;
+  const queuedResult = await service.check({ accountId: "account-1" }, new Date("2026-06-17T18:01:00+02:00"));
+  assert.equal(queuedResult.queued.length, 1);
+  assert.match(queued[0].text, /Today's schedule context: mode=course_day; Weiterbildung zur PA 08:30-15:00/);
+  assert.match(queued[0].text, /do not call it an off day/);
 });
 
 test("wake-up reentry waits for the grace window before queuing priority awareness", async () => {

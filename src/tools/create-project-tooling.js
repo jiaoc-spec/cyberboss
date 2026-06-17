@@ -63,6 +63,7 @@ function createProjectTooling(config, options = {}) {
     sessionStore,
     focusProtection,
     currentState,
+    dailyState,
   });
   const dayStrategy = new DayStrategyService({
     config,

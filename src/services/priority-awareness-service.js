@@ -10,7 +10,7 @@ const CLOSED_STATUSES = new Set(["completed", "postponed", "skipped", "cancelled
 const VALID_STATUSES = new Set([...ACTIVE_STATUSES, ...CLOSED_STATUSES]);
 
 class PriorityAwarenessService {
-  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null }) {
+  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null, dailyState = null }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -18,6 +18,7 @@ class PriorityAwarenessService {
     this.systemMessageQueue = systemMessageQueue;
     this.focusProtection = focusProtection;
     this.currentState = currentState;
+    this.dailyState = dailyState;
     this.stateFile = this.config.priorityAwarenessStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -182,6 +183,16 @@ class PriorityAwarenessService {
       this.saveState(state);
       return { queued: [] };
     }
+
+    const busy = this.currentState?.isBusyNow?.({ now });
+    if (busy?.busy) {
+      return { queued: [], deferred: busy.state };
+    }
+    const todayState = await this.analyzeToday({ date: targetDate, now });
+    if (todayState?.temporalContext?.currentEvent) {
+      return { queued: [], deferred: "calendar_event" };
+    }
+
     const focus = this.focusProtection?.isProtected?.({
       senderId: target.senderId,
       provider: this.channelAdapter?.describe?.().id || "",
@@ -217,7 +228,7 @@ class PriorityAwarenessService {
       return { queued: [] };
     }
 
-    const message = this.enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now });
+    const message = this.enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState: todayState });
     awareness.lastPromptAt = now.toISOString();
     awareness.needsReevaluationAt = "";
     awareness.promptedCheckpoints = awareness.promptedCheckpoints || {};
@@ -378,15 +389,29 @@ class PriorityAwarenessService {
     return { updated, day };
   }
 
-  enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now }) {
+  async analyzeToday({ date, now }) {
+    if (!this.dailyState || typeof this.dailyState.analyze !== "function") {
+      return null;
+    }
+    try {
+      return await this.dailyState.analyze({ date, now });
+    } catch (error) {
+      console.error(`[cyberboss] priority awareness daily state failed date=${date}: ${error.message}`);
+      return null;
+    }
+  }
+
+  enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState = null }) {
     const completed = day.priorities.filter((item) => item.status === "completed");
     const closed = day.priorities.filter((item) => CLOSED_STATUSES.has(item.status) && item.status !== "completed");
+    const schedule = summarizeScheduleContext(dailyState);
     const text = [
       "Priority Awareness Assistant trigger.",
       `Today ${this.config.userName} explicitly chose these priorities before ${day.deadlineLabel}: ${day.priorities.map((item) => item.label).join(", ")}.`,
       `Completed: ${completed.length ? completed.map((item) => item.label).join(", ") : "none recorded"}.`,
       `Still open: ${pending.map((item) => item.label).join(", ")}.`,
       closed.length ? `Consciously closed or postponed: ${closed.map((item) => `${item.label} (${item.status})`).join(", ")}.` : "",
+      schedule ? `Today's schedule context: ${schedule}.` : "",
       `Time remaining until the boundary: ${formatRemaining(remainingMs)}.`,
       `Estimated full-version time for open priorities: ${formatRemaining(feasibility.activityMinutes * 60_000)} (${pending.map((item) => `${item.label} ${estimatePriorityMinutes(item)}m`).join(", ")}).`,
       `Reserved boundary preparation buffer: ${feasibility.bufferMinutes} minutes.`,
@@ -397,6 +422,7 @@ class PriorityAwarenessService {
           ? "The latest practical start window is at its edge now. Restore awareness immediately without claiming that there is plenty of time."
           : "There is no longer enough estimated time for all full versions before the boundary. Do not imply that full completion is still realistic; offer a conscious choice between a minimum version, postponing, skipping, or revising the plan.",
       "DELIVERY REQUIRED. Send one short, gentle but steadfast priority-awareness message. Return send_message, not silent. Reconnect her with what she already chose, summarize completed and open items, and offer a choice about which one to advance. Be reality-aware: distinguish whether this is a smallest-return moment or a real-rest moment. Emotional support is welcome, but do not comfort her in a way that makes the chosen priorities disappear. Do not command, supervise, shame, or invent an execution order. A list is unordered unless she explicitly specified an order. Always Return matters more than perfect streaks.",
+      "Respect the schedule context. If today has a course, shift, or work boundary, do not call it an off day and do not suggest home-only actions during those blocks.",
     ].filter(Boolean).join("\n");
     const message = this.systemMessageQueue.enqueue({
       id: `priority-awareness:${day.date}:${crypto.randomUUID()}`,
@@ -572,6 +598,26 @@ function formatRemaining(ms) {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest ? `${hours} hours ${rest} minutes` : `${hours} hours`;
+}
+
+function summarizeScheduleContext(dailyState = null) {
+  const ctx = dailyState?.temporalContext || {};
+  const mode = normalizeText(ctx.scheduleMode || dailyState?.scheduleMode);
+  const events = Array.isArray(ctx.scheduleEventsToday) ? ctx.scheduleEventsToday : [];
+  const eventText = events
+    .slice(0, 3)
+    .map((event) => {
+      const title = normalizeText(event?.title) || "(untitled)";
+      const time = normalizeText(event?.start) && normalizeText(event?.end)
+        ? `${event.start}-${event.end}`
+        : "";
+      return `${title}${time ? ` ${time}` : ""}`;
+    })
+    .join("; ");
+  if (!mode && !eventText) {
+    return "";
+  }
+  return [mode ? `mode=${mode}` : "", eventText].filter(Boolean).join("; ");
 }
 
 function looksLikeCompletion(text) {
