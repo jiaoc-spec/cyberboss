@@ -177,11 +177,26 @@ test("3x3 sqlite unavailable enters cooldown instead of throwing repeatedly", as
   assert.equal(reads, 1);
 });
 
-test("3x3 database path resolves legacy nested default to actual sqlite file", () => {
-  const nested = "/tmp/Model_3x3.sqlite/Model_3x3.sqlite";
-  assert.equal(resolveToday3x3DatabasePath({ today3x3DatabasePath: nested }), "/tmp/Model_3x3.sqlite");
-  assert.equal(resolveToday3x3DatabasePath({ today3x3DatabasePath: "/tmp/3x3-store" }), "/tmp/3x3-store/Model_3x3.sqlite");
-  assert.equal(resolveToday3x3DatabasePath({ today3x3DatabasePath: "/tmp/Model_3x3.sqlite" }), "/tmp/Model_3x3.sqlite");
+test("3x3 database path descends into the Core Data store directory to the real sqlite file", () => {
+  // Real topology on Jane's machine: ".../Model_3x3.sqlite" is a DIRECTORY
+  // that contains the actual sqlite file nested inside as Model_3x3.sqlite.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "today3x3-path-"));
+  const storeDir = path.join(dir, "Model_3x3.sqlite");
+  fs.mkdirSync(storeDir, { recursive: true });
+  const realFile = path.join(storeDir, "Model_3x3.sqlite");
+  fs.writeFileSync(realFile, "");
+  fs.writeFileSync(path.join(storeDir, "Model_3x3.sqlite-wal"), "");
+
+  // configured path points at the directory -> must resolve into the nested file
+  assert.equal(resolveToday3x3DatabasePath({ today3x3DatabasePath: storeDir }), realFile);
+  // configured path already points at the real file -> returned as-is
+  assert.equal(resolveToday3x3DatabasePath({ today3x3DatabasePath: realFile }), realFile);
+
+  // non-existent paths fall back to the conventional location, never a directory
+  assert.equal(
+    resolveToday3x3DatabasePath({ today3x3DatabasePath: "/tmp/does-not-exist-3x3-store" }),
+    "/tmp/does-not-exist-3x3-store/Model_3x3.sqlite",
+  );
 });
 
 test("3x3 sub-second fragments are skipped before timeline write", () => {

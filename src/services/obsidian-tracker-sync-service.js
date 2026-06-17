@@ -23,6 +23,23 @@ const TRACKED_HABITS = [
   { name: "Nursing Digest", type: "boolean", frequency: "week", completionGoal: 1, statsType: "heatmap" },
 ];
 
+const TRACKED_NAME_SET = new Set(TRACKED_HABITS.map((habit) => habit.name));
+
+const LEVEL_A_KEY_TO_HABIT = {
+  sport: "Sport",
+  english: "英语发音",
+  englisch: "英语发音",
+  english_pronunciation: "英语发音",
+  german_grammar: "德语语法",
+  german_shadowing: "德语影子跟读",
+  meditation: "冥想",
+};
+
+// A line that asserts a habit was NOT done. The prose fallback must never read
+// a habit name out of such a line as a completion (the over-check bug: names
+// inside "missing / 未完成 / 没有形成完成记录" lists were marked done).
+const NEGATION_LINE_PATTERN = /(没有|没|未|无\s|missing|not[\s_]|跳过|缺席|未完成|未记录|不计为|no\s+record)/i;
+
 const REMOVED_DEFAULT_HABIT_NAMES = new Set([
   "Deutsch",
   "Englisch",
@@ -156,11 +173,19 @@ function mergeHabits(existing, defaults) {
   return result;
 }
 
-function extractTrackerEntries(text) {
+function extractTrackerEntries(fullText) {
   const entries = {};
-  const data = extractTimelineData(text);
-  const levelA = data?.level_a || data?.levelA || {};
-  const habitData = normalizeStructuredHabitData(data);
+  // Daily-review notes use inconsistent JSON shapes across days and sometimes
+  // carry MULTIPLE json blocks, so scan all of them and merge the structured
+  // habit status. This is the trustworthy source; prose is only a fallback.
+  const blocks = extractAllTimelineData(fullText);
+  const habitData = collectStructuredHabitStatus(blocks);
+  const levelACarrier = blocks.find((block) => block && (block.level_a || block.levelA));
+  const levelA = (levelACarrier && (levelACarrier.level_a || levelACarrier.levelA)) || {};
+  // Run all prose pattern matching against the human text ONLY, with the
+  // structured JSON block removed - otherwise habit names sitting inside the
+  // block's "missing"/"not_completed" arrays get matched as completions.
+  const text = stripTimelineDataBlock(fullText);
   setBoolean(entries, "Sport", resolveHabitStatus(valueWithFallback(habitData, "Sport", levelA.sport), text, [
     /(?:运动|Sport|健身|力量训练|有氧操|跑步|锻炼)[^\n]*(?:已完成|完成|completed|done|\d+\s*分钟)/i,
   ], [
@@ -198,25 +223,95 @@ function valueWithFallback(object, key, fallback) {
   return Object.prototype.hasOwnProperty.call(object || {}, key) ? object[key] : fallback;
 }
 
-function normalizeStructuredHabitData(data) {
-  const result = {};
-  if (data?.habits && typeof data.habits === "object" && !Array.isArray(data.habits)) {
-    Object.assign(result, data.habits);
+// Merge structured habit status across ALL json blocks in a note, tolerant of
+// the inconsistent schemas daily reviews have used: tracker.completed /
+// tracker.not_completed, habits_completed, habit_status / habits maps, and
+// levelA|level_a with either a nested completed/missing array or a
+// key->status map (sport: "not_recorded"). Returns tracked-habit name -> true/null.
+function collectStructuredHabitStatus(blocks) {
+  const status = {};
+  const setTrue = (rawName) => {
+    const name = canonicalHabit(rawName);
+    if (name) {
+      status[name] = true;
+    }
+  };
+  const setNotDone = (rawName) => {
+    const name = canonicalHabit(rawName);
+    if (name && status[name] !== true) {
+      status[name] = null;
+    }
+  };
+  const applyMap = (map) => {
+    if (!map || typeof map !== "object" || Array.isArray(map)) {
+      return;
+    }
+    for (const [key, value] of Object.entries(map)) {
+      const s = normalizeStatus(value);
+      if (s === true) {
+        setTrue(key);
+      } else if (s === null) {
+        setNotDone(key);
+      }
+    }
+  };
+
+  for (const block of Array.isArray(blocks) ? blocks : []) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    for (const name of normalizeHabitNameList(block.habits_completed)) {
+      setTrue(name);
+    }
+    const tracker = block.tracker && typeof block.tracker === "object" ? block.tracker : {};
+    for (const name of normalizeHabitNameList(tracker.completed)) {
+      setTrue(name);
+    }
+    for (const name of normalizeHabitNameList(tracker.not_completed || tracker.notCompleted)) {
+      setNotDone(name);
+    }
+    applyMap(block.habits);
+    applyMap(block.habit_status);
+    applyMap(tracker.habits);
+    applyMap(tracker.habit_status);
+    for (const levelA of [block.levelA, block.level_a]) {
+      if (!levelA || typeof levelA !== "object") {
+        continue;
+      }
+      for (const name of normalizeHabitNameList(levelA.completed)) {
+        setTrue(name);
+      }
+      for (const name of normalizeHabitNameList(levelA.missing)) {
+        setNotDone(name);
+      }
+      for (const [key, value] of Object.entries(levelA)) {
+        if (Array.isArray(value)) {
+          continue;
+        }
+        const name = LEVEL_A_KEY_TO_HABIT[String(key).toLowerCase()];
+        if (!name) {
+          continue;
+        }
+        const s = normalizeStatus(value);
+        if (s === true) {
+          setTrue(name);
+        } else if (s === null) {
+          setNotDone(name);
+        }
+      }
+    }
   }
-  const tracker = data?.tracker && typeof data.tracker === "object" ? data.tracker : null;
-  if (!tracker) {
-    return result;
+  return status;
+}
+
+// Map a structured habit name to its canonical tracked name (or "" to ignore).
+function canonicalHabit(rawName) {
+  const name = String(rawName || "").trim();
+  if (TRACKED_NAME_SET.has(name)) {
+    return name;
   }
-  if (tracker.habits && typeof tracker.habits === "object" && !Array.isArray(tracker.habits)) {
-    Object.assign(result, tracker.habits);
-  }
-  for (const name of normalizeHabitNameList(tracker.completed)) {
-    result[name] = true;
-  }
-  for (const name of normalizeHabitNameList(tracker.not_completed || tracker.notCompleted)) {
-    result[name] = null;
-  }
-  return result;
+  const mapped = LEVEL_A_KEY_TO_HABIT[name.toLowerCase()];
+  return mapped && TRACKED_NAME_SET.has(mapped) ? mapped : "";
 }
 
 function normalizeHabitNameList(value) {
@@ -226,15 +321,24 @@ function normalizeHabitNameList(value) {
 }
 
 function extractTimelineData(text) {
-  const match = String(text || "").match(/## 时间轴数据\s*```json\s*([\s\S]*?)```/);
-  if (!match) {
-    return null;
+  return extractAllTimelineData(text)[0] || null;
+}
+
+function extractAllTimelineData(text) {
+  const blocks = [];
+  const re = /```json\s*([\s\S]*?)```/g;
+  let match;
+  while ((match = re.exec(String(text || "")))) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      if (parsed && typeof parsed === "object") {
+        blocks.push(parsed);
+      }
+    } catch {
+      // ignore non-JSON or malformed fenced blocks
+    }
   }
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
+  return blocks;
 }
 
 function resolveHabitStatus(raw, text, positivePatterns, negativePatterns) {
@@ -245,10 +349,41 @@ function resolveHabitStatus(raw, text, positivePatterns, negativePatterns) {
   if (negativePatterns.some((pattern) => pattern.test(text))) {
     return null;
   }
-  if (positivePatterns.some((pattern) => pattern.test(text))) {
+  if (matchesPositiveLine(text, positivePatterns)) {
     return true;
   }
   return undefined;
+}
+
+// A positive pattern only counts when it matches a prose line that is NOT a
+// negation line. This stops a habit name appearing in a "没做/未完成/missing"
+// sentence from being recorded as a completion.
+function matchesPositiveLine(text, positivePatterns) {
+  if (!positivePatterns.length) {
+    return false;
+  }
+  const lines = String(text || "").split("\n");
+  for (const line of lines) {
+    if (!line.trim() || NEGATION_LINE_PATTERN.test(line)) {
+      continue;
+    }
+    if (positivePatterns.some((pattern) => pattern.test(line))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function stripTimelineDataBlock(text) {
+  return String(text || "").replace(/## 时间轴数据\s*```json[\s\S]*?```/g, "");
+}
+
+// The set of tracked habits a day's structured block explicitly confirms as
+// completed. Used to repair days whose checkmarks were over-set, and as the
+// trustworthy completion source. Never infers from prose.
+function structuredCompletedHabits(text) {
+  const status = collectStructuredHabitStatus(extractAllTimelineData(text));
+  return Object.keys(status).filter((name) => status[name] === true);
 }
 
 function resolveNamedHabit(habitData, text, name, positivePatterns, negativePatterns = [], fallbackRaw = undefined) {
@@ -270,10 +405,10 @@ function normalizeStatus(value) {
   if (!text) {
     return undefined;
   }
-  if (/not|未|unknown|none|missing/.test(text)) {
+  if (/未|无记录|unknown|none|missing|no[_\s]?record|not[_\s]?record|not_recorded|not_completed|\bnot\b|skip|跳过/.test(text)) {
     return null;
   }
-  if (/complete|done|完成|yes|recorded|min|分钟/.test(text)) {
+  if (/complete|done|完成|搞定|yes|recorded|分钟|\bmin\b|\d\s*min/.test(text)) {
     return true;
   }
   return undefined;
@@ -327,5 +462,8 @@ function escapeRegex(text) {
 module.exports = {
   ObsidianTrackerSyncService,
   TRACKED_HABITS,
+  TRACKED_NAME_SET,
   extractTrackerEntries,
+  structuredCompletedHabits,
+  stripTimelineDataBlock,
 };

@@ -290,14 +290,66 @@ function runSqliteJson({ sqliteBin, databasePath, sql, timeoutMs }) {
 function resolveToday3x3DatabasePath(config = {}) {
   const configured = normalizeText(config.today3x3DatabasePath);
   const candidate = configured || DEFAULT_DB_PATH;
-  const legacyNestedSuffix = `${path.sep}Model_3x3.sqlite${path.sep}Model_3x3.sqlite`;
-  if (candidate.endsWith(legacyNestedSuffix)) {
-    return candidate.slice(0, -`${path.sep}Model_3x3.sqlite`.length);
+  // The Today 3x3 store path (".../Model_3x3.sqlite") is a Core Data store that
+  // on this machine is a DIRECTORY containing the real sqlite file nested
+  // inside (Model_3x3.sqlite/Model_3x3.sqlite). sqlite3 cannot open a
+  // directory, so resolve to the actual file: if the path exists and is a
+  // directory, descend into it and pick the real db file.
+  let resolved = candidate;
+  for (let depth = 0; depth < 3; depth += 1) {
+    let stat;
+    try {
+      stat = fs.statSync(resolved);
+    } catch {
+      break;
+    }
+    if (stat.isFile()) {
+      return resolved;
+    }
+    if (!stat.isDirectory()) {
+      break;
+    }
+    const nested = findNestedSqliteFile(resolved);
+    if (!nested) {
+      break;
+    }
+    resolved = nested;
   }
-  if (path.extname(candidate) !== ".sqlite") {
-    return path.join(candidate, "Model_3x3.sqlite");
+  // Path does not exist yet (or could not be resolved): fall back to the
+  // conventional nested location so existsSync fails cleanly upstream.
+  if (path.extname(resolved) !== ".sqlite") {
+    return path.join(resolved, "Model_3x3.sqlite");
   }
-  return candidate;
+  return resolved;
+}
+
+function findNestedSqliteFile(dir) {
+  // Prefer the same-named nested file (Model_3x3.sqlite/Model_3x3.sqlite),
+  // otherwise the first plain .sqlite file (never the -wal/-shm sidecars).
+  const sameNamed = path.join(dir, path.basename(dir));
+  try {
+    if (fs.statSync(sameNamed).isFile()) {
+      return sameNamed;
+    }
+  } catch {}
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return "";
+  }
+  for (const name of names) {
+    if (!name.endsWith(".sqlite")) {
+      continue;
+    }
+    const full = path.join(dir, name);
+    try {
+      if (fs.statSync(full).isFile()) {
+        return full;
+      }
+    } catch {}
+  }
+  return "";
 }
 
 function resolveSqliteTimeoutMs(config = {}) {

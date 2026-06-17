@@ -141,3 +141,81 @@ test("tracker extraction prefers structured tracker completed lists over review 
   assert.equal(entries["足弓"], true);
   assert.equal(entries["德语语法"], null);
 });
+
+test("regression (2026-06-14): habit names inside the JSON missing arrays must NOT be checked", () => {
+  // The real over-check bug: 成品舞/基本功/有氧操 only appeared in the JSON
+  // block's nested "missing" arrays and in negated prose, yet got marked done.
+  const entries = extractTrackerEntries(`
+## 复盘
+
+- 晚间完成了武当1+2和足弓，说明身体连续性还在。
+- Sport、英语发音、德语语法、德语影子跟读今天都没有形成完成记录。
+- 身体连续性：武当1+2、足弓完成；不计为 Sport。
+
+## 时间轴数据
+
+\`\`\`json
+{
+  "date": "2026-06-14",
+  "tracker": {
+    "completed": ["武当1+2", "足弓"],
+    "not_completed": ["Sport", "英语发音", "德语语法", "德语影子跟读"]
+  },
+  "identity_ledger": {
+    "dance": { "missing": ["成品舞", "基本功", "有氧操"] }
+  }
+}
+\`\`\`
+`);
+
+  assert.equal(entries["武当1+2"], true);
+  assert.equal(entries["足弓"], true);
+  assert.equal(entries.Sport, null);
+  assert.equal(entries["英语发音"], null);
+  assert.equal(entries["德语语法"], null);
+  assert.equal(entries["德语影子跟读"], null);
+  // these only appeared in the JSON missing array / nowhere in clean prose
+  assert.equal(entries["成品舞"], undefined);
+  assert.equal(entries["基本功"], undefined);
+  assert.equal(entries["有氧操"], undefined);
+});
+
+test("regression (2026-06-15): habit_status missing block leaves nothing checked", () => {
+  const entries = extractTrackerEntries(`
+## 复盘
+
+- Sport：没有完成记录
+- 英语发音：没有完成记录
+
+## 时间轴数据
+
+\`\`\`json
+{
+  "date": "2026-06-15",
+  "habit_status": {
+    "Sport": "missing",
+    "英语发音": "missing",
+    "德语语法": "missing",
+    "德语影子跟读": "missing"
+  }
+}
+\`\`\`
+`);
+  for (const name of ["Sport", "英语发音", "德语语法", "德语影子跟读"]) {
+    assert.equal(entries[name], null, `${name} must be not-done`);
+  }
+  assert.equal(entries["成品舞"], undefined);
+  assert.equal(entries["健身"], undefined);
+});
+
+test("structuredCompletedHabits returns only structurally-confirmed completions", () => {
+  const { structuredCompletedHabits } = require("../src/services/obsidian-tracker-sync-service");
+  const completed = structuredCompletedHabits(`
+## 时间轴数据
+\`\`\`json
+{ "tracker": { "completed": ["武当1+2", "足弓"], "not_completed": ["Sport"] },
+  "identity_ledger": { "dance": { "missing": ["成品舞"] } } }
+\`\`\`
+`);
+  assert.deepEqual(completed.sort(), ["武当1+2", "足弓"].sort());
+});
