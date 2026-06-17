@@ -17,6 +17,7 @@ class Today3x3TimelineSyncService {
     this.config = config || {};
     this.timeline = timeline;
     this.lastError = null;
+    this.lastErrorReason = "";
     this.sqliteTimeoutCooldownUntilMs = 0;
   }
 
@@ -35,7 +36,8 @@ class Today3x3TimelineSyncService {
       return {
         imported: [],
         skipped: 0,
-        reason: "sqlite_timeout_cooldown",
+        reason: `${this.lastErrorReason || "sqlite_timeout"}_cooldown`,
+        originalReason: this.lastErrorReason || "sqlite_timeout",
         databasePath,
         cooldownUntil: new Date(this.sqliteTimeoutCooldownUntilMs).toISOString(),
         lastError: this.lastError,
@@ -50,8 +52,10 @@ class Today3x3TimelineSyncService {
       try {
         rows = this.readRowsForDate({ date, timeZone, databasePath });
       } catch (error) {
-        if (isSqliteTimeoutError(error)) {
+        const transientReason = resolveSqliteTransientReason(error);
+        if (transientReason) {
           this.lastError = formatSqliteError(error);
+          this.lastErrorReason = transientReason;
           this.sqliteTimeoutCooldownUntilMs = Date.now() + resolveSqliteTimeoutCooldownMs(this.config);
           return {
             provider: "today-3x3",
@@ -59,7 +63,7 @@ class Today3x3TimelineSyncService {
             imported,
             skipped,
             dates,
-            reason: "sqlite_timeout",
+            reason: transientReason,
             timeoutMs: resolveSqliteTimeoutMs(this.config),
             cooldownUntil: new Date(this.sqliteTimeoutCooldownUntilMs).toISOString(),
             lastError: this.lastError,
@@ -83,6 +87,7 @@ class Today3x3TimelineSyncService {
       imported.push(...events);
     }
     this.lastError = null;
+    this.lastErrorReason = "";
     this.sqliteTimeoutCooldownUntilMs = 0;
     return { provider: "today-3x3", databasePath, imported, skipped, dates };
   }
@@ -307,6 +312,23 @@ function isSqliteTimeoutError(error) {
   return error?.code === "ETIMEDOUT"
     || error?.cause?.code === "ETIMEDOUT"
     || /ETIMEDOUT|timed out/i.test(String(error?.message || ""));
+}
+
+function isSqliteUnavailableError(error) {
+  const code = String(error?.code || error?.cause?.code || "");
+  const message = String(error?.message || "");
+  return /SQLITE_CANTOPEN|SQLITE_BUSY|EACCES|EPERM/i.test(code)
+    || /unable to open database|database is locked|readonly database|operation not permitted|permission denied/i.test(message);
+}
+
+function resolveSqliteTransientReason(error) {
+  if (isSqliteTimeoutError(error)) {
+    return "sqlite_timeout";
+  }
+  if (isSqliteUnavailableError(error)) {
+    return "sqlite_unavailable";
+  }
+  return "";
 }
 
 function formatSqliteError(error) {

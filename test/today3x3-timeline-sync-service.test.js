@@ -143,6 +143,40 @@ test("3x3 sqlite timeout enters cooldown instead of throwing repeatedly", async 
   assert.equal(reads, 1);
 });
 
+test("3x3 sqlite unavailable enters cooldown instead of throwing repeatedly", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "today3x3-unavailable-"));
+  const dbPath = path.join(tmpDir, "Model_3x3.sqlite");
+  fs.writeFileSync(dbPath, "");
+  let reads = 0;
+  const sync = new Today3x3TimelineSyncService({
+    config: {
+      today3x3DatabasePath: dbPath,
+      today3x3SqliteTimeoutCooldownMs: 60_000,
+      timeZone: "Europe/Berlin",
+    },
+    timeline: {
+      async read() {
+        return { data: { events: [] } };
+      },
+      async write() {
+        throw new Error("write should not be called after sqlite unavailable");
+      },
+    },
+  });
+  sync.readRowsForDate = () => {
+    reads += 1;
+    throw new Error(`today3x3 sqlite failed: Error: unable to open database "${dbPath}": unable to open database file`);
+  };
+
+  const first = await sync.sync({ start: "2026-06-14", end: "2026-06-14", now: new Date("2026-06-14T12:00:00+02:00") });
+  const second = await sync.sync({ start: "2026-06-14", end: "2026-06-14", now: new Date("2026-06-14T12:01:00+02:00") });
+
+  assert.equal(first.reason, "sqlite_unavailable");
+  assert.equal(second.reason, "sqlite_unavailable_cooldown");
+  assert.equal(second.originalReason, "sqlite_unavailable");
+  assert.equal(reads, 1);
+});
+
 test("3x3 database path resolves legacy nested default to actual sqlite file", () => {
   const nested = "/tmp/Model_3x3.sqlite/Model_3x3.sqlite";
   assert.equal(resolveToday3x3DatabasePath({ today3x3DatabasePath: nested }), "/tmp/Model_3x3.sqlite");
