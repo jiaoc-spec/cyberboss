@@ -3,6 +3,8 @@ const fs = require("fs");
 const path = require("path");
 
 const SCHEMA_VERSION = 1;
+const CAMPAIGN_KINDS = new Set(["semester", "course", "assignment", "research", "teaching", "application", "personal", "other"]);
+const CAMPAIGN_STATUSES = new Set(["planned", "active", "paused", "completed", "cancelled"]);
 
 // Campaigns are time-bounded goal containers (a semester, an exam period, a
 // thesis sprint) layered above the timeless Level A/B/C habits. A deadline can
@@ -14,7 +16,19 @@ class CampaignService {
     this.filePath = this.config.campaignsFile;
   }
 
-  async upsert({ id = "", name = "", startDate = "", endDate = "", deadlines = [], note = "" } = {}) {
+  async upsert({
+    id = "",
+    name = "",
+    kind = "",
+    status = "",
+    startDate = "",
+    endDate = "",
+    deadlines = [],
+    note = "",
+    nextAction = "",
+    linkedNotes = [],
+    outputs = [],
+  } = {}) {
     if (!String(name || "").trim()) {
       throw new Error("campaign_set: name is required.");
     }
@@ -25,9 +39,14 @@ class CampaignService {
     const campaign = {
       id: existing?.id || normalizedId || `cmp_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`,
       name: String(name).trim(),
+      kind: normalizeEnum(kind || existing?.kind, CAMPAIGN_KINDS, "other"),
+      status: normalizeEnum(status || existing?.status, CAMPAIGN_STATUSES, "active"),
       startDate: String(startDate || existing?.startDate || "").trim(),
       endDate: String(endDate || existing?.endDate || "").trim(),
       note: String(note || existing?.note || "").trim(),
+      nextAction: String(nextAction || existing?.nextAction || "").trim(),
+      linkedNotes: normalizeStringList(linkedNotes.length ? linkedNotes : existing?.linkedNotes || []),
+      outputs: normalizeOutputs(outputs.length ? outputs : existing?.outputs || []),
       deadlines: normalizeDeadlines(deadlines.length ? deadlines : existing?.deadlines || []),
       createdAt: existing?.createdAt || now.toISOString(),
       updatedAt: now.toISOString(),
@@ -45,6 +64,8 @@ class CampaignService {
     const today = String(date || "").trim() || formatDate(new Date(), this.timeZone());
     const state = this._load();
     const active = state.campaigns.filter((item) =>
+      normalizeEnum(item.status, CAMPAIGN_STATUSES, "active") === "active"
+      &&
       (!item.startDate || item.startDate <= today) && (!item.endDate || item.endDate >= today));
     const daysBefore = this.boostDaysBefore();
     const upcoming = [];
@@ -69,6 +90,7 @@ class CampaignService {
       const daysBefore = this.boostDaysBefore();
       const ids = new Set();
       for (const campaign of state.campaigns) {
+        if (normalizeEnum(campaign.status, CAMPAIGN_STATUSES, "active") !== "active") continue;
         if (campaign.startDate && campaign.startDate > today) continue;
         if (campaign.endDate && campaign.endDate < today) continue;
         for (const deadline of campaign.deadlines) {
@@ -123,6 +145,32 @@ function normalizeDeadlines(value) {
     .filter((item) => item.label && /^\d{4}-\d{2}-\d{2}$/.test(item.date));
 }
 
+function normalizeOutputs(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => {
+      if (typeof item === "string") {
+        return { title: item.trim(), type: "other", status: "planned", notePath: "", dueDate: "" };
+      }
+      return {
+        title: String(item?.title || "").trim(),
+        type: String(item?.type || "other").trim().toLowerCase(),
+        status: String(item?.status || "planned").trim().toLowerCase(),
+        notePath: String(item?.notePath || "").trim(),
+        dueDate: String(item?.dueDate || "").trim(),
+      };
+    })
+    .filter((item) => item.title);
+}
+
+function normalizeStringList(value) {
+  return [...new Set((Array.isArray(value) ? value : []).map((item) => String(item || "").trim()).filter(Boolean))];
+}
+
+function normalizeEnum(value, allowed, fallback) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
 function daysBetween(fromDate, toDate) {
   const from = Date.parse(`${fromDate}T12:00:00Z`);
   const to = Date.parse(`${toDate}T12:00:00Z`);
@@ -141,4 +189,4 @@ function formatDate(date, timeZone) {
   }).format(date);
 }
 
-module.exports = { CampaignService };
+module.exports = { CAMPAIGN_KINDS, CAMPAIGN_STATUSES, CampaignService };

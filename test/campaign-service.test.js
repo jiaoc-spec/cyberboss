@@ -53,6 +53,25 @@ test("boostedHabitIds only within window and campaign period", () => {
   });
 });
 
+test("campaign doubles as a lightweight output and project hub", async () => {
+  const service = makeCampaign();
+  const campaign = await service.upsert({
+    name: "Trauma-informed Care Hausarbeit",
+    kind: "assignment",
+    status: "active",
+    nextAction: "argument map 的第一版",
+    linkedNotes: ["[[Trauma-informed Care]]", "[[Safety in psychiatric nursing]]"],
+    outputs: [{ title: "Hausarbeit draft", type: "paper", status: "draft", notePath: "Projects/TIC.md", dueDate: "2026-11-30" }],
+  });
+  assert.equal(campaign.kind, "assignment");
+  assert.equal(campaign.nextAction, "argument map 的第一版");
+  assert.equal(campaign.outputs[0].status, "draft");
+
+  await service.upsert({ id: campaign.id, name: campaign.name, status: "paused" });
+  const status = await service.status({ date: "2026-06-18" });
+  assert.equal(status.activeCampaigns.length, 0);
+});
+
 test("research ledger records and queries with type counts", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-research-"));
   const service = new ResearchLedgerService({

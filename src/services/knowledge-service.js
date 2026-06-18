@@ -13,7 +13,7 @@ class KnowledgeService {
     this.config = config || {};
   }
 
-  async capture({ title = "", content = "", tags = [], source = "", date = "" } = {}) {
+  async capture({ title = "", content = "", tags = [], source = "", sourceType = "", evidenceStatus = "", date = "" } = {}) {
     const normalizedTitle = normalizeText(title);
     const normalizedContent = normalizeText(content);
     if (!normalizedTitle) {
@@ -33,7 +33,10 @@ class KnowledgeService {
     const lines = [
       "---",
       `created: ${dateText}`,
-      `source: ${normalizeText(source) || "telegram"}`,
+      `source: ${yamlQuote(normalizeText(source) || "unknown")}`,
+      `source_type: ${normalizeSourceType(sourceType)}`,
+      `evidence_status: ${normalizeEvidenceStatus(evidenceStatus)}`,
+      "capture_channel: telegram",
       `tags: [${normalizedTags.join(", ")}]`,
       "---",
       "",
@@ -212,6 +215,26 @@ function formatDate(date, timeZone) {
     month: "2-digit",
     day: "2-digit",
   }).format(date);
+}
+
+function normalizeSourceType(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const allowed = new Set([
+    "peer_reviewed_article", "guideline", "textbook", "lecture", "clinical_experience",
+    "personal_hypothesis", "ai_summary", "personal_observation", "other", "unknown",
+  ]);
+  return allowed.has(normalized) ? normalized : "unknown";
+}
+
+function normalizeEvidenceStatus(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return ["verified", "supported", "hypothesis", "unverified"].includes(normalized)
+    ? normalized
+    : "unverified";
+}
+
+function yamlQuote(value) {
+  return JSON.stringify(String(value || ""));
 }
 
 function normalizeText(value) {

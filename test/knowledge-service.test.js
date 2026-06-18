@@ -29,11 +29,15 @@ test("capture writes a note with frontmatter and related links", async () => {
     content: "今天课上的关键点：渗液管理直接影响感染预防的效果。",
     tags: ["Wundmanagement"],
     source: "Blickpunkt Wunde Fortbildung",
+    sourceType: "lecture",
+    evidenceStatus: "supported",
     date: "2026-06-11",
   });
   assert.ok(result.filePath.startsWith(path.join(vault, "Wissenskarte/00. Knowledge Inbox")));
   const text = fs.readFileSync(result.filePath, "utf8");
-  assert.match(text, /source: Blickpunkt Wunde Fortbildung/);
+  assert.match(text, /source: "Blickpunkt Wunde Fortbildung"/);
+  assert.match(text, /source_type: lecture/);
+  assert.match(text, /evidence_status: supported/);
   assert.match(text, /# Exsudatmanagement und Infektionsprophylaxe/);
   assert.match(text, /\[\[Wundmanagement Grundlagen\]\]/);
   assert.deepEqual(result.relatedNotes, ["Wundmanagement Grundlagen"]);

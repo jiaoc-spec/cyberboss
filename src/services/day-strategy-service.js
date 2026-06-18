@@ -21,6 +21,7 @@ class DayStrategyService {
     systemMessageQueue = null,
     focusProtection = null,
     currentState = null,
+    proactiveIntervention = null,
   } = {}) {
     this.config = config || {};
     this.dailyState = dailyState;
@@ -32,6 +33,7 @@ class DayStrategyService {
     this.systemMessageQueue = systemMessageQueue;
     this.focusProtection = focusProtection;
     this.currentState = currentState;
+    this.proactiveIntervention = proactiveIntervention;
     this.stateFile = this.config.dayStrategyStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -111,6 +113,20 @@ class DayStrategyService {
       tomorrow,
       config: this.config,
     });
+    const reservation = this.proactiveIntervention?.request?.({
+      source: "day_strategy",
+      category: "guardian",
+      priority: "normal",
+      subject: strategy.id,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+      operationsPlan,
+    });
+    if (reservation && !reservation.allowed) {
+      return { queued: [], deferred: `proactive_${reservation.reason}` };
+    }
     const message = this.systemMessageQueue.enqueue({
       id: `day-strategy:${key}:${crypto.randomUUID()}`,
       accountId: account.accountId,

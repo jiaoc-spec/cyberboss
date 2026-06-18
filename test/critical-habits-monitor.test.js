@@ -61,6 +61,7 @@ function createMonitor(overrides = {}) {
     focusProtection: overrides.focusProtection,
     patternLedger: overrides.patternLedger,
     currentState: overrides.currentState,
+    proactiveIntervention: overrides.proactiveIntervention,
   });
   return { monitor, queued, sent };
 }
@@ -79,6 +80,24 @@ test("level A missing habits are combined into one direct guardian reminder", as
   assert.match(sent[0].text, /Deutsch：5-10 分钟德语语法或影子跟读/);
   assert.match(sent[0].text, /最差日基线/);
   assert.match(sent[0].text, /重点不是完美，是回来/);
+});
+
+test("critical habits does not mark a reminder sent when the shared budget defers it", async () => {
+  const { monitor, sent } = createMonitor({
+    proactiveIntervention: {
+      request() {
+        return { allowed: false, reason: "minimum_gap" };
+      },
+    },
+  });
+  const now = new Date("2026-06-05T20:04:00+02:00");
+  const first = await monitor.check({ accountId: "account-1" }, now);
+  monitor.lastCheckAtMs = 0;
+  const second = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T20:10:00+02:00"));
+  assert.equal(first.queued.length, 0);
+  assert.equal(second.queued.length, 0);
+  assert.equal(sent.length, 0);
+  assert.deepEqual(monitor.loadState().sent, {});
 });
 
 test("level A reminder can trigger before fixed hour on night shift days", async () => {

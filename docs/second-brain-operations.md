@@ -2,6 +2,9 @@
 
 CyberBoss uses Telegram as the daily inbox and Obsidian as the durable output library.
 
+The unified growth-system architecture and conflict rules are documented in
+`docs/growth-operating-system.md`.
+
 ## Runtime Roles
 
 - Telegram conversation: raw input and live support.
@@ -76,6 +79,43 @@ Decision order:
 Code-level guardrails should block clearly wrong timing before the model writes
 a message. Prompt instructions are useful, but they are not enough for
 secretary-level reliability.
+
+## Proactive Intervention Coordinator
+
+All unsolicited user-facing modules share one persistent daily budget. The
+default is three ordinary proactive interventions per day with a 90-minute
+minimum gap. Guardian, reflection, knowledge, and companionship prompts also
+have category limits.
+
+A true Priority Awareness hard boundary may use one additional slot, but it
+still cannot interrupt a fixed work/course block. Explicit reminders, Focus
+completion, safety boundaries, and deterministic review pipelines bypass this
+conversation budget.
+
+This prevents Day Strategy, Critical Habits, Missing Context, active recall,
+knowledge digestion, decision review, and random check-ins from behaving like
+independent assistants.
+
+## Just-in-Time Insight Recall
+
+When Jane is actively studying, writing, researching, teaching, planning, or
+making an important decision, CyberBoss may retrieve a small number of relevant
+items from Obsidian and the local ledgers. The results are injected into the
+current reply rather than sent as another notification.
+
+Academic notes, personal patterns, past decisions, research assets, and active
+projects retain separate evidence labels.
+
+## Knowledge Portfolio
+
+Monthly review can audit concept cards for source metadata, tags, broken links,
+orphan cards, duplicate titles, and active themes. `source`, `source_type`, and
+`evidence_status` must stay distinct; unknown evidence is never guessed.
+
+The existing Campaign service is also the Output / Project Hub for Hausarbeit,
+seminars, teaching materials, research work, applications, and paper drafts.
+It stores linked notes, concrete outputs, deadlines, and one next action instead
+of creating another parallel project tracker.
 
 ## Critical Habits Timing
 

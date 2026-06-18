@@ -51,6 +51,28 @@ test("append never deletes existing content and creates missing files", async ()
   assert.ok(fs.existsSync(path.join(vault, "周记", "2026-W24.md")));
 });
 
+test("upsert_managed_block refreshes one dashboard without duplicating it", async () => {
+  const { vault, service } = makeService();
+  const relativePath = "Wissenskarte/00. Dashboard.md";
+  await service.write({
+    relativePath,
+    content: "## Dashboard\nVersion 1",
+    mode: "upsert_managed_block",
+    blockId: "long-term-memory-dashboard",
+  });
+  await service.write({
+    relativePath,
+    content: "## Dashboard\nVersion 2",
+    mode: "upsert_managed_block",
+    blockId: "long-term-memory-dashboard",
+  });
+
+  const text = fs.readFileSync(path.join(vault, relativePath), "utf8");
+  assert.doesNotMatch(text, /Version 1/);
+  assert.match(text, /Version 2/);
+  assert.equal((text.match(/cyberboss-managed:long-term-memory-dashboard/g) || []).length, 2);
+});
+
 test("rejects paths outside allowed folders and non-md files", async () => {
   const { service } = makeService();
   await assert.rejects(() => service.write({ relativePath: "../escape.md", content: "x" }), /outside allowed folders/);

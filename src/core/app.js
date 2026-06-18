@@ -127,6 +127,7 @@ class CyberbossApp {
       patternLedger: this.projectServices.patternLedger,
       currentState: this.projectServices.currentState,
       campaign: this.projectServices.campaign,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.dailyReviewPipeline = new DailyReviewPipelineService({
       config,
@@ -148,6 +149,7 @@ class CyberbossApp {
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
+      knowledgePortfolio: this.projectServices.knowledgePortfolio,
     });
     this.sleepRecoveryUpdate = new SleepRecoveryUpdateService({
       config,
@@ -161,6 +163,7 @@ class CyberbossApp {
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.knowledgeResurface = new KnowledgeResurfaceService({
       config,
@@ -168,6 +171,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       currentState: this.projectServices.currentState,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.decisionReviewMonitor = new DecisionReviewMonitor({
       config,
@@ -175,6 +179,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       decisionJournal: this.projectServices.decisionJournal,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.turnGateStore = new TurnGateStore();
     this.deepseekFallback = new DeepSeekFallbackService({ config });
@@ -627,6 +632,14 @@ class CyberbossApp {
     if (!prepared) {
       return;
     }
+    try {
+      prepared.__insightRecall = this.projectServices?.insightRecall?.buildContext?.({
+        text: prepared.originalText || prepared.text,
+      }) || null;
+    } catch (error) {
+      console.error(`[cyberboss] just-in-time insight recall failed: ${formatErrorMessage(error)}`);
+      prepared.__insightRecall = null;
+    }
 
     if (!this.isTurnDispatchBlocked(bindingKey, workspaceRoot)) {
       if (!commandContext?.decision?.requiresCodex) {
@@ -1057,6 +1070,9 @@ class CyberbossApp {
     const commandGuardLines = this.commandCenter?.buildRuntimeGuardLines?.(prepared.__contextEngine) || [];
     if (commandGuardLines.length) {
       text = `${text}\n\n---\nAssistant Command Center guardrails for this reply:\n${commandGuardLines.join("\n")}`;
+    }
+    if (prepared?.__insightRecall?.text) {
+      text = `${text}\n\n---\nSecond Brain just-in-time context:\n${prepared.__insightRecall.text}`;
     }
     const originalText = String(prepared?.originalText || prepared?.text || "").trim();
     if (detectDecisionTrigger(originalText)) {
@@ -3187,6 +3203,10 @@ class CyberbossApp {
       if (temporal) {
         if (lines.length) lines.push("");
         lines.push("Temporal context:", temporal);
+      }
+      if (prepared.__insightRecall?.text) {
+        if (lines.length) lines.push("");
+        lines.push("Second Brain just-in-time context:", prepared.__insightRecall.text);
       }
     }
     return lines.join("\n");

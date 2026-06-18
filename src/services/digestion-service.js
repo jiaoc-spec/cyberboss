@@ -15,11 +15,12 @@ const STATE_RETENTION_DAYS = 90;
 // only writes after Jane picks. The model does the actual promotion + MOC
 // update via the no-approval obsidian note tools.
 class DigestionService {
-  constructor({ config, channelAdapter, sessionStore, systemMessageQueue }) {
+  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, proactiveIntervention = null }) {
     this.config = config || {};
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
+    this.proactiveIntervention = proactiveIntervention;
     this.stateFile = this.config.digestionStateFile;
     this.obsidianNote = new ObsidianNoteService({ config: this.config });
     this.lastCheckAtMs = 0;
@@ -61,6 +62,20 @@ class DigestionService {
     const target = this.resolveTarget(account);
     if (!target.senderId) {
       return { offered: false, reason: "no_target" };
+    }
+
+    const reservation = this.proactiveIntervention?.request?.({
+      source: "knowledge_digestion",
+      category: "knowledge",
+      priority: "normal",
+      subject: weekKey,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+    });
+    if (reservation && !reservation.allowed) {
+      return { offered: false, reason: `proactive_${reservation.reason}` };
     }
 
     await this.channelAdapter.sendText({
@@ -309,7 +324,7 @@ function buildPromotionTrigger(chosen, config = {}) {
     "对每一条：",
     "- 用 cyberboss_obsidian_note_read 读原文。",
     "- 提炼成一篇原子概念笔记（一篇只讲一个概念），用 cyberboss_obsidian_note_write 写进知识卡区，文件名用简洁的概念名。",
-    "- frontmatter 必须含：created（日期）、type: concept、tags（含学科标签，如 Pflegewissenschaft/Deutsch/Python/文献 等，方便日后主动回忆只挑学术内容）、source（原始笔记名）。",
+    "- frontmatter 必须含：created（日期）、type: concept、tags（含学科标签）、source（原始笔记名）、source_type（peer_reviewed_article/guideline/textbook/lecture/clinical_experience/personal_hypothesis/ai_summary/personal_observation/other/unknown）、evidence_status（verified/supported/hypothesis/unverified）。不确定就写 unknown / unverified，不要猜。",
     "- 正文：一句话核心 + 展开 + 用 [[ ]] 连到 1-3 篇相关已有笔记（先 cyberboss_obsidian_note_read 或 cyberboss_knowledge_search 确认存在再连）。",
     `- 然后用 cyberboss_obsidian_note_write 以 mode=append 更新知识地图 ${mocPath}：在对应主题分区下加一行 [[概念笔记名]]。`,
     "",
@@ -327,6 +342,8 @@ function buildLocalConceptContent({ conceptTitle, sourceTitle, sourceRelativePat
     "status: draft",
     "tags: [self-observation, behavior-design]",
     `source: ${yamlQuote(sourceTitle)}`,
+    "source_type: personal_observation",
+    "evidence_status: unverified",
     `source_path: ${yamlQuote(sourceRelativePath)}`,
     "generated_by: cyberboss_digest_bridge_fallback",
     "---",

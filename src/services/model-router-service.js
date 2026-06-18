@@ -8,6 +8,7 @@ const CODEX_INTENT_PATTERNS = [
   /(读取|写入|保存|同步|导出|生成.*图|发送.*文件|打开.*文件)/i,
   /(代码|编程|debug|bug|修复|安装|配置|启动|重启|terminal|命令|api|github|git|npm|python|javascript|node)/i,
   /(搜索|查一下|查找|research|论文|文献|资料|最新|验证)/i,
+  /(作业|hausarbeit|seminar|bachelorarbeit|masterarbeit|paper\s*draft|outline|argument\s*map|研究问题|备课|教学材料)/i,
   /(目标[:：]|goal[:：]|最重要|必须.*完成|优先级|延期|取消|放弃)/i,
   /(今天还有什么|还剩什么|哪些.*完成|哪些.*没|我该做什么|接下来做什么)/i,
 ];

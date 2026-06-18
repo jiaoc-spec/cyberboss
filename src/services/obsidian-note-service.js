@@ -23,15 +23,17 @@ class ObsidianNoteService {
   // mode "append": append content to the end (creates the file if missing).
   // mode "replace_placeholder": replace the first pending placeholder with
   // content; falls back to append when no placeholder is present.
-  async write({ relativePath = "", content = "", mode = "append" } = {}) {
+  // mode "upsert_managed_block": replace one named CyberBoss-owned block
+  // without touching the user's surrounding note content.
+  async write({ relativePath = "", content = "", mode = "append", blockId = "" } = {}) {
     const filePath = this.resolveSafePath(relativePath);
     const body = String(content || "");
     if (!body.trim()) {
       throw new Error("obsidian_note_write: content is required.");
     }
     const normalizedMode = String(mode || "append").trim();
-    if (!["append", "replace_placeholder"].includes(normalizedMode)) {
-      throw new Error("obsidian_note_write: mode must be append or replace_placeholder.");
+    if (!["append", "replace_placeholder", "upsert_managed_block"].includes(normalizedMode)) {
+      throw new Error("obsidian_note_write: mode must be append, replace_placeholder, or upsert_managed_block.");
     }
 
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -40,7 +42,27 @@ class ObsidianNoteService {
     let next;
     let action;
     const placeholder = "待午夜后自动生成";
-    if (normalizedMode === "replace_placeholder" && existing.includes(placeholder)) {
+    if (normalizedMode === "upsert_managed_block") {
+      const normalizedBlockId = normalizeBlockId(blockId);
+      if (!normalizedBlockId) {
+        throw new Error("obsidian_note_write: blockId is required for upsert_managed_block.");
+      }
+      const start = `<!-- cyberboss-managed:${normalizedBlockId} -->`;
+      const end = `<!-- /cyberboss-managed:${normalizedBlockId} -->`;
+      const block = `${start}\n${body.replace(/\n*$/, "")}\n${end}`;
+      const startIndex = existing.indexOf(start);
+      const endIndex = startIndex >= 0 ? existing.indexOf(end, startIndex + start.length) : -1;
+      if (startIndex >= 0 && endIndex >= 0) {
+        next = `${existing.slice(0, startIndex)}${block}${existing.slice(endIndex + end.length)}`;
+        action = "updated_managed_block";
+      } else if (existing.trim()) {
+        next = `${existing.replace(/\n*$/, "")}\n\n${block}\n`;
+        action = "appended_managed_block";
+      } else {
+        next = `${block}\n`;
+        action = "created_managed_block";
+      }
+    } else if (normalizedMode === "replace_placeholder" && existing.includes(placeholder)) {
       const lines = existing.split("\n");
       const index = lines.findIndex((line) => line.includes(placeholder));
       lines.splice(index, 1, ...body.split("\n"));
@@ -94,6 +116,11 @@ class ObsidianNoteService {
       "Library/Mobile Documents/iCloud~md~obsidian/Documents/Jiao's Obsidian",
     );
   }
+}
+
+function normalizeBlockId(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/.test(normalized) ? normalized : "";
 }
 
 module.exports = { ObsidianNoteService };

@@ -5,6 +5,8 @@ const { CalendarService } = require("../services/calendar-service");
 const { CampaignService } = require("../services/campaign-service");
 const { CurrentStateService } = require("../services/current-state-service");
 const { KnowledgeService } = require("../services/knowledge-service");
+const { InsightRecallService } = require("../services/insight-recall-service");
+const { KnowledgePortfolioService } = require("../services/knowledge-portfolio-service");
 const { ObsidianNoteService } = require("../services/obsidian-note-service");
 const { ObsidianTrackerSyncService } = require("../services/obsidian-tracker-sync-service");
 const { ResearchLedgerService } = require("../services/research-ledger-service");
@@ -23,6 +25,7 @@ const { PlaybookService } = require("../services/playbook-service");
 const { WinsService } = require("../services/wins-service");
 const { DecisionJournalService } = require("../services/decision-journal-service");
 const { PriorityAwarenessService } = require("../services/priority-awareness-service");
+const { ProactiveInterventionCoordinator } = require("../services/proactive-intervention-coordinator");
 const { ReminderService } = require("../services/reminder-service");
 const { ShiftRatingService } = require("../services/shift-rating-service");
 const { StickerService } = require("../services/sticker-service");
@@ -55,9 +58,10 @@ function createProjectTooling(config, options = {}) {
   const campaign = new CampaignService({ config });
   const patternLedger = new PatternLedgerService({ config });
   const currentState = new CurrentStateService({ config });
+  const proactiveIntervention = new ProactiveInterventionCoordinator({ config });
   const reminder = new ReminderService({ config, channelAdapter, sessionStore });
   const focusProtection = new FocusProtectionService({ config, reminder, timeline, channelAdapter, sessionStore });
-  const missingContext = new MissingContextService({ config, dailyState, channelAdapter, sessionStore, currentState });
+  const missingContext = new MissingContextService({ config, dailyState, channelAdapter, sessionStore, currentState, proactiveIntervention });
   const priorityAwareness = new PriorityAwarenessService({
     config,
     timeline,
@@ -67,6 +71,7 @@ function createProjectTooling(config, options = {}) {
     currentState,
     dailyState,
     dayOperationsPlanner,
+    proactiveIntervention,
   });
   const dayStrategy = new DayStrategyService({
     config,
@@ -78,14 +83,18 @@ function createProjectTooling(config, options = {}) {
     sessionStore,
     focusProtection,
     currentState,
+    proactiveIntervention,
   });
   const services = {
     calendar,
     campaign,
     currentState,
+    proactiveIntervention,
     dayStrategy,
     playbook: new PlaybookService({ config }),
+    insightRecall: new InsightRecallService({ config }),
     knowledge: new KnowledgeService({ config }),
+    knowledgePortfolio: new KnowledgePortfolioService({ config }),
     obsidianNote: new ObsidianNoteService({ config }),
     obsidianTrackerSync: new ObsidianTrackerSyncService({ config }),
     researchLedger: new ResearchLedgerService({ config }),

@@ -988,6 +988,8 @@ const PROJECT_TOOLS = [
         content: { type: "string", description: "The knowledge content, cleaned up but faithful to what Jane said or read." },
         tags: { type: "array", items: { type: "string" }, description: "Topic tags, e.g. Wundmanagement, Pflegewissenschaft, Statistik." },
         source: { type: "string", description: "Where it came from: a paper title/DOI, a course, a conversation, a book." },
+        sourceType: { type: "string", description: "Evidence type: peer_reviewed_article, guideline, textbook, lecture, clinical_experience, personal_hypothesis, ai_summary, personal_observation, other, or unknown." },
+        evidenceStatus: { type: "string", description: "verified, supported, hypothesis, or unverified. Use unknown/unverified instead of guessing." },
         date: { type: "string", description: "Optional date YYYY-MM-DD. Defaults to today." },
       },
       additionalProperties: false,
@@ -1018,6 +1020,30 @@ const PROJECT_TOOLS = [
       const result = await services.knowledge.search(args);
       return {
         text: `Knowledge search "${result.query}": ${result.results.length} results.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_knowledge_portfolio_audit",
+    description: "Audit the Obsidian Wissenskarte as a knowledge portfolio. Reports concept-card quality, source reliability metadata, broken links, orphan notes, duplicate titles, and active themes. Use in monthly review or when maintaining the Second Brain; never auto-delete or merge notes.",
+    shortHint: "Audit concept cards, sources, links, and themes.",
+    topics: ["knowledge", "review", "second-brain"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueLimit: { type: "integer", description: "Maximum issues to return. Default 40." },
+        includeDashboardMarkdown: { type: "boolean", description: "Also return a compact Long-Term Memory Dashboard markdown block." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.knowledgePortfolio.audit({ issueLimit: args.issueLimit });
+      if (args.includeDashboardMarkdown) {
+        result.dashboardMarkdown = services.knowledgePortfolio.buildDashboardMarkdown(result);
+      }
+      return {
+        text: `Knowledge portfolio: ${result.conceptCount} concept cards, quality ${result.qualityScore === null ? "insufficient sample" : `${result.qualityScore}/100`}, ${result.totalIssues} issues.`,
         data: result,
       };
     },
@@ -1074,8 +1100,8 @@ const PROJECT_TOOLS = [
   },
   {
     name: "cyberboss_campaign_set",
-    description: "Create or update a Campaign: a time-bounded goal container like a semester, exam period, or application sprint. Deadlines may reference a habit id (e.g. python, wundmanagement, pflegewissenschaft); when a deadline is within the boost window the habit temporarily joins the daily Level A guardian set. Confirm with Jane before creating.",
-    shortHint: "Create/update a semester or exam campaign with deadlines.",
+    description: "Create or update a Campaign / Output Hub: a semester, Hausarbeit, seminar, research, teaching, or application project with status, one next action, linked notes, concrete outputs, and deadlines. Near deadlines may temporarily boost a related habit. Confirm with Jane before creating.",
+    shortHint: "Create/update a campaign, output project, or academic deliverable.",
     topics: ["campaign"],
     inputSchema: {
       type: "object",
@@ -1083,9 +1109,29 @@ const PROJECT_TOOLS = [
       properties: {
         id: { type: "string", description: "Existing campaign id to update; omit to create." },
         name: { type: "string", description: "Campaign name, e.g. WS 2026/27 Semester 1." },
+        kind: { type: "string", description: "semester, course, assignment, research, teaching, application, personal, or other." },
+        status: { type: "string", description: "planned, active, paused, completed, or cancelled." },
         startDate: { type: "string", description: "Start date YYYY-MM-DD." },
         endDate: { type: "string", description: "End date YYYY-MM-DD." },
         note: { type: "string", description: "Optional description or goals." },
+        nextAction: { type: "string", description: "One current concrete next action. Keep it small and update it as the project moves." },
+        linkedNotes: { type: "array", items: { type: "string" }, description: "Related Obsidian note paths or wikilink titles." },
+        outputs: {
+          type: "array",
+          description: "Concrete outputs such as a Hausarbeit, seminar presentation, teaching material, paper draft, or research proposal.",
+          items: {
+            type: "object",
+            required: ["title"],
+            properties: {
+              title: { type: "string" },
+              type: { type: "string" },
+              status: { type: "string" },
+              notePath: { type: "string" },
+              dueDate: { type: "string" },
+            },
+            additionalProperties: false,
+          },
+        },
         deadlines: {
           type: "array",
           description: "Deadlines inside the campaign.",
@@ -1261,7 +1307,8 @@ const PROJECT_TOOLS = [
       properties: {
         relativePath: { type: "string", description: "Note path relative to the vault root, must end in .md." },
         content: { type: "string", description: "Markdown content to write." },
-        mode: { type: "string", description: "append (default) or replace_placeholder." },
+        mode: { type: "string", description: "append (default), replace_placeholder, or upsert_managed_block." },
+        blockId: { type: "string", description: "Required for upsert_managed_block. Stable lowercase id such as long-term-memory-dashboard." },
       },
       additionalProperties: false,
     },
