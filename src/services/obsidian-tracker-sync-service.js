@@ -17,6 +17,7 @@ const TRACKED_HABITS = [
   { name: "成品舞", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "有氧操", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "美容灯", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
+  { name: "看书", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "Praxisanleitung", type: "boolean", frequency: "week", completionGoal: 2, statsType: "heatmap" },
   { name: "Wundmanagement", type: "boolean", frequency: "week", completionGoal: 1, statsType: "heatmap" },
   { name: "Python", type: "boolean", frequency: "week", completionGoal: 2, statsType: "heatmap" },
@@ -204,6 +205,7 @@ function extractTrackerEntries(fullText) {
   setBoolean(entries, "成品舞", resolveNamedHabit(habitData, text, "成品舞", [/成品舞|finished dance|choreo(?:graphy)?/i]));
   setBoolean(entries, "有氧操", resolveNamedHabit(habitData, text, "有氧操", [/有氧操|aerobics|cardio/i]));
   setBoolean(entries, "美容灯", resolveNamedHabit(habitData, text, "美容灯", [/美容灯|LED\s*light|beauty light/i]));
+  setBoolean(entries, "看书", resolveNamedHabit(habitData, text, "看书", [/看书|读书|读了.{0,8}(?:书|页|章)|看完.{0,8}书|读完.{0,8}书/i]));
 
   for (const [name, patterns] of Object.entries({
     Praxisanleitung: [/Praxisanleitung[^\n]*(?:完成|completed|\d+\s*分钟|推进|学习)/i],
