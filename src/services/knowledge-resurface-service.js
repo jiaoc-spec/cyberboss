@@ -61,7 +61,7 @@ class KnowledgeResurfaceService {
       return { queued: [] };
     }
 
-    const candidate = this.findDueNote(local.date, state);
+    const candidate = this.findDueNote(local.date, state, now);
     if (!candidate) {
       return { queued: [] };
     }
@@ -109,19 +109,28 @@ class KnowledgeResurfaceService {
     return [...DEFAULT_ACADEMIC_TAGS, ...custom].map((t) => String(t).toLowerCase());
   }
 
-  findDueNote(todayDate, state) {
+  findDueNote(todayDate, state, now = new Date()) {
     const vault = this.resolveVaultDir();
+    const extraFolders = Array.isArray(this.config.knowledgeRecallExtraFolders)
+      ? this.config.knowledgeRecallExtraFolders
+      : [];
     const dirs = [
       path.join(vault, this.config.knowledgeFolder || "01. ⚪ Wissenskarte"),
       path.join(vault, this.config.knowledgeInboxFolder || ""),
+      ...extraFolders.map((folder) => path.join(vault, folder)),
     ].filter(Boolean);
     const academic = this.academicTags();
     const files = [];
+    const seen = new Set();
     for (const dir of dirs) {
       for (const filePath of listMarkdownFiles(dir)) {
-        files.push(filePath);
+        if (!seen.has(filePath)) {
+          seen.add(filePath);
+          files.push(filePath);
+        }
       }
     }
+    // 1. Freshly-captured notes follow the 7/30-day created-date schedule.
     for (const intervalDays of RESURFACE_INTERVALS_DAYS) {
       const targetCreated = addDaysText(todayDate, -intervalDays);
       for (const filePath of files) {
@@ -147,7 +156,35 @@ class KnowledgeResurfaceService {
         };
       }
     }
-    return null;
+    // 2. Existing study notes (no created date) cycle on a rotation: pick the
+    // academic note least-recently surfaced, so exam material keeps coming
+    // back instead of being stuck on a one-time schedule.
+    return this.findRotationNote(files, vault, academic, state, now);
+  }
+
+  findRotationNote(files, vault, academic, state, now) {
+    const cooldownMs = (this.config.knowledgeRecallRotationDays || 21) * 86_400_000;
+    let best = null;
+    let bestSurfacedMs = Infinity;
+    for (const filePath of files) {
+      const name = path.basename(filePath).replace(/\.md$/, "");
+      if (/^00\./.test(path.basename(filePath))) {
+        continue; // skip MOC / index / report notes
+      }
+      if (!isAcademicNote(filePath, vault, academic)) {
+        continue;
+      }
+      const key = `rotation:${name}`;
+      const lastMs = state.resurfaced[key] ? Date.parse(state.resurfaced[key]) : 0;
+      if (lastMs && now.getTime() - lastMs < cooldownMs) {
+        continue; // surfaced recently, let it rest
+      }
+      if (lastMs < bestSurfacedMs) {
+        bestSurfacedMs = lastMs;
+        best = { key, name, filePath, createdDate: "", intervalDays: "rotation", excerpt: readExcerpt(filePath) };
+      }
+    }
+    return best;
   }
 
   resolveVaultDir() {
@@ -200,9 +237,12 @@ class KnowledgeResurfaceService {
 
 function buildResurfaceTrigger(candidate, config = {}) {
   const userName = String(config.userName || "the user").trim();
+  const intro = candidate.intervalDays === "rotation" || !candidate.createdDate
+    ? `${userName} 笔记里有一个学过的概念：《${candidate.name}》`
+    : `${candidate.intervalDays} 天前（${candidate.createdDate}）${userName} 学过/记过一个概念：《${candidate.name}》`;
   return [
     "Active recall (academic): DELIVERY REQUIRED.",
-    `${candidate.intervalDays} 天前（${candidate.createdDate}）${userName} 学过/记过一个概念：《${candidate.name}》`,
+    intro,
     candidate.excerpt ? `（内部参考，先别直接发给她）笔记内容：${candidate.excerpt}` : "",
     `完整笔记在：${candidate.filePath}`,
     "用一条很短、很自然的消息，问她一个能勾起主动回忆的小问题——让她先自己想起这个概念是什么/为什么/怎么用（提取练习对记忆远比重读有效）。",

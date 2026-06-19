@@ -68,3 +68,32 @@ test("stays quiet before the recall hour", async () => {
   const result = await service.check({ accountId: "a" }, new Date("2026-06-13T15:00:00+02:00"));
   assert.equal(result.queued.length, 0);
 });
+
+test("rotation: an academic note in an extra folder with no created date still surfaces", () => {
+  const { vault, service } = makeFixture();
+  const pa = path.join(vault, "06. Pflegeausbildung");
+  fs.mkdirSync(pa, { recursive: true });
+  fs.writeFileSync(path.join(pa, "Demenz.md"), "---\ntags: [nursing, Pflegeausbildung]\n---\n\nDemenz 知识。", "utf8");
+  service.config.knowledgeRecallExtraFolders = ["06. Pflegeausbildung"];
+  service.config.knowledgeRecallRotationDays = 21;
+
+  const c = service.findDueNote("2026-06-19", { resurfaced: {}, sentDates: {} }, new Date("2026-06-19T18:00:00+02:00"));
+  assert.ok(c, "should find a rotation candidate");
+  assert.equal(c.name, "Demenz");
+  assert.equal(c.intervalDays, "rotation");
+
+  // recently surfaced -> within cooldown -> not picked again
+  const recent = { resurfaced: { "rotation:Demenz": "2026-06-18T18:00:00+02:00" }, sentDates: {} };
+  assert.equal(service.findDueNote("2026-06-19", recent, new Date("2026-06-19T18:00:00+02:00")), null);
+});
+
+test("rotation: index/MOC notes (00. ...) are never quizzed", () => {
+  const { vault, service } = makeFixture();
+  const pa = path.join(vault, "06. Pflegeausbildung");
+  fs.mkdirSync(pa, { recursive: true });
+  // only an index note present -> nothing to quiz
+  fs.writeFileSync(path.join(pa, "00. 护理知识地图.md"), "---\ntags: [moc, nursing]\n---\n\n# 地图", "utf8");
+  service.config.knowledgeRecallExtraFolders = ["06. Pflegeausbildung"];
+  const c = service.findDueNote("2026-06-19", { resurfaced: {}, sentDates: {} }, new Date("2026-06-19T18:00:00+02:00"));
+  assert.equal(c, null);
+});

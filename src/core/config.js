@@ -118,6 +118,10 @@ function readConfig() {
     knowledgeResurfaceEnabled: readOptionalBoolEnv("CYBERBOSS_KNOWLEDGE_RESURFACE_ENABLED") !== false,
     knowledgeResurfaceHour: readIntEnv("CYBERBOSS_KNOWLEDGE_RESURFACE_HOUR") ?? 17,
     knowledgeResurfaceStateFile: readTextEnv("CYBERBOSS_KNOWLEDGE_RESURFACE_STATE_FILE") || path.join(stateDir, "knowledge-resurface-state.json"),
+    knowledgeRecallExtraFolders: readListEnv("CYBERBOSS_KNOWLEDGE_RECALL_EXTRA_FOLDERS").length
+      ? readListEnv("CYBERBOSS_KNOWLEDGE_RECALL_EXTRA_FOLDERS")
+      : ["06. Pflegeausbildung", "Wundmanagement"],
+    knowledgeRecallRotationDays: readIntEnv("CYBERBOSS_KNOWLEDGE_RECALL_ROTATION_DAYS") || 21,
     insightRecallEnabled: readOptionalBoolEnv("CYBERBOSS_INSIGHT_RECALL_ENABLED") !== false,
     insightRecallMaxResults: readIntEnv("CYBERBOSS_INSIGHT_RECALL_MAX_RESULTS") || 3,
     weeklyReviewPipelineEnabled: readOptionalBoolEnv("CYBERBOSS_WEEKLY_REVIEW_PIPELINE_ENABLED") !== false,
