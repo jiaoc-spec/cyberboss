@@ -10,7 +10,7 @@ const TRACKED_HABITS = [
   { name: "英语发音", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "德语语法", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "德语影子跟读", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
-  { name: "武当1+2", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
+  { name: "骨盆", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "足弓", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "健身", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "基本功", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
@@ -40,6 +40,14 @@ const LEVEL_A_KEY_TO_HABIT = {
 // a habit name out of such a line as a completion (the over-check bug: names
 // inside "missing / 未完成 / 没有形成完成记录" lists were marked done).
 const NEGATION_LINE_PATTERN = /(没有|没|未|无\s|missing|not[\s_]|跳过|缺席|未完成|未记录|不计为|no\s+record)/i;
+
+// Legacy habit names that have been renamed. Old daily notes still say the old
+// name; map it to the current tracked name so historical completions stay on
+// the same heatmap row instead of vanishing. 武当1+2 was renamed to 骨盆.
+const HABIT_ALIASES = {
+  "武当1+2": "骨盆",
+  "武当": "骨盆",
+};
 
 const REMOVED_DEFAULT_HABIT_NAMES = new Set([
   "Deutsch",
@@ -198,7 +206,7 @@ function extractTrackerEntries(fullText) {
   ], levelA.english || levelA.englisch));
   setBoolean(entries, "德语语法", resolveNamedHabit(habitData, text, "德语语法", [/德语语法|Deutsch Grammatik|German grammar/i]));
   setBoolean(entries, "德语影子跟读", resolveNamedHabit(habitData, text, "德语影子跟读", [/德语影子跟读|影子跟读|shadowing|shadow reading/i]));
-  setBoolean(entries, "武当1+2", resolveNamedHabit(habitData, text, "武当1+2", [/武当\s*1\s*\+?\s*2|武当|Wudang/i]));
+  setBoolean(entries, "骨盆", resolveNamedHabit(habitData, text, "骨盆", [/骨盆|盆底|pelvic(?:\s*floor)?|武当\s*1\s*\+?\s*2|武当|Wudang/i]));
   setBoolean(entries, "足弓", resolveNamedHabit(habitData, text, "足弓", [/足弓|foot arch/i]));
   setBoolean(entries, "健身", resolveNamedHabit(habitData, text, "健身", [/健身|力量训练|strength training|Krafttraining|gym/i]));
   setBoolean(entries, "基本功", resolveNamedHabit(habitData, text, "基本功", [/基本功|basic drill/i]));
@@ -311,6 +319,9 @@ function canonicalHabit(rawName) {
   const name = String(rawName || "").trim();
   if (TRACKED_NAME_SET.has(name)) {
     return name;
+  }
+  if (HABIT_ALIASES[name] && TRACKED_NAME_SET.has(HABIT_ALIASES[name])) {
+    return HABIT_ALIASES[name];
   }
   const mapped = LEVEL_A_KEY_TO_HABIT[name.toLowerCase()];
   return mapped && TRACKED_NAME_SET.has(mapped) ? mapped : "";

@@ -65,7 +65,7 @@ Pattern Ledger 观察义务（这是长期记忆闭环的一部分）：
 - 对 habit 信息要结构化、保守：明确完成才写完成；没有证据就写未形成完成记录，不要把提醒、计划或意愿当成完成。
 - 复盘正文优先使用这些 section：一天主线、Future Self Vote、自我理解、习惯和恢复、值得进入长期观察、明日最小延续。避免过多机械小标题。
 - 使用 Be-Do-Have / Identity Ledger 视角：先写今天哪些"正在成为的人"获得了证据，再写对应行动。不要只列 habit 完成/未完成。至少检查四条身份主线：
-  1. 健康、有体能、身体自主的人：Sport、健身、有氧操；塑形 / 身体结构维护：武当1+2、足弓、美容灯；不要把武当1+2或足弓算成 Sport
+  1. 健康、有体能、身体自主的人：Sport、健身、有氧操；塑形 / 身体结构维护：骨盆、足弓、美容灯；不要把骨盆或足弓算成 Sport
   2. 德语/英语能力优秀的人：英语发音、德语语法、德语影子跟读
   3. 护理科学家 / 教授 / 教师 / ANP / 研究者：Praxisanleitung、Wundmanagement、Python、Nursing Digest、Pflegewissenschaft、Literature Reading、Forschung
   4. 持续跳舞、有表达力和生命力的人：成品舞、基本功、有氧操、身体练习
@@ -105,7 +105,7 @@ Obsidian Tracker 义务：
     }
   }
 - Tracker habit 名称只使用这些：
-  Sport、冥想、英语发音、德语语法、德语影子跟读、武当1+2、足弓、健身、基本功、成品舞、有氧操、美容灯、Praxisanleitung、Wundmanagement、Python、Nursing Digest。
+  Sport、冥想、英语发音、德语语法、德语影子跟读、骨盆、足弓、健身、基本功、成品舞、有氧操、美容灯、Praxisanleitung、Wundmanagement、Python、Nursing Digest。
 - Englisch 在 tracker 中具体指"英语发音"。
 - Deutsch 在 tracker 中拆成"德语语法"和"德语影子跟读"；如果当天只知道笼统 Deutsch，不要编造成两个都完成。
 - Energy、Mood、Shift Fatigue、Screen Time 是状态/指标，不是 habit。可以保留为 daily state 字段，但不要放进 tracker habit 列表。

@@ -107,7 +107,7 @@ test("tracker extraction treats wudang and foot arch as shaping, not Sport", () 
 `);
 
   assert.equal(entries.Sport, undefined);
-  assert.equal(entries["武当1+2"], true);
+  assert.equal(entries["骨盆"], true);
   assert.equal(entries["足弓"], true);
 });
 
@@ -137,7 +137,7 @@ test("tracker extraction prefers structured tracker completed lists over review 
   assert.equal(entries.Sport, null);
   assert.equal(entries["英语发音"], true);
   assert.equal(entries["德语影子跟读"], true);
-  assert.equal(entries["武当1+2"], true);
+  assert.equal(entries["骨盆"], true);
   assert.equal(entries["足弓"], true);
   assert.equal(entries["德语语法"], null);
 });
@@ -168,7 +168,7 @@ test("regression (2026-06-14): habit names inside the JSON missing arrays must N
 \`\`\`
 `);
 
-  assert.equal(entries["武当1+2"], true);
+  assert.equal(entries["骨盆"], true);
   assert.equal(entries["足弓"], true);
   assert.equal(entries.Sport, null);
   assert.equal(entries["英语发音"], null);
@@ -217,5 +217,5 @@ test("structuredCompletedHabits returns only structurally-confirmed completions"
   "identity_ledger": { "dance": { "missing": ["成品舞"] } } }
 \`\`\`
 `);
-  assert.deepEqual(completed.sort(), ["武当1+2", "足弓"].sort());
+  assert.deepEqual(completed.sort(), ["骨盆", "足弓"].sort());
 });
