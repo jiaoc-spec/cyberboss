@@ -57,7 +57,7 @@ const {
   splitCommandLine,
 } = require("../adapters/runtime/shared/approval-command");
 const { runSystemCheckinPoller } = require("../app/system-checkin-poller");
-const { summarizeOperationsPlanForPrompt } = require("../services/day-operations-planner-service");
+const { getCanonicalDayType, summarizeOperationsPlanForPrompt } = require("../services/day-operations-planner-service");
 const { createProjectTooling } = require("../tools/create-project-tooling");
 const { detectDecisionTrigger, buildDecisionTriggerAnnotation } = require("./decision-trigger");
 const { DecisionJournalState, isDecisionJournalConfirmation } = require("./decision-journal-state");
@@ -127,6 +127,7 @@ class CyberbossApp {
       patternLedger: this.projectServices.patternLedger,
       currentState: this.projectServices.currentState,
       campaign: this.projectServices.campaign,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.dailyReviewPipeline = new DailyReviewPipelineService({
       config,
@@ -148,11 +149,13 @@ class CyberbossApp {
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
+      knowledgePortfolio: this.projectServices.knowledgePortfolio,
     });
     this.sleepRecoveryUpdate = new SleepRecoveryUpdateService({
       config,
       calendar: this.projectServices.calendar,
       obsidianNote: this.projectServices.obsidianNote,
+      dayOperationsPlanner: this.projectServices.dayOperationsPlanner,
     });
     this.stateBackup = new StateBackupService({ config });
     this.digestion = new DigestionService({
@@ -160,6 +163,7 @@ class CyberbossApp {
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.knowledgeResurface = new KnowledgeResurfaceService({
       config,
@@ -167,6 +171,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       currentState: this.projectServices.currentState,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.decisionReviewMonitor = new DecisionReviewMonitor({
       config,
@@ -174,6 +179,7 @@ class CyberbossApp {
       sessionStore: this.runtimeAdapter.getSessionStore(),
       systemMessageQueue: this.systemMessageQueue,
       decisionJournal: this.projectServices.decisionJournal,
+      proactiveIntervention: this.projectServices.proactiveIntervention,
     });
     this.turnGateStore = new TurnGateStore();
     this.deepseekFallback = new DeepSeekFallbackService({ config });
@@ -626,6 +632,14 @@ class CyberbossApp {
     if (!prepared) {
       return;
     }
+    try {
+      prepared.__insightRecall = this.projectServices?.insightRecall?.buildContext?.({
+        text: prepared.originalText || prepared.text,
+      }) || null;
+    } catch (error) {
+      console.error(`[cyberboss] just-in-time insight recall failed: ${formatErrorMessage(error)}`);
+      prepared.__insightRecall = null;
+    }
 
     if (!this.isTurnDispatchBlocked(bindingKey, workspaceRoot)) {
       if (!commandContext?.decision?.requiresCodex) {
@@ -1057,6 +1071,9 @@ class CyberbossApp {
     if (commandGuardLines.length) {
       text = `${text}\n\n---\nAssistant Command Center guardrails for this reply:\n${commandGuardLines.join("\n")}`;
     }
+    if (prepared?.__insightRecall?.text) {
+      text = `${text}\n\n---\nSecond Brain just-in-time context:\n${prepared.__insightRecall.text}`;
+    }
     const originalText = String(prepared?.originalText || prepared?.text || "").trim();
     if (detectDecisionTrigger(originalText)) {
       text = text + "\n\n" + buildDecisionTriggerAnnotation();
@@ -1083,19 +1100,37 @@ class CyberbossApp {
       const analysis = await dailyState.analyze({ date: local.date, now: receivedAt });
       const ctx = analysis?.temporalContext || {};
       const operationsPlan = await this.buildDayOperationsPlanContext({ date: local.date, now: receivedAt, analysis });
+      const canonicalDayType = getCanonicalDayType(operationsPlan);
       const tomorrowMorning = await this.readTomorrowMorningCalendarContext(local.date);
       const lines = [
         `Local now: ${ctx.localNow || `${local.date} ${local.time}`}`,
-        `Day type / schedule mode: ${ctx.dayType || "unknown"}`,
-        `Work/off-day schedule mode: ${ctx.scheduleMode || "unknown"}`,
+        operationsPlan
+          ? `Canonical day type (Day Operations Plan): ${canonicalDayType || "unknown"}`
+          : `Day type / schedule mode: ${ctx.dayType || "unknown"}`,
+        operationsPlan
+          ? `Daily State schedule mode (secondary evidence only): ${ctx.scheduleMode || "unknown"}`
+          : `Work/off-day schedule mode: ${ctx.scheduleMode || "unknown"}`,
       ];
       if (operationsPlan) {
         lines.push(`Day Operations Plan: ${summarizeOperationsPlanForPrompt(operationsPlan)}`);
+        lines.push("SOURCE OF TRUTH: Use the Day Operations Plan as the canonical day context. Do not reclassify the day from chat history or raw signals when this plan exists.");
         if (operationsPlan.currentPhase?.kind === "do_not_disturb") {
           lines.push("HARD RULE: the Day Operations Plan says Jane is inside a fixed work/course block now. Do not suggest sleep, packing, home setup, chores, or other actions that conflict with being in that block. Reply to her actual message and keep location-aware.");
         }
         if (operationsPlan.currentPhase?.kind === "recovery") {
           lines.push("HARD RULE: the Day Operations Plan says Jane is in a recovery buffer. Keep suggestions small and do not stack multiple habits/tasks.");
+        }
+        if (canonicalDayType === "off_day") {
+          lines.push("HARD RULE: canonical day type is off_day. Do not invent a shift or after-shift framing unless Jane states a newer current work state.");
+        }
+        if (canonicalDayType === "course_day") {
+          lines.push("HARD RULE: canonical day type is course_day / Weiterbildung. Do not call it an off day, do not imply the whole day is free, and do not suggest home-only actions during course time.");
+        }
+        if (canonicalDayType === "early_shift") {
+          lines.push("HARD RULE: canonical day type is early_shift / Frühdienst. Do not treat it as night-shift recovery.");
+        }
+        if (canonicalDayType === "night_shift") {
+          lines.push("HARD RULE: canonical day type is night_shift / Nachtdienst. Use night-shift timing and recovery assumptions.");
         }
       }
       if (ctx.currentEvent) {
@@ -1136,10 +1171,10 @@ class CyberbossApp {
         lines.push(`Daily energy/mood question timing: ${ctx.contextQuestionTiming.dueAt} (${ctx.contextQuestionTiming.reason || "unknown"}${blocking})`);
       }
       const signals = analysis?.signals || {};
-      if (signals.hasOffDay && !signals.hasNightShift && !signals.hasEarlyShift && !signals.hasLateShift) {
+      if (!operationsPlan && signals.hasOffDay && !signals.hasNightShift && !signals.hasEarlyShift && !signals.hasLateShift) {
         lines.push("HARD RULE: today is an OFF day per her calendar. She is not working and did not come from any shift today. Never use after-shift framing (下班回来 / 下早班 / 辛苦了今天的班). It is a rest day.");
       }
-      if (ctx.scheduleMode === "course_day" || signals.hasCourseDay) {
+      if (!operationsPlan && (ctx.scheduleMode === "course_day" || signals.hasCourseDay)) {
         lines.push("HARD RULE: today has Weiterbildung/course commitments. Do not call it an off day, do not imply the whole day is free, and do not suggest home-only actions during course time. Treat the useful window as after-course re-entry unless Jane states a newer current state.");
       }
       lines.push(...this.buildCurrentStateContextLines(receivedAt));
@@ -3168,6 +3203,10 @@ class CyberbossApp {
       if (temporal) {
         if (lines.length) lines.push("");
         lines.push("Temporal context:", temporal);
+      }
+      if (prepared.__insightRecall?.text) {
+        if (lines.length) lines.push("");
+        lines.push("Second Brain just-in-time context:", prepared.__insightRecall.text);
       }
     }
     return lines.join("\n");

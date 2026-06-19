@@ -4,6 +4,7 @@ const { isDecisionJournalConfirmation } = require("../core/decision-journal-stat
 const { parseWinsResponse } = require("../core/wins-trigger");
 const { parseDigestionReply } = require("./digestion-service");
 const { parseAnswer } = require("./missing-context-service");
+const { evaluatePlanPhase, getCanonicalDayType, readPlanForDate } = require("./day-operations-planner-service");
 
 const PENDING_PRIORITIES = {
   playbook_quick_start: 95,
@@ -47,6 +48,7 @@ class ContextEngineService {
       playbook: playbook || this.services.playbook,
     });
     const current = readCurrentSituation({
+      config: this.config,
       services: this.services,
       normalized,
       now: at,
@@ -210,7 +212,7 @@ function selectPendingReply(pendingReplies = []) {
     })[0];
 }
 
-function readCurrentSituation({ services = {}, normalized = {}, now = new Date(), senderId = "", provider = "" } = {}) {
+function readCurrentSituation({ config = {}, services = {}, normalized = {}, now = new Date(), senderId = "", provider = "" } = {}) {
   const current = safeCall(() => services.currentState?.current?.({ now })) || null;
   const busy = safeCall(() => services.currentState?.isBusyNow?.({ now })) || { busy: false };
   const focus = safeCall(() => services.focusProtection?.isProtected?.({
@@ -218,7 +220,12 @@ function readCurrentSituation({ services = {}, normalized = {}, now = new Date()
     provider: provider || normalized.provider,
     now,
   })) || { protected: false };
-  return { current, busy, focus };
+  const date = localDateText(now, timeZone(config));
+  const persistedPlan = safeCall(() => readPlanForDate(config.dayOperationsPlanStateFile, date));
+  const operationsPlan = persistedPlan
+    ? { ...persistedPlan, currentPhase: evaluatePlanPhase({ plan: persistedPlan, now }) }
+    : null;
+  return { current, busy, focus, operationsPlan };
 }
 
 function buildProtections(current = {}) {
@@ -232,6 +239,9 @@ function buildProtections(current = {}) {
   }
   if (state === "going_to_sleep") {
     protections.push("sleep_window");
+  }
+  if (["do_not_disturb", "recovery"].includes(current?.operationsPlan?.currentPhase?.kind)) {
+    protections.push(`day_operations_${current.operationsPlan.currentPhase.kind}`);
   }
   return protections;
 }
@@ -254,6 +264,16 @@ function buildGuardLines({ current = {}, pendingReply = null, normalized = {}, a
   }
   if (current?.focus?.protected) {
     lines.push(`Command Center: Focus Mode is active for ${current.focus.session?.task || "Focus"}. Avoid unrelated reminders and ask only about this focus task when it ends.`);
+  }
+  if (current?.operationsPlan) {
+    const dayType = getCanonicalDayType(current.operationsPlan) || "unknown";
+    lines.push(`Command Center SOURCE OF TRUTH: Day Operations Plan day_type=${dayType}, current_phase=${current.operationsPlan.currentPhase?.kind || "unknown"}. Do not reclassify the day from chat history when this plan exists.`);
+    if (current.operationsPlan.currentPhase?.kind === "do_not_disturb") {
+      lines.push("Command Center: Jane is inside a fixed work/course block. Do not suggest home-only actions or unrelated habits now.");
+    }
+    if (current.operationsPlan.currentPhase?.kind === "recovery") {
+      lines.push("Command Center: Jane is inside a recovery buffer. Keep the reply small and do not stack tasks.");
+    }
   }
   return lines;
 }

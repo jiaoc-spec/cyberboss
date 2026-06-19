@@ -62,6 +62,7 @@ function createService(overrides = {}) {
     },
     focusProtection: overrides.focusProtection,
     currentState: overrides.currentState,
+    proactiveIntervention: overrides.proactiveIntervention,
   });
   return { service, queued };
 }
@@ -104,6 +105,20 @@ test("off day queues a strategy prompt after the open window", async () => {
   assert.match(queued[0].text, /Statistik Klausur in 10d -> python/);
   assert.match(queued[0].text, /Be-Do-Have frame/);
   assert.match(queued[0].text, /Identity Ledger/);
+});
+
+test("day strategy respects the shared proactive intervention budget", async () => {
+  const { service, queued } = createService({
+    proactiveIntervention: {
+      request() {
+        return { allowed: false, reason: "daily_budget" };
+      },
+    },
+  });
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-12T12:31:00+02:00"));
+  assert.equal(result.queued.length, 0);
+  assert.equal(result.deferred, "proactive_daily_budget");
+  assert.equal(queued.length, 0);
 });
 
 test("off day strategy does not repeat after it has been sent", async () => {

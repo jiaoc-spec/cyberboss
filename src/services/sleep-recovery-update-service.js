@@ -2,15 +2,18 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
+const { getCanonicalDayType } = require("./day-operations-planner-service");
+
 const RUN_KEY_PREFIX = "sleep-recovery:";
 const BLOCK_PREFIX = "<!-- cyberboss-sleep-recovery:";
 const BLOCK_END_PREFIX = "<!-- /cyberboss-sleep-recovery:";
 
 class SleepRecoveryUpdateService {
-  constructor({ config, calendar, obsidianNote } = {}) {
+  constructor({ config, calendar, obsidianNote, dayOperationsPlanner = null } = {}) {
     this.config = config || {};
     this.calendar = calendar;
     this.obsidianNote = obsidianNote;
+    this.dayOperationsPlanner = dayOperationsPlanner;
     this.stateFile = this.config.sleepRecoveryUpdateStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -73,11 +76,16 @@ class SleepRecoveryUpdateService {
       .filter((event) => isShiftEvent(event))
       .map((event) => normalizeCalendarEvent(event))
       .filter((event) => isValidTimedEvent(event));
+    const operationsPlan = await this.readDayOperationsPlan({
+      targetDate,
+      timeZone,
+    });
     const summary = buildSleepRecoverySummary({
       targetDate,
       timeZone,
       sleepEvents,
       shiftEvents,
+      operationsPlan,
     });
     if (!summary.sections.length) {
       return { action: "no_relevant_sleep", targetDate };
@@ -113,6 +121,19 @@ class SleepRecoveryUpdateService {
     return this.config.timeZone || this.config.diaryTimeZone || "UTC";
   }
 
+  async readDayOperationsPlan({ targetDate, timeZone }) {
+    if (!this.dayOperationsPlanner || typeof this.dayOperationsPlanner.plan !== "function") {
+      return null;
+    }
+    try {
+      const noon = localDateTimeToDate(`${targetDate}T12:00:00`, timeZone);
+      return await this.dayOperationsPlanner.plan({ date: targetDate, now: noon });
+    } catch (error) {
+      console.error(`[cyberboss] sleep recovery day operations plan failed date=${targetDate}: ${error.message}`);
+      return null;
+    }
+  }
+
   loadState() {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.stateFile, "utf8"));
@@ -131,18 +152,29 @@ class SleepRecoveryUpdateService {
   }
 }
 
-function buildSleepRecoverySummary({ targetDate, timeZone, sleepEvents, shiftEvents }) {
+function buildSleepRecoverySummary({ targetDate, timeZone, sleepEvents, shiftEvents, operationsPlan = null }) {
   const nextDate = addDaysText(targetDate, 1);
   const targetStart = localDateTimeToDate(`${targetDate}T00:00:00`, timeZone);
   const targetNoon = localDateTimeToDate(`${targetDate}T12:00:00`, timeZone);
   const targetEvening = localDateTimeToDate(`${targetDate}T18:00:00`, timeZone);
   const nextNoon = localDateTimeToDate(`${nextDate}T12:00:00`, timeZone);
   const nextEvening = localDateTimeToDate(`${nextDate}T18:00:00`, timeZone);
-  const nightShift = shiftEvents.find((event) => event.shiftKind === "night" && overlaps(event, {
+  const canonicalDayType = getCanonicalDayType(operationsPlan);
+  const calendarNightShift = shiftEvents.find((event) => event.shiftKind === "night" && overlaps(event, {
     start: targetEvening,
     end: nextNoon,
   }));
-  const shiftMode = nightShift ? "night_shift" : resolveDayShiftMode(shiftEvents, targetDate, timeZone);
+  const plannerNightShift = buildPlannerNightShift({
+    targetDate,
+    timeZone,
+    operationsPlan,
+  });
+  const nightShift = canonicalDayType
+    ? (canonicalDayType === "night_shift" ? (calendarNightShift || plannerNightShift) : null)
+    : calendarNightShift;
+  const shiftMode = canonicalDayType && canonicalDayType !== "normal_day"
+    ? canonicalDayType
+    : (calendarNightShift ? "night_shift" : resolveDayShiftMode(shiftEvents, targetDate, timeZone));
 
   const beforeDaySleep = sleepEvents.filter((event) => event.end > targetStart && event.end <= targetNoon);
   const endOfDaySleep = sleepEvents.filter((event) => event.start >= targetEvening && event.start < nextNoon);
@@ -197,6 +229,7 @@ function buildSleepRecoverySummary({ targetDate, timeZone, sleepEvents, shiftEve
     targetDate,
     timeZone,
     shiftMode,
+    canonicalDayType: canonicalDayType || "",
     nightShift,
     sections,
     sleepEvents,
@@ -304,6 +337,62 @@ function resolveDayShiftMode(shiftEvents, targetDate, timeZone) {
   return "off_or_unknown";
 }
 
+function buildPlannerNightShift({ targetDate, timeZone, operationsPlan = null }) {
+  if (getCanonicalDayType(operationsPlan) !== "night_shift") {
+    return null;
+  }
+  const fixedBlocks = Array.isArray(operationsPlan?.fixedBlocks) ? operationsPlan.fixedBlocks : [];
+  const recoveryWindows = Array.isArray(operationsPlan?.recoveryWindows) ? operationsPlan.recoveryWindows : [];
+  const nightBlock = fixedBlocks.find((block) => {
+    const text = `${normalizeText(block?.kind)} ${normalizeText(block?.label)} ${normalizeText(block?.title)}`;
+    return /(night_shift|nachtdienst|night\s*shift|夜班)/i.test(text);
+  }) || null;
+  const recoveryStart = recoveryWindows.find((window) => {
+    const text = `${normalizeText(window?.reason)} ${normalizeText(window?.label)}`;
+    return /(night|nacht|夜班)/i.test(text);
+  }) || recoveryWindows[0] || null;
+  const startMinutes = readPlanMinute(nightBlock?.startMinutes, nightBlock?.start, 21 * 60 + 30);
+  const endMinutes = readPlanMinute(recoveryStart?.startMinutes, recoveryStart?.start, 7 * 60);
+  const startDate = targetDate;
+  const endDate = endMinutes <= startMinutes ? addDaysText(targetDate, 1) : targetDate;
+  const start = localDateTimeToDate(`${startDate}T${minutesToClock(startMinutes)}:00`, timeZone);
+  const end = localDateTimeToDate(`${endDate}T${minutesToClock(endMinutes)}:00`, timeZone);
+  if (!(end > start)) {
+    return null;
+  }
+  return {
+    title: normalizeText(nightBlock?.label) || "Day Operations Plan Nachtdienst",
+    calendar: "Day Operations Plan",
+    start,
+    end,
+    durationMinutes: Math.round(((end.getTime() - start.getTime()) / 60_000) * 10) / 10,
+    shiftKind: "night",
+  };
+}
+
+function readPlanMinute(value, clockText, fallback) {
+  const number = Number(value);
+  if (Number.isInteger(number) && number >= 0 && number < 24 * 60) {
+    return number;
+  }
+  const match = normalizeText(clockText).match(/^(\d{1,2}):(\d{2})$/);
+  if (match) {
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      return hour * 60 + minute;
+    }
+  }
+  return fallback;
+}
+
+function minutesToClock(minutes) {
+  const bounded = Math.max(0, Math.min(23 * 60 + 59, Number(minutes) || 0));
+  const hour = Math.floor(bounded / 60);
+  const minute = bounded % 60;
+  return `${pad(hour)}:${pad(minute)}`;
+}
+
 function formatShiftMode(value) {
   if (value === "night_shift") {
     return "夜班 / Nachtdienst";
@@ -313,6 +402,12 @@ function formatShiftMode(value) {
   }
   if (value === "late_shift") {
     return "晚班 / Spätdienst";
+  }
+  if (value === "course_day") {
+    return "Weiterbildung / 课程日";
+  }
+  if (value === "off_day") {
+    return "休息日 / Frei";
   }
   if (value === "work_day") {
     return "工作日";

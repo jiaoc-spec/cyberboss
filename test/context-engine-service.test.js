@@ -18,6 +18,7 @@ function makeConfig() {
     missingContextStateFile: path.join(dir, "missing-context-state.json"),
     digestionStateFile: path.join(dir, "digestion-state.json"),
     currentStateFile: path.join(dir, "current-state.json"),
+    dayOperationsPlanStateFile: path.join(dir, "day-operations-plan.json"),
   };
 }
 
@@ -139,4 +140,32 @@ test("decision journal confirmation is recognized as a pending reply", async () 
   });
 
   assert.equal(context.pendingReply.target, "decision_journal");
+});
+
+test("command center uses persisted day operations plan as canonical context", async () => {
+  const config = makeConfig();
+  fs.writeFileSync(config.dayOperationsPlanStateFile, JSON.stringify({
+    plans: {
+      "2026-06-18": {
+        date: "2026-06-18",
+        timeZone: "Europe/Berlin",
+        dayType: "course_day",
+        doNotDisturbWindows: [{ startMinutes: 9 * 60, endMinutes: 16 * 60, reason: "course_calendar_block" }],
+        recoveryWindows: [],
+        priorityWindows: [],
+      },
+    },
+  }));
+
+  const context = await new ContextEngineService({ config, services: {} }).analyzeIncoming({
+    normalized: {
+      provider: "telegram",
+      senderId: "jane",
+      text: "我现在有点累",
+      receivedAt: "2026-06-18T11:00:00+02:00",
+    },
+  });
+  assert.equal(context.current.operationsPlan.dayType, "course_day");
+  assert.ok(context.guardLines.some((line) => /SOURCE OF TRUTH.*course_day/.test(line)));
+  assert.ok(context.protections.includes("day_operations_do_not_disturb"));
 });

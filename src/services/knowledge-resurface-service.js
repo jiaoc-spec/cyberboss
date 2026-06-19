@@ -25,12 +25,13 @@ const DEFAULT_ACADEMIC_TAGS = [
 // question first (active recall beats re-reading), then the source for
 // self-check. Reads concept notes in the Wissenskarte plus the inbox.
 class KnowledgeResurfaceService {
-  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, currentState }) {
+  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, currentState, proactiveIntervention = null }) {
     this.config = config || {};
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.currentState = currentState;
+    this.proactiveIntervention = proactiveIntervention;
     this.stateFile = this.config.knowledgeResurfaceStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -68,6 +69,20 @@ class KnowledgeResurfaceService {
     const target = this.resolveTarget(account);
     if (!target.senderId || !target.workspaceRoot) {
       return { queued: [] };
+    }
+
+    const reservation = this.proactiveIntervention?.request?.({
+      source: "knowledge_resurface",
+      category: "knowledge",
+      priority: "normal",
+      subject: candidate.key,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+    });
+    if (reservation && !reservation.allowed) {
+      return { queued: [], deferred: `proactive_${reservation.reason}` };
     }
 
     const message = this.systemMessageQueue.enqueue({

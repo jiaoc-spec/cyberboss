@@ -143,3 +143,42 @@ test("check-in is skipped when the day operations plan says this is protected ti
   assert.equal(result.skip, true);
   assert.match(result.reason, /day operations protected phase=do_not_disturb/);
 });
+
+test("check-in is skipped during day operations recovery buffers", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-checkin-operations-recovery-"));
+  const stateFile = path.join(dir, "day-operations-plan.json");
+  fs.writeFileSync(stateFile, `${JSON.stringify({
+    plans: {
+      "2026-06-17": {
+        date: "2026-06-17",
+        timeZone: "Europe/Berlin",
+        scheduleMode: "course_day",
+        dayType: "course_day",
+        doNotDisturbWindows: [],
+        recoveryWindows: [
+          {
+            label: "Recovery after Weiterbildung",
+            reason: "course_recovery_buffer",
+            start: "15:00",
+            end: "15:30",
+            startMinutes: 900,
+            endMinutes: 930,
+          },
+        ],
+        priorityWindows: [],
+        levelA: { open: [{ id: "sport", label: "Sport" }], completed: [] },
+      },
+    },
+  })}\n`);
+
+  const result = getProtectedOperationsPlanState({
+    config: {
+      timeZone: "Europe/Berlin",
+      dayOperationsPlanStateFile: stateFile,
+    },
+    now: new Date("2026-06-17T15:10:00+02:00"),
+  });
+
+  assert.equal(result.skip, true);
+  assert.match(result.reason, /day operations protected phase=recovery/);
+});

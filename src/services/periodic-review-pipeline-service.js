@@ -13,11 +13,12 @@ const STATE_RETENTION = 20;
 // pipelines. Like the daily pipeline: queue a contract, verify the artifact,
 // retry with delay, give up loudly in the log instead of silently never running.
 class PeriodicReviewPipelineService {
-  constructor({ config, channelAdapter, sessionStore, systemMessageQueue }) {
+  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, knowledgePortfolio = null }) {
     this.config = config || {};
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
+    this.knowledgePortfolio = knowledgePortfolio;
     this.stateFile = this.config.periodicReviewPipelineStateFile;
     this.obsidianNote = new ObsidianNoteService({ config: this.config });
     this.lastCheckAtMs = 0;
@@ -214,6 +215,14 @@ class PeriodicReviewPipelineService {
     const patternLines = summarizePatterns(patterns, range.start, range.end, 5);
     const winLines = summarizeWins(wins, 5);
     const decisionLines = summarizeDecisions(decisions, 5);
+    const portfolio = this.knowledgePortfolio?.audit?.({ issueLimit: 8 }) || null;
+    const portfolioLines = portfolio
+      ? [
+        `- 概念卡 ${portfolio.conceptCount} 张；结构质量 ${portfolio.qualityScore === null ? "样本不足" : `${portfolio.qualityScore}/100`}；待处理问题 ${portfolio.totalIssues} 条。`,
+        `- 活跃主题：${portfolio.topThemes.length ? portfolio.topThemes.map((item) => `${item.tag} (${item.count})`).join("、") : "暂无足够数据"}。`,
+        ...portfolio.issues.slice(0, 5).map((issue) => `- [[${issue.title}]]：${issue.message}`),
+      ]
+      : ["- 知识资产审计本次不可用。"];
 
     return [
       `数据范围：${range.start} 到 ${range.end}`,
@@ -233,6 +242,9 @@ class PeriodicReviewPipelineService {
       "",
       "### 长期模式",
       ...patternLines,
+      "",
+      "### 知识资产与来源质量",
+      ...portfolioLines,
       "",
       "### 决策回顾",
       ...decisionLines,
@@ -326,8 +338,11 @@ class PeriodicReviewPipelineService {
 6. 长期资产盘点：认知资产（阅读、思考、判断力、知识沉淀）、关系资产（稳定支持、边界、可持续互动）、身体资产（睡眠、运动、恢复、能量基础设施）、人格资产（承受延迟反馈、波动和中间态）。不要把短期结果当作自我价值结论。
 7. 特定知识 / 杠杆检查：哪些投入不是一次性消耗，而是在形成 Jane 难以被复制的经验、判断、表达、护理科学视角或工作方法。
 8. 最差日计划审计：本月哪些习惯/学习计划只有在理想日才可执行，哪些应该重新设计成最差日也能完成的默认入口。
-9. 知识卡区维护（lint）：用 cyberboss_obsidian_note_read 看 ${this.config.knowledgeFolder || "01. ⚪ Wissenskarte"}/00. 知识地图.md 和概念卡，找出断链（指向不存在的 [[ ]]）、孤儿卡（没被任何卡或 MOC 链接）、明显重复的概念。只在月复盘里**列出**这些问题供 Jane 决定，不要自动删除或合并任何笔记。
-10. 下月一个最重要的调整建议（只一个），必须对应一个身份主线或长期资产，而不是泛泛建议
+9. 知识资产审计：调用 cyberboss_knowledge_portfolio_audit（includeDashboardMarkdown=true），区分来源类型、断链、孤儿卡、重复概念和活跃主题。只列问题，不自动删除或合并。把返回的 dashboardMarkdown 用 cyberboss_obsidian_note_write(mode=upsert_managed_block, blockId=long-term-memory-dashboard) 更新到 ${this.config.knowledgeFolder || "01. ⚪ Wissenskarte"}/00. Long-Term Memory Dashboard.md。
+10. Research Question Generator：只在本月有足够的学术笔记、临床经验或 Pattern Ledger 证据时，提出最多 3 个研究问题候选。必须标注来源线索和“候选/假设”，不要自动写入 Research Ledger，等 Jane 确认。
+11. Personal Pattern × Academic Knowledge Bridge：把个人模式与学术概念分开陈述，再指出可能连接；不要把个人经验冒充学术证据。
+12. Output / Project Hub：用 cyberboss_campaign_status 检查 active campaign、nextAction、linkedNotes、outputs 和 deadline。知识只有在能服务真实课程、Hausarbeit、教学或研究产出时才建议连接。
+13. 下月一个最重要的调整建议（只一个），必须对应一个身份主线或长期资产，而不是泛泛建议
 
 完成后返回 {"action":"silent"}。`;
   }

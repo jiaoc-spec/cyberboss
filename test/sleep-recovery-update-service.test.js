@@ -12,7 +12,7 @@ const {
   resolveTargetDates,
 } = require("../src/services/sleep-recovery-update-service");
 
-function makeFixture(events) {
+function makeFixture(events, overrides = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cyberboss-sleep-recovery-"));
   const config = {
     timeZone: "Europe/Berlin",
@@ -35,6 +35,7 @@ function makeFixture(events) {
       },
     },
     obsidianNote: new ObsidianNoteService({ config }),
+    dayOperationsPlanner: overrides.dayOperationsPlanner,
   });
   return { dir, config, noteDir, service };
 }
@@ -98,6 +99,120 @@ test("night shift post-shift sleep is attributed to the night-shift date", async
   assert.match(note, /班次语境：夜班 \/ Nachtdienst/);
   assert.match(note, /夜班后恢复睡眠/);
   assert.match(note, /08:30-13:30/);
+});
+
+test("sleep recovery can use a night-shift operations plan when calendar shift evidence is missing", async () => {
+  const { noteDir, service } = makeFixture([
+    {
+      title: "Sleep",
+      calendar: "CalFlow",
+      start: "2026-06-15T08:30:00+02:00",
+      end: "2026-06-15T13:30:00+02:00",
+    },
+  ], {
+    dayOperationsPlanner: {
+      async plan() {
+        return {
+          dayType: "night_shift",
+          scheduleMode: "night_shift",
+          fixedBlocks: [
+            {
+              kind: "night_shift",
+              label: "Nachtdienst",
+              start: "21:30",
+              end: "23:59",
+              startMinutes: 1290,
+              endMinutes: 1439,
+            },
+          ],
+          recoveryWindows: [
+            {
+              label: "Night-shift recovery",
+              reason: "night_shift_recovery_buffer",
+              start: "07:00",
+              end: "13:00",
+              startMinutes: 420,
+              endMinutes: 780,
+            },
+          ],
+          currentPhase: { kind: "open", reason: "test" },
+        };
+      },
+    },
+  });
+  writeDaily(noteDir, "2026-06-14");
+
+  const result = await service.check(new Date("2026-06-15T14:00:00+02:00"));
+  const note = readDaily(noteDir, "2026-06-14");
+
+  assert.equal(result.action, "updated");
+  assert.match(note, /班次语境：夜班 \/ Nachtdienst/);
+  assert.match(note, /夜班后恢复睡眠/);
+  assert.match(note, /08:30-13:30/);
+});
+
+test("sleep recovery trusts operations plan over conflicting night-shift calendar text", async () => {
+  const { noteDir, service } = makeFixture([
+    {
+      title: "Nachtdienst",
+      calendar: "Arbeit",
+      start: "2026-06-14T21:30:00+02:00",
+      end: "2026-06-15T07:00:00+02:00",
+    },
+    {
+      title: "Sleep",
+      calendar: "CalFlow",
+      start: "2026-06-15T08:30:00+02:00",
+      end: "2026-06-15T13:30:00+02:00",
+    },
+  ], {
+    dayOperationsPlanner: {
+      async plan() {
+        return {
+          dayType: "early_shift",
+          scheduleMode: "early_shift",
+          currentPhase: { kind: "open", reason: "test" },
+        };
+      },
+    },
+  });
+  writeDaily(noteDir, "2026-06-14");
+
+  const result = await service.check(new Date("2026-06-15T14:00:00+02:00"));
+  const note = readDaily(noteDir, "2026-06-14");
+
+  assert.equal(result.action, "updated");
+  assert.match(note, /班次语境：早班 \/ Frühdienst/);
+  assert.doesNotMatch(note, /班次语境：夜班 \/ Nachtdienst/);
+  assert.doesNotMatch(note, /夜班后恢复睡眠/);
+});
+
+test("sleep recovery can label Weiterbildung from the operations plan", async () => {
+  const { noteDir, service } = makeFixture([
+    {
+      title: "Sleep",
+      calendar: "CalFlow",
+      start: "2026-06-14T23:10:00+02:00",
+      end: "2026-06-15T06:40:00+02:00",
+    },
+  ], {
+    dayOperationsPlanner: {
+      async plan() {
+        return {
+          dayType: "course_day",
+          scheduleMode: "course_day",
+          currentPhase: { kind: "open", reason: "test" },
+        };
+      },
+    },
+  });
+  writeDaily(noteDir, "2026-06-14");
+
+  const result = await service.check(new Date("2026-06-15T10:00:00+02:00"));
+  const note = readDaily(noteDir, "2026-06-14");
+
+  assert.equal(result.action, "updated");
+  assert.match(note, /班次语境：Weiterbildung \/ 课程日/);
 });
 
 test("same sleep recovery data is not appended twice", async () => {

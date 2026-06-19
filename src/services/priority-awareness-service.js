@@ -4,14 +4,14 @@ const path = require("path");
 
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { DEFAULT_LEVEL_A, DEFAULT_LEVEL_B, DEFAULT_LEVEL_C, matchesHabit } = require("./critical-habits-monitor");
-const { summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
+const { getCanonicalDayType, summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
 
 const ACTIVE_STATUSES = new Set(["pending", "unknown"]);
 const CLOSED_STATUSES = new Set(["completed", "postponed", "skipped", "cancelled"]);
 const VALID_STATUSES = new Set([...ACTIVE_STATUSES, ...CLOSED_STATUSES]);
 
 class PriorityAwarenessService {
-  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null, dailyState = null, dayOperationsPlanner = null }) {
+  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null, dailyState = null, dayOperationsPlanner = null, proactiveIntervention = null }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -21,6 +21,7 @@ class PriorityAwarenessService {
     this.currentState = currentState;
     this.dailyState = dailyState;
     this.dayOperationsPlanner = dayOperationsPlanner;
+    this.proactiveIntervention = proactiveIntervention;
     this.stateFile = this.config.priorityAwarenessStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -234,6 +235,23 @@ class PriorityAwarenessService {
       return { queued: [] };
     }
 
+    const hardBoundary = !feasibility.isFeasible
+      || remainingMs <= (feasibility.activityMinutes + feasibility.bufferMinutes + 30) * 60_000;
+    const reservation = this.proactiveIntervention?.request?.({
+      source: "priority_awareness",
+      category: "guardian",
+      priority: hardBoundary ? "hard_boundary" : "high",
+      subject: `${targetDate}:${day.deadlineAt}`,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+      operationsPlan,
+    });
+    if (reservation && !reservation.allowed) {
+      this.saveState(state);
+      return { queued: [], deferred: `proactive_${reservation.reason}` };
+    }
     const message = this.enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState: todayState, operationsPlan });
     awareness.lastPromptAt = now.toISOString();
     awareness.needsReevaluationAt = "";
@@ -336,6 +354,21 @@ class PriorityAwarenessService {
       "Send one short, natural, affectionate-but-not-novelistic message only if useful. Reconnect her to the most important priorities after waking, without pressure. If she sounds exhausted, offer one minimum version or a gentle first step. Do not ask what she is doing; she just told you she woke up.",
     ].filter(Boolean).join("\n");
 
+    const reservation = this.proactiveIntervention?.request?.({
+      source: "priority_wake_reentry",
+      category: "guardian",
+      priority: "normal",
+      subject: targetDate,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+    });
+    if (reservation && !reservation.allowed) {
+      console.log(`[cyberboss] priority wake reentry deferred reason=proactive_${reservation.reason}`);
+      return [];
+    }
+
     const message = this.systemMessageQueue.enqueue({
       id: `priority-wake-reentry:${targetDate}:${crypto.randomUUID()}`,
       accountId: account.accountId,
@@ -422,7 +455,7 @@ class PriorityAwarenessService {
   enqueueAwarenessMessage({ account, target, day, pending, remainingMs, feasibility, now, dailyState = null, operationsPlan = null }) {
     const completed = day.priorities.filter((item) => item.status === "completed");
     const closed = day.priorities.filter((item) => CLOSED_STATUSES.has(item.status) && item.status !== "completed");
-    const schedule = summarizeScheduleContext(dailyState);
+    const schedule = summarizeScheduleContext(dailyState, operationsPlan);
     const text = [
       "Priority Awareness Assistant trigger.",
       `Today ${this.config.userName} explicitly chose these priorities before ${day.deadlineLabel}: ${day.priorities.map((item) => item.label).join(", ")}.`,
@@ -620,9 +653,10 @@ function formatRemaining(ms) {
   return rest ? `${hours} hours ${rest} minutes` : `${hours} hours`;
 }
 
-function summarizeScheduleContext(dailyState = null) {
+function summarizeScheduleContext(dailyState = null, operationsPlan = null) {
+  const canonicalDayType = getCanonicalDayType(operationsPlan);
   const ctx = dailyState?.temporalContext || {};
-  const mode = normalizeText(ctx.scheduleMode || dailyState?.scheduleMode);
+  const mode = canonicalDayType || normalizeText(ctx.scheduleMode || dailyState?.scheduleMode);
   const events = Array.isArray(ctx.scheduleEventsToday) ? ctx.scheduleEventsToday : [];
   const eventText = events
     .slice(0, 3)

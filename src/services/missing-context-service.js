@@ -8,12 +8,13 @@ const DEFAULT_CHECK_INTERVAL_MS = 300_000;
 const DEFAULT_RESPONSE_WINDOW_MS = 16 * 60 * 60_000;
 
 class MissingContextService {
-  constructor({ config, dailyState = null, channelAdapter = null, sessionStore = null, currentState = null } = {}) {
+  constructor({ config, dailyState = null, channelAdapter = null, sessionStore = null, currentState = null, proactiveIntervention = null } = {}) {
     this.config = config || {};
     this.dailyState = dailyState;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.currentState = currentState;
+    this.proactiveIntervention = proactiveIntervention;
     this.stateFile = this.config.missingContextStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -118,6 +119,21 @@ class MissingContextService {
     if (!question) {
       this.saveState(state);
       return { prompted: [] };
+    }
+
+    const reservation = this.proactiveIntervention?.request?.({
+      source: "missing_context",
+      category: "reflection",
+      priority: "normal",
+      subject: question.field,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+    });
+    if (reservation && !reservation.allowed) {
+      this.saveState(state);
+      return { prompted: [], deferred: `proactive_${reservation.reason}` };
     }
 
     const prompted = {

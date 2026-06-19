@@ -64,7 +64,7 @@ const PATTERN_CONTEXT_RULES = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, dayOperationsPlanner, focusProtection, patternLedger, currentState, campaign }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, dayOperationsPlanner, focusProtection, patternLedger, currentState, campaign, proactiveIntervention }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -76,6 +76,7 @@ class CriticalHabitsMonitor {
     this.patternLedger = patternLedger;
     this.currentState = currentState;
     this.campaign = campaign;
+    this.proactiveIntervention = proactiveIntervention;
     this.stateFile = this.config.criticalHabitsStateFile;
     this.lastCheckAtMs = 0;
   }
@@ -143,12 +144,15 @@ class CriticalHabitsMonitor {
         }
       }
       if (missing.length) {
-        queued.push(await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState, operationsPlan, promptKind }));
-        if (promptKind !== "midday") {
-          this.recordPatternEvidence({ dailyState: todayState, missing, now });
-        }
-        for (const { key } of missing) {
-          state.sent[key] = now.toISOString();
+        const delivered = await this.deliverLevelAMessage({ account, target, missing, now, dailyState: todayState, operationsPlan, promptKind });
+        if (delivered) {
+          queued.push(delivered);
+          if (promptKind !== "midday") {
+            this.recordPatternEvidence({ dailyState: todayState, missing, now });
+          }
+          for (const { key } of missing) {
+            state.sent[key] = now.toISOString();
+          }
         }
       }
     }
@@ -169,9 +173,12 @@ class CriticalHabitsMonitor {
       }
       if (!state.sent[dailyKey] && missing.length) {
         const { item, key } = missing[0];
-        queued.push(this.enqueueHabitMessage({ account, target, level: "B", item, key, now }));
-        state.sent[key] = now.toISOString();
-        state.sent[dailyKey] = now.toISOString();
+        const delivered = this.enqueueHabitMessage({ account, target, level: "B", item, key, now, operationsPlan });
+        if (delivered) {
+          queued.push(delivered);
+          state.sent[key] = now.toISOString();
+          state.sent[dailyKey] = now.toISOString();
+        }
       }
     }
 
@@ -309,10 +316,24 @@ class CriticalHabitsMonitor {
     }
   }
 
-  enqueueHabitMessage({ account, target, level, item, key, now }) {
+  enqueueHabitMessage({ account, target, level, item, key, now, operationsPlan = null }) {
     const text = level === "A"
       ? `Critical Habits Monitor: DELIVERY REQUIRED. 今天还没有记录 ${item.label}。它对 ${this.config.userName} 的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。最小可执行版本：${minimumActionText(item)}。请以温和而坚定的 Long-Term Values Guardian + Reality-Aware Guardian 方式提醒：先连接意义和她正在成为的自己，再判断这是需要最小一步回来，还是她真的需要休息。不要责备或施压，但也不要只安慰到让目标消失。明确给出三个选择：现在做最小版本、延期、或今天有意识地休息/放弃。强调 Always Return：重点不是完美连续，而是之后怎么回来。Return send_message, not silent.`
       : `Critical Habits Monitor: DELIVERY REQUIRED. 过去 7 天还没有记录 ${item.label} 的进展。它支持的长期意义是：${item.meaning || "她已经选择的长期成长方向"}。最小回来入口：${minimumActionText(item)}。请温和而坚定地帮助 ${this.config.userName} 重新连接这个方向，重点是防止长期目标被遗忘，不要责备或施压。可以建议这个很小的回来入口，也允许延期或本周休息/放弃。强调 Always Return，而不是完美连续。Return send_message, not silent.`;
+    const reservation = this.proactiveIntervention?.request?.({
+      source: `critical_habit_${level.toLowerCase()}`,
+      category: "guardian",
+      priority: level === "A" ? "high" : "normal",
+      subject: item.id,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+      operationsPlan,
+    });
+    if (reservation && !reservation.allowed) {
+      return null;
+    }
     const message = this.systemMessageQueue.enqueue({
       id: `critical-habit:${key}:${crypto.randomUUID()}`,
       accountId: account.accountId,
@@ -325,10 +346,24 @@ class CriticalHabitsMonitor {
     return message;
   }
 
-  async deliverLevelAMessage({ account, target, missing, now, dailyState, promptKind = "guardian" }) {
+  async deliverLevelAMessage({ account, target, missing, now, dailyState, operationsPlan = null, promptKind = "guardian" }) {
     const items = missing.map(({ item }) => item);
     const supportStrategies = this.collectSupportStrategies(dailyState);
     const text = buildLevelADirectMessage(items, dailyState, supportStrategies, { promptKind });
+    const reservation = this.proactiveIntervention?.request?.({
+      source: promptKind === "midday" ? "critical_habit_a_midday" : "critical_habit_a",
+      category: "guardian",
+      priority: promptKind === "midday" ? "normal" : "high",
+      subject: items.map((item) => item.id).sort().join("+"),
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+      operationsPlan,
+    });
+    if (reservation && !reservation.allowed) {
+      return null;
+    }
     if (typeof this.channelAdapter?.sendText === "function") {
       try {
         await this.channelAdapter.sendText({

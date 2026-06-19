@@ -329,6 +329,60 @@ test("monitor defers during day operations protected recovery windows", async ()
   assert.equal(queued.length, 0);
 });
 
+test("monitor prompt uses day operations plan schedule context over conflicting daily state", async () => {
+  const { service, queued } = createService({
+    dailyState: {
+      async analyze() {
+        return {
+          scheduleMode: "off_day",
+          temporalContext: {
+            scheduleMode: "off_day",
+            currentEvent: null,
+            scheduleEventsToday: [
+              { title: "Weiterbildung zur PA", calendar: "Arbeit", start: "08:30", end: "15:00" },
+            ],
+          },
+        };
+      },
+    },
+    dayOperationsPlanner: {
+      async plan() {
+        return {
+          dayType: "course_day",
+          scheduleMode: "course_day",
+          fixedBlocks: [
+            { label: "Weiterbildung zur PA", start: "08:30", end: "15:00" },
+          ],
+          priorityWindows: [
+            { label: "After-course priority window", start: "16:00", end: "20:30" },
+          ],
+          currentPhase: {
+            kind: "priority_window",
+            shouldDefer: false,
+            reason: "after_course_window",
+          },
+        };
+      },
+      shouldDefer(plan) {
+        return Boolean(plan?.currentPhase?.shouldDefer);
+      },
+    },
+  });
+  service.set({
+    date: "2026-06-17",
+    deadlineAt: "2026-06-17T20:00:00+02:00",
+    deadlineLabel: "睡觉",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-17T18:01:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.match(queued[0].text, /Today's schedule context: mode=course_day; Weiterbildung zur PA 08:30-15:00/);
+  assert.match(queued[0].text, /Day Operations Plan: mode=course_day/);
+  assert.doesNotMatch(queued[0].text, /mode=off_day/);
+});
+
 test("wake-up reentry waits for the grace window before queuing priority awareness", async () => {
   const { service, queued } = createService();
   service.set({

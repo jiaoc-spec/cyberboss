@@ -9,6 +9,7 @@ const { SystemMessageQueueStore } = require("../core/system-message-queue-store"
 const { readCurrentStateFile, evaluateBusyState } = require("../services/current-state-service");
 const { evaluatePlanPhase, readPlanForDate, shouldDeferForOperationsPlan } = require("../services/day-operations-planner-service");
 const { getActiveFocusSession } = require("../services/focus-protection-service");
+const { ProactiveInterventionCoordinator } = require("../services/proactive-intervention-coordinator");
 
 const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = [
   "Random companionship check-in for %USER%.",
@@ -27,6 +28,7 @@ async function runSystemCheckinPoller(config) {
   const queue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
   const checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
   const sessionStore = new SessionStore({ filePath: config.sessionsFile });
+  const proactiveIntervention = new ProactiveInterventionCoordinator({ config });
   const target = resolvePollerTarget({ config, account, sessionStore, contextTokens });
   const defaultRange = resolveDefaultCheckinRange();
   let currentRange = checkinConfigStore.getRange(defaultRange);
@@ -48,6 +50,20 @@ async function runSystemCheckinPoller(config) {
     const protectedState = getProtectedCheckinState({ config, target, now: new Date() });
     if (protectedState.skip) {
       console.log(`[cyberboss] checkin skipped: ${protectedState.reason}`);
+      continue;
+    }
+    const reservation = proactiveIntervention.request({
+      source: "random_checkin",
+      category: "companionship",
+      priority: "normal",
+      subject: "companionship",
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: channelAdapter.describe().id,
+      now: new Date(),
+    });
+    if (!reservation.allowed) {
+      console.log(`[cyberboss] checkin skipped: proactive_${reservation.reason}`);
       continue;
     }
 

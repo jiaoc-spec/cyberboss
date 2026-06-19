@@ -1,12 +1,13 @@
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 
 class DecisionReviewMonitor {
-  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, decisionJournal }) {
+  constructor({ config, channelAdapter, sessionStore, systemMessageQueue, decisionJournal, proactiveIntervention = null }) {
     this.config = config || {};
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.decisionJournal = decisionJournal;
+    this.proactiveIntervention = proactiveIntervention;
     this.lastCheckAtMs = 0;
   }
 
@@ -39,6 +40,19 @@ class DecisionReviewMonitor {
     }
 
     const decision = due[0];
+    const reservation = this.proactiveIntervention?.request?.({
+      source: "decision_review",
+      category: "reflection",
+      priority: "normal",
+      subject: decision.id,
+      accountId: account.accountId,
+      senderId: target.senderId,
+      provider: this.channelAdapter?.describe?.().id || "channel",
+      now,
+    });
+    if (reservation && !reservation.allowed) {
+      return { queued: [], deferred: `proactive_${reservation.reason}` };
+    }
     const message = this.systemMessageQueue.enqueue({
       id: `decision-review:${decision.id}`,
       accountId: account.accountId,
