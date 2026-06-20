@@ -105,7 +105,7 @@ Obsidian Tracker 义务：
     }
   }
 - Tracker habit 名称只使用这些：
-  Sport、冥想、英语发音、德语语法、德语影子跟读、骨盆、足弓、健身、基本功、成品舞、有氧操、美容灯、Praxisanleitung、Wundmanagement、Python、Nursing Digest。
+  Sport、冥想、英语发音、德语语法、德语影子跟读、骨盆、足弓、健身、基本功、成品舞、有氧操、美容灯、看书、Praxisanleitung、Wundmanagement、Python、Nursing Digest。读书/看书（读一本书、读了某书第N章）记为「看书」。
 - Englisch 在 tracker 中具体指"英语发音"。
 - Deutsch 在 tracker 中拆成"德语语法"和"德语影子跟读"；如果当天只知道笼统 Deutsch，不要编造成两个都完成。
 - Energy、Mood、Shift Fatigue、Screen Time 是状态/指标，不是 habit。可以保留为 daily state 字段，但不要放进 tracker habit 列表。

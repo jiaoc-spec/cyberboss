@@ -213,7 +213,9 @@ function extractTrackerEntries(fullText) {
   setBoolean(entries, "成品舞", resolveNamedHabit(habitData, text, "成品舞", [/成品舞|finished dance|choreo(?:graphy)?/i]));
   setBoolean(entries, "有氧操", resolveNamedHabit(habitData, text, "有氧操", [/有氧操|aerobics|cardio/i]));
   setBoolean(entries, "美容灯", resolveNamedHabit(habitData, text, "美容灯", [/美容灯|LED\s*light|beauty light/i]));
-  setBoolean(entries, "看书", resolveNamedHabit(habitData, text, "看书", [/看书|读书|读了.{0,8}(?:书|页|章)|看完.{0,8}书|读完.{0,8}书/i]));
+  setBoolean(entries, "看书", resolveNamedHabit(habitData, text, "看书", [
+    /看书|读书|看了书|读了书|在看书|在读书|阅读了?《|读了《|看了《|在读《|读了.{0,40}第.{1,4}章|阅读了?.{0,40}第.{1,4}章|看完.{0,8}(?:书|一本|一章)|读完.{0,8}(?:书|一本|一章)|读了一本|gelesen|reading\s+(?:a\s+)?book/i,
+  ]));
 
   for (const [name, patterns] of Object.entries({
     Praxisanleitung: [/Praxisanleitung[^\n]*(?:完成|completed|\d+\s*分钟|推进|学习)/i],

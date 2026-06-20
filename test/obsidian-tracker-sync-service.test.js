@@ -219,3 +219,17 @@ test("structuredCompletedHabits returns only structurally-confirmed completions"
 `);
   assert.deepEqual(completed.sort(), ["骨盆", "足弓"].sort());
 });
+
+test("regression (2026-06-19): real reading phrasings mark 看书 done", () => {
+  // Jane wrote "看了书" and "读了Tennis - Das innere Spiel 第一章"; the daily
+  // note said "阅读了《...》第一章". None matched the original strict regex.
+  for (const line of [
+    "- 看了书",
+    "- 读了Tennis - Das innere Spiel 第一章",
+    "- 阅读了《Tennis - Das innere Spiel》第一章。",
+    "- 晚上还读了《某本书》。",
+  ]) {
+    assert.equal(extractTrackerEntries(line).看书, true, `should detect: ${line}`);
+  }
+  assert.equal(extractTrackerEntries("- 今天没看书").看书, undefined);
+});
