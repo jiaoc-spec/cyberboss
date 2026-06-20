@@ -3682,7 +3682,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-module.exports = { CyberbossApp };
+module.exports = { CyberbossApp, buildApprovalPromptText };
 
 function parseChannelCommand(text) {
   const normalized = typeof text === "string" ? text.trim() : "";
@@ -3844,11 +3844,13 @@ function buildApprovalPromptText(approval) {
   }
 
   if (commandText) {
-    if (firstCommandLine) {
-      out.push(`⌨️ ${firstCommandLine}`);
-    }
-    if (restCommandLines.length) {
-      out.push(restCommandLines.map((line) => `  ${line}`).join("\n"));
+    // Never dump raw code/scripts to the user. Multi-line or code-like commands
+    // (node/sh heredocs, tool-invocation snippets) are collapsed to a single
+    // friendly line; only short single-line commands are shown verbatim.
+    if (commandLines.length > 1 || looksLikeCode(commandText)) {
+      out.push("⌨️ 内部脚本操作（已隐藏代码细节，详情见本机日志）");
+    } else if (firstCommandLine) {
+      out.push(`⌨️ ${truncateLine(firstCommandLine, 120)}`);
     }
   }
 
@@ -3863,6 +3865,16 @@ function buildApprovalPromptText(approval) {
   out.push("👉 /no     deny");
 
   return out.join("\n");
+}
+
+function looksLikeCode(text) {
+  const t = String(text || "");
+  return /\bnode\b|<<\s*['"]?\w+|require\(|invokeTool|=>|\)\s*;|console\.|JSON\.stringify|async\s*\(|\bfunction\b|```/.test(t);
+}
+
+function truncateLine(text, max = 120) {
+  const t = String(text || "");
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 function extractToolNameFromReason(reason) {

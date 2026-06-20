@@ -210,3 +210,34 @@ test("scenario 10: Weiterbildung day must never be treated as an off day", () =>
   assert.match(prioritySource, /Respect the schedule context/);
   assert.match(prioritySource, /do not call it an off day/);
 });
+
+test("scenario 10 (2026-06-20): approval prompts must never dump raw code/scripts to the user", () => {
+  // Real failure: a node heredoc wrapping cyberboss_obsidian_note_write was
+  // shown verbatim in the Telegram approval prompt.
+  const { buildApprovalPromptText } = require("../src/core/app");
+  const leaked = [
+    "node <<'NODE'",
+    "const review = JSON.stringify(data, null, 2) + '\\n';",
+    "const r2 = await toolHost.invokeTool('cyberboss_obsidian_note_write', {",
+    "  relativePath: '03. 🔵 Tagebuch/01. 日记/2026-06-19.md', content: review, mode: 'append'",
+    "});",
+    "NODE",
+  ].join("\n");
+  const prompt = buildApprovalPromptText({ reason: "Tool: local_shell", command: leaked });
+
+  assert.doesNotMatch(prompt, /invokeTool/);
+  assert.doesNotMatch(prompt, /toolHost/);
+  assert.doesNotMatch(prompt, /JSON\.stringify/);
+  assert.doesNotMatch(prompt, /NODE/);
+  assert.match(prompt, /已隐藏代码/);
+  // a simple one-line command is still shown so the user has context
+  const simple = buildApprovalPromptText({ reason: "Tool: shell", command: "git status" });
+  assert.match(simple, /git status/);
+});
+
+test("scenario 10 guard: prompts forbid wrapping tool calls in shell/node", () => {
+  const ops = fs.readFileSync(path.join(repoRoot, "templates/weixin-operations.md"), "utf8");
+  assert.match(ops, /NEVER wrap a tool call inside a node\/bash\/python\/heredoc/);
+  const daily = fs.readFileSync(path.join(repoRoot, "src/services/daily-review-prompt.js"), "utf8");
+  assert.match(daily, /不要用 node、bash、python 或 heredoc/);
+});

@@ -26,6 +26,7 @@ ${attemptNote}
 Obsidian 目标文件：${folder}/${targetDate}.md
 - 读取用 cyberboss_obsidian_note_read，写入必须用 cyberboss_obsidian_note_write（relativePath=${folder}/${targetDate}.md）
 - 绝对不要用 shell、cat、sed 或 apply_patch 直接改 vault 文件——那会触发需要人工批准的沙箱审批，半夜没人批，流程就会卡住
+- 同样绝对不要用 node、bash、python 或 heredoc 脚本去"调用"工具（例如 node -e 里 require/invokeTool）。直接把 cyberboss_obsidian_note_write 当成原生工具调用，参数用 relativePath/content/mode；任何把工具包进脚本再 exec 的做法都会触发审批并把代码泄漏给用户，严禁
 - 如文件已有"待午夜后自动生成"占位符，用 mode=replace_placeholder 整体填充
 - 如文件已有部分内容，用 mode=append 追加缺失 section，不要删除已有内容
 - 必须包含 "## 每日复盘" section，写完后文件中不能再残留"待午夜后自动生成"占位符
