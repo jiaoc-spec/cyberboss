@@ -588,6 +588,33 @@ test("plain telegram reply strips taxonomy and timeline node backend narration",
   }]);
 });
 
+test("plain telegram reply strips real German shadowing timeline backend narration", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4d-german-shadowing", {
+    userId: "user-4d-german-shadowing",
+    contextToken: "ctx-4d-german-shadowing",
+    provider: "telegram",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4d-german-shadowing",
+    turnId: "turn-4d-german-shadowing",
+    itemId: "item-4d-german-shadowing",
+    text: [
+      "我把这段当成今天一个很实在的德语推进，顺手记进时间线，不让它只停在聊天里。",
+      "第一次写入少了分类节点，我先找一下这边现成的时间线分类，直接复用，不乱造新节点。",
+      "我对上了现成的学习练习分类，直接落成一条，不新造节点。",
+      "这个很扎实，20 分钟影子跟读比空想强多了。你今天德语这条线是真的往前走了。",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4d-german-shadowing",
+    text: "这个很扎实，20 分钟影子跟读比空想强多了。你今天德语这条线是真的往前走了。",
+    contextToken: "ctx-4d-german-shadowing",
+  }]);
+});
+
 test("plain weixin reply strips romance-novel stage directions", async () => {
   const { sent, streamDelivery } = createHarness();
   streamDelivery.queueReplyTargetForThread("thread-4e", {
