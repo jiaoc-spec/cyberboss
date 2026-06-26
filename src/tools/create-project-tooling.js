@@ -20,6 +20,7 @@ const { DiaryService } = require("../services/diary-service");
 const { FocusProtectionService } = require("../services/focus-protection-service");
 const { HabitCheckinService } = require("../services/habit-checkin-service");
 const { HabitExceptionService } = require("../services/habit-exception-service");
+const { HabitObservationService } = require("../services/habit-observation-service");
 const { HealthService } = require("../services/health-service");
 const { MissingContextService } = require("../services/missing-context-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
@@ -56,7 +57,8 @@ function createProjectTooling(config, options = {}) {
   const timeline = new TimelineService({ config, channelAdapter, timelineIntegration, sessionStore });
   const calendar = new CalendarService({ config });
   const health = new HealthService({ config, diary });
-  const dailyState = new DailyStateService({ config, dailyInbox, timeline, calendar, health });
+  const habitObservations = new HabitObservationService({ config });
+  const dailyState = new DailyStateService({ config, dailyInbox, timeline, calendar, health, habitObservations });
   const dayOperationsPlanner = new DayOperationsPlannerService({ config, dailyState });
   const campaign = new CampaignService({ config });
   const patternLedger = new PatternLedgerService({ config });
@@ -112,6 +114,7 @@ function createProjectTooling(config, options = {}) {
     focusProtection,
     habitCheckin: new HabitCheckinService({ config, dailyState, dayOperationsPlanner, channelAdapter, sessionStore }),
     habitExceptions,
+    habitObservations,
     health,
     missingContext,
     patternLedger,

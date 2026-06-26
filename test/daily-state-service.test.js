@@ -63,6 +63,42 @@ test("daily state detects night shift boundary and minimum mode", async () => {
   assert.equal(state.levelA.find((item) => item.id === "sport").completed, false);
 });
 
+test("daily state includes same-day observed habit completions", async () => {
+  const service = new DailyStateService({
+    config: { timeZone: "Europe/Berlin" },
+    dailyInbox: {
+      read() {
+        return { exists: true, filePath: "/tmp/2026-06-26.md", text: "" };
+      },
+    },
+    timeline: {
+      async read() {
+        return { data: { events: [] } };
+      },
+    },
+    calendar: {
+      async read() {
+        return { events: [] };
+      },
+    },
+    habitObservations: {
+      completedFor({ habitId, date }) {
+        if (date === "2026-06-26" && habitId === "german") {
+          return { habitId, status: "completed" };
+        }
+        return null;
+      },
+    },
+  });
+
+  const state = await service.analyze({
+    date: "2026-06-26",
+    now: new Date("2026-06-26T18:35:00+02:00"),
+  });
+
+  assert.equal(state.levelA.find((item) => item.id === "german").completed, true);
+});
+
 test("daily state treats current night shift wording as active work", async () => {
   const service = new DailyStateService({
     config: { timeZone: "Europe/Berlin" },

@@ -60,6 +60,7 @@ function createMonitor(overrides = {}) {
     dayOperationsPlanner: overrides.dayOperationsPlanner,
     focusProtection: overrides.focusProtection,
     habitExceptions: overrides.habitExceptions,
+    habitObservations: overrides.habitObservations,
     patternLedger: overrides.patternLedger,
     currentState: overrides.currentState,
     proactiveIntervention: overrides.proactiveIntervention,
@@ -180,6 +181,41 @@ test("level A reminder respects a temporary sport pause", async () => {
 
   assert.equal(result.queued.length, 0);
   assert.equal(sent.length, 0);
+});
+
+test("level A reminder respects same-day observed habit completions", async () => {
+  const { monitor, sent } = createMonitor({
+    dailyState: {
+      async analyze() {
+        return {
+          recommendedMode: "minimum",
+          priorityTiming: { isDue: true, reason: "fixed_daily_guardian_time" },
+          temporalContext: { currentEvent: null },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: false },
+            { id: "german", label: "Deutsch", completed: false },
+          ],
+        };
+      },
+    },
+    habitObservations: {
+      completedFor({ habitId, date }) {
+        if (date === "2026-06-26" && ["english", "german"].includes(habitId)) {
+          return { habitId, status: "completed" };
+        }
+        return null;
+      },
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-26T20:04:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /Sport/);
+  assert.doesNotMatch(sent[0].text, /Englisch/);
+  assert.doesNotMatch(sent[0].text, /Deutsch/);
 });
 
 test("level A reminder defers to the day operations plan over conflicting daily state", async () => {

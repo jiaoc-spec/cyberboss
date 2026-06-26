@@ -117,6 +117,8 @@ function readConfig() {
     habitCheckinDefaultHour: readIntEnv("CYBERBOSS_HABIT_CHECKIN_DEFAULT_HOUR") ?? 7,
     habitExceptionStateFile: readTextEnv("CYBERBOSS_HABIT_EXCEPTION_STATE_FILE") || path.join(stateDir, "habit-exceptions.json"),
     habitExceptionDefaultPauseDays: readIntEnv("CYBERBOSS_HABIT_EXCEPTION_DEFAULT_PAUSE_DAYS") || 3,
+    habitObservationStateFile: readTextEnv("CYBERBOSS_HABIT_OBSERVATION_STATE_FILE") || path.join(stateDir, "habit-observations.json"),
+    habitObservationRetentionDays: readIntEnv("CYBERBOSS_HABIT_OBSERVATION_RETENTION_DAYS") || 14,
     decisionReviewEnabled: readOptionalBoolEnv("CYBERBOSS_DECISION_REVIEW_ENABLED") !== false,
     decisionReviewDefaultDays: readIntEnv("CYBERBOSS_DECISION_REVIEW_DEFAULT_DAYS") || 14,
     decisionReviewCheckIntervalMs: readIntEnv("CYBERBOSS_DECISION_REVIEW_CHECK_INTERVAL_MS") || 3_600_000,

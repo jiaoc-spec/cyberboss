@@ -64,7 +64,7 @@ const PATTERN_CONTEXT_RULES = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, dayOperationsPlanner, focusProtection, habitExceptions, patternLedger, currentState, campaign, proactiveIntervention }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, dayOperationsPlanner, focusProtection, habitExceptions, habitObservations, patternLedger, currentState, campaign, proactiveIntervention }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -74,6 +74,7 @@ class CriticalHabitsMonitor {
     this.dayOperationsPlanner = dayOperationsPlanner;
     this.focusProtection = focusProtection;
     this.habitExceptions = habitExceptions;
+    this.habitObservations = habitObservations;
     this.patternLedger = patternLedger;
     this.currentState = currentState;
     this.campaign = campaign;
@@ -142,7 +143,8 @@ class CriticalHabitsMonitor {
         }
         const key = `${promptKind === "midday" ? "A_MIDDAY" : "A"}:${local.date}:${item.id}`;
         const dailyStateHabit = todayState?.levelA?.find((habitState) => habitState.id === item.id);
-        const completed = dailyStateHabit?.completed || events.some((event) => matchesHabit(event, item));
+        const observed = this.habitObservations?.completedFor?.({ habitId: item.id, date: local.date });
+        const completed = dailyStateHabit?.completed || events.some((event) => matchesHabit(event, item)) || Boolean(observed);
         if (!state.sent[key] && !completed) {
           missing.push({ item, key });
         }

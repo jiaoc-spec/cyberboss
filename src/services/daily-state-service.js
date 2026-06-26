@@ -25,12 +25,13 @@ const WAKE_PATTERN = /(醒了|起床|睡醒|起来了|wake|woke)/i;
 const CURRENT_WORK_PATTERN = /(我|现在|正在|还在).{0,8}(上班|上早班|上晚班|上夜班|工作|夜班|值班|dienst|shift)|(?:上班|夜班|值班).{0,8}(中|期间|现在)|(去上|在上)(早|晚|夜)?班/i;
 
 class DailyStateService {
-  constructor({ config, dailyInbox, timeline, calendar, health } = {}) {
+  constructor({ config, dailyInbox, timeline, calendar, health, habitObservations } = {}) {
     this.config = config || {};
     this.dailyInbox = dailyInbox;
     this.timeline = timeline;
     this.calendar = calendar;
     this.health = health;
+    this.habitObservations = habitObservations;
   }
 
   async analyze({ date = "", now = new Date() } = {}) {
@@ -47,9 +48,18 @@ class DailyStateService {
       ...timelineEvents.map(eventToText),
       ...calendarEvents.map(calendarEventToText),
     ].join("\n");
-    const levelA = analyzeHabits(DEFAULT_LEVEL_A, timelineEvents, allText);
-    const levelB = analyzeHabits(DEFAULT_LEVEL_B, timelineEvents, allText);
-    const levelC = analyzeHabits(DEFAULT_LEVEL_C, timelineEvents, allText);
+    const levelA = analyzeHabits(DEFAULT_LEVEL_A, timelineEvents, allText, {
+      date: targetDate,
+      habitObservations: this.habitObservations,
+    });
+    const levelB = analyzeHabits(DEFAULT_LEVEL_B, timelineEvents, allText, {
+      date: targetDate,
+      habitObservations: this.habitObservations,
+    });
+    const levelC = analyzeHabits(DEFAULT_LEVEL_C, timelineEvents, allText, {
+      date: targetDate,
+      habitObservations: this.habitObservations,
+    });
     const nightShiftEvents = calendarEvents.filter(isNightShiftCalendarEvent);
     const earlyShiftEvents = calendarEvents.filter(isEarlyShiftCalendarEvent);
     const lateShiftEvents = calendarEvents.filter(isLateShiftCalendarEvent);
@@ -203,17 +213,18 @@ class DailyStateService {
   }
 }
 
-function analyzeHabits(items, events, allText) {
+function analyzeHabits(items, events, allText, { date = "", habitObservations = null } = {}) {
   return items.map((item) => {
     const evidenceEvents = events.filter((event) => matchesHabit(event, item));
     const textMatched = item.keywords.some((keyword) => habitKeywordPattern(keyword).test(allText));
+    const observed = habitObservations?.completedFor?.({ habitId: item.id, date });
     return {
       id: item.id,
       label: item.label,
       meaning: item.meaning || "",
       estimatedMinutes: item.estimatedMinutes || 30,
-      completed: evidenceEvents.length > 0 || textMatched,
-      evidenceCount: evidenceEvents.length + (textMatched ? 1 : 0),
+      completed: evidenceEvents.length > 0 || textMatched || Boolean(observed),
+      evidenceCount: evidenceEvents.length + (textMatched ? 1 : 0) + (observed ? 1 : 0),
     };
   });
 }
