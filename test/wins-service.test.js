@@ -81,3 +81,30 @@ test("record accepts optional context fields", async () => {
   assert.equal(win.energy_context, "high");
   assert.equal(win.note, "Today felt easy");
 });
+
+test("amend updates an existing win in place", async () => {
+  const config = makeTmpConfig();
+  const service = new WinsService({ config });
+  const win = await service.record({
+    task: "Deutsch",
+    domain: "learning",
+    success_factor: "right_after_work",
+    note: "small_chunk",
+    date: "2026-06-18",
+  });
+
+  const amended = await service.amend(win.id, {
+    success_factor: "small_chunk",
+    note: "had_reminder",
+  });
+
+  assert.equal(amended.id, win.id);
+  assert.equal(amended.success_factor, "small_chunk");
+  assert.equal(amended.note, "had_reminder");
+
+  const data = JSON.parse(fs.readFileSync(config.winsLedgerFile, "utf8"));
+  assert.equal(data.wins.length, 1);
+  assert.equal(data.wins[0].id, win.id);
+  assert.equal(data.wins[0].success_factor, "small_chunk");
+  assert.equal(data.wins[0].note, "had_reminder");
+});

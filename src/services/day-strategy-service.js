@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
-const { getCanonicalDayType, summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
+const { buildAssistantRhythm, getCanonicalDayType, summarizeOperationsPlanForPrompt } = require("./day-operations-planner-service");
 
 const WORK_SHIFT_PATTERN = /(frühdienst|fruehdienst|spätdienst|spaetdienst|nachtdienst|nachtwache|early\s*shift|late\s*shift|night\s*shift|早班|晚班|夜班)/i;
 const EARLY_SHIFT_PATTERN = /(frühdienst|fruehdienst|early\s*shift|早班)/i;
@@ -333,6 +333,12 @@ function buildDayStrategyTrigger({ strategy, analysis, operationsPlan = null, ca
   const levelA = analysis?.levelA || [];
   const completed = levelA.filter((item) => item.completed).map((item) => item.label);
   const missing = levelA.filter((item) => !item.completed).map((item) => `${item.label} (${item.estimatedMinutes || "?"}m)`);
+  const assistantRhythm = operationsPlan?.assistantRhythm || buildAssistantRhythm({
+    scheduleMode: strategy?.mode || resolveScheduleMode(analysis?.signals || {}),
+    openLevelA: levelA.filter((item) => !item.completed),
+    completedLevelA: levelA.filter((item) => item.completed),
+    recommendedMode: analysis?.recommendedMode || "standard",
+  });
   const todaySchedule = (analysis?.temporalContext?.scheduleEventsToday || [])
     .slice(0, 5)
     .map((event) => `${event.title} ${event.start}-${event.end}`);
@@ -348,6 +354,7 @@ function buildDayStrategyTrigger({ strategy, analysis, operationsPlan = null, ca
     `Schedule mode: ${strategy.mode}.`,
     `Local day state: ${analysis?.temporalContext?.localNow || analysis?.generatedAt || "unknown"}.`,
     operationsPlan ? `Day Operations Plan: ${summarizeOperationsPlanForPrompt(operationsPlan)}.` : "",
+    formatAssistantRhythmForPrompt(assistantRhythm, campaignStatus),
     `Level A completed: ${completed.length ? completed.join(", ") : "none recorded"}.`,
     `Level A still open: ${missing.length ? missing.join(", ") : "none"}.`,
     todaySchedule.length ? `Today schedule context: ${todaySchedule.join("; ")}.` : "Today schedule context: none known.",
@@ -359,12 +366,33 @@ function buildDayStrategyTrigger({ strategy, analysis, operationsPlan = null, ca
     `Send one short, natural, warm message to ${userName}. Do not mention backend, strategy ids, calendar parsing, or tools.`,
     "If this is an off day, explicitly recognize that today has more flexible time than a workday and gently suggest using one good window for a chosen long-term value.",
     "If this is a course_day, explicitly recognize that today has Weiterbildung/course commitments and use an after-course re-entry tone. Do not call it an off day.",
-    "If Level A still open is not none, mention every open Level A label once before offering options. Do not omit Sport when Sport is still open; Sport may be framed as a 5-10 minute minimum version.",
+    "If Level A still open is not none, mention the open Level A set once as the bigger map, then recommend only the one first move from Executive Assistant Rhythm v2. Do not omit Sport when Sport is still open; Sport may be framed as a 5-10 minute minimum version.",
     "Follow the Day Operations Plan. Do not suggest packing, home setup, sleeping, or other location-bound actions during a work/course block. If the useful window is later, name it briefly and stay practical.",
     "Do not assign a rigid order. Do not say she failed. Do not ask what she is doing. Offer one realistic first block or two small options, and keep the tone intimate, grounded, and not novelistic.",
     "If tomorrow has an early shift, protect the evening and sleep: suggest doing the smallest important thing earlier rather than dragging it late.",
     "Return send_message, not silent.",
   ].join("\n");
+}
+
+function formatAssistantRhythmForPrompt(rhythm, campaignStatus = {}) {
+  if (!rhythm) {
+    return "";
+  }
+  const move = rhythm.oneFirstMove;
+  const deadlines = campaignStatus?.upcomingDeadlines || [];
+  const hasNearDeadline = deadlines.some((item) => Number(item.daysLeft) <= 14);
+  const lines = [
+    "Executive Assistant Rhythm v2:",
+    `- Day type: ${rhythm.dayType || "unknown"}; current phase: ${rhythm.currentPhase || "unknown"}; primary lane: ${rhythm.primaryLane || "none"}.`,
+    move ? `- Recommended first move: ${move.label} ${move.minutes}m ${move.mode}. Reason: ${move.reason}` : "- Recommended first move: none.",
+    rhythm.usefulWindow ? `- Useful window: ${rhythm.usefulWindow.label} ${rhythm.usefulWindow.start}-${rhythm.usefulWindow.end}.` : "- Useful window: unknown.",
+    `- Open Level A map: ${(rhythm.visibleLevelA || []).join(", ") || "none"}. Keep all open Level A visible, but do not turn them into a checklist.`,
+    hasNearDeadline
+      ? "- A near campaign/deadline exists, so one project-specific next action may be mentioned only if it is more urgent than Level A."
+      : "- Do not bring up Level B or Level C habits unless an active campaign or near deadline explicitly requires it.",
+    "- The user-facing message should feel like a private assistant choosing the next best leverage point, not like a task dump.",
+  ];
+  return lines.join("\n");
 }
 
 function resolveScheduleMode(signals = {}) {

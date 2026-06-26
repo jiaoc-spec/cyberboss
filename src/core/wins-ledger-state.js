@@ -1,6 +1,7 @@
 class WinsLedgerState {
   constructor() {
     this._pending = new Map();
+    this._lastRecorded = new Map();
   }
 
   setPending(senderId, { task, domain, date, promptedAt = "" }) {
@@ -17,6 +18,18 @@ class WinsLedgerState {
 
   hasPending(senderId) {
     return this._pending.has(String(senderId || "").trim());
+  }
+
+  setLastRecorded(senderId, entry = {}) {
+    this._lastRecorded.set(String(senderId || "").trim(), { ...entry });
+  }
+
+  getLastRecorded(senderId) {
+    return this._lastRecorded.get(String(senderId || "").trim()) || null;
+  }
+
+  clearLastRecorded(senderId) {
+    this._lastRecorded.delete(String(senderId || "").trim());
   }
 
   markAsked(senderId, task, date) {

@@ -143,6 +143,15 @@ function buildDayOperationsPlan({ analysis, now = new Date(), date = "", config 
       completed: completedLevelA.map(summarizeHabit),
       open: openLevelA.map(summarizeHabit),
     },
+    assistantRhythm: buildAssistantRhythm({
+      scheduleMode,
+      fixedBlocks,
+      priorityWindows,
+      currentPhase,
+      openLevelA,
+      completedLevelA,
+      recommendedMode: analysis?.recommendedMode || "standard",
+    }),
     recommendedMode: analysis?.recommendedMode || "standard",
     currentPhase,
   };
@@ -247,12 +256,130 @@ function summarizeOperationsPlanForPrompt(plan) {
   const phase = plan.currentPhase
     ? `${plan.currentPhase.kind} (${plan.currentPhase.reason || "unknown"})`
     : "unknown";
+  const rhythm = summarizeAssistantRhythm(plan.assistantRhythm);
   return [
     `mode=${getCanonicalDayType(plan) || "unknown"}`,
     fixed ? `fixed=${fixed}` : "fixed=none",
     priority ? `priority_windows=${priority}` : "priority_windows=none",
     `current_phase=${phase}`,
-  ].join("; ");
+    rhythm ? `assistant_rhythm=${rhythm}` : "",
+  ].filter(Boolean).join("; ");
+}
+
+function buildAssistantRhythm({
+  scheduleMode = "normal_day",
+  fixedBlocks = [],
+  priorityWindows = [],
+  currentPhase = null,
+  openLevelA = [],
+  completedLevelA = [],
+  recommendedMode = "standard",
+} = {}) {
+  const open = (openLevelA || []).map(summarizeHabit);
+  const completed = (completedLevelA || []).map(summarizeHabit);
+  const oneFirstMove = chooseOneFirstMove(open, scheduleMode, recommendedMode);
+  return {
+    version: "v2",
+    dayType: scheduleMode || "normal_day",
+    currentPhase: currentPhase?.kind || "unknown",
+    primaryLane: oneFirstMove ? laneForHabit(oneFirstMove.habitId, oneFirstMove.label) : "none",
+    oneFirstMove,
+    visibleLevelA: open.map((item) => item.label).filter(Boolean),
+    completedLevelA: completed.map((item) => item.label).filter(Boolean),
+    usefulWindow: summarizeUsefulWindow(priorityWindows),
+    fixedCommitments: (fixedBlocks || []).slice(0, 4).map((block) => ({
+      label: block.label,
+      start: block.start,
+      end: block.end,
+      kind: block.kind,
+    })),
+    doNotStackLowerPriority: true,
+    instruction: oneFirstMove
+      ? "Keep the bigger map visible, but recommend exactly one first move."
+      : "No Level A first move needed right now.",
+  };
+}
+
+function chooseOneFirstMove(openLevelA = [], scheduleMode = "normal_day", recommendedMode = "standard") {
+  const open = (openLevelA || []).map(summarizeHabit).filter((item) => item.id || item.label);
+  if (!open.length) {
+    return null;
+  }
+  const sport = findHabit(open, "sport", /sport|运动|健身/i);
+  if (sport) {
+    return {
+      habitId: sport.id || "sport",
+      label: sport.label || "Sport",
+      minutes: minimumMinutesForHabit(sport),
+      mode: "minimum",
+      reason: sportFirstReason(scheduleMode),
+    };
+  }
+  const language = open.find((item) => /english|englisch|英语|german|deutsch|德语/i.test(`${item.id} ${item.label}`)) || open[0];
+  return {
+    habitId: language.id || normalizeId(language.label),
+    label: language.label || language.id || "Level A",
+    minutes: minimumMinutesForHabit(language, recommendedMode),
+    mode: "minimum",
+    reason: "A small language block keeps the long-term study identity alive without turning the day into a checklist.",
+  };
+}
+
+function findHabit(items, id, labelPattern) {
+  return (items || []).find((item) => normalizeText(item.id).toLowerCase() === id || labelPattern.test(item.label || ""));
+}
+
+function laneForHabit(id = "", label = "") {
+  const text = `${id} ${label}`;
+  if (/sport|运动|健身/i.test(text)) return "health_fitness";
+  if (/english|englisch|英语|german|deutsch|德语/i.test(text)) return "language";
+  return "long_term_growth";
+}
+
+function minimumMinutesForHabit(item = {}, recommendedMode = "standard") {
+  const text = `${item.id || ""} ${item.label || ""}`;
+  if (/sport|运动|健身/i.test(text)) return 10;
+  if (/english|englisch|英语/i.test(text)) return 5;
+  if (/german|deutsch|德语/i.test(text)) return 10;
+  const estimated = Number(item.estimatedMinutes);
+  if (Number.isFinite(estimated) && estimated > 0) {
+    return Math.max(5, Math.min(recommendedMode === "minimum" ? 10 : 15, Math.floor(estimated / 2)));
+  }
+  return 10;
+}
+
+function sportFirstReason(scheduleMode) {
+  if (scheduleMode === "off_day") {
+    return "Sport is the longest Level A block and benefits from flexible off-day time.";
+  }
+  if (scheduleMode === "course_day") {
+    return "Sport is still visible after the course, but the first version should stay small.";
+  }
+  if (scheduleMode === "early_shift") {
+    return "After an early shift, Sport should start as a small recovery-aware version.";
+  }
+  if (scheduleMode === "night_shift") {
+    return "Before a night shift, Sport should be protected only as a small body-maintenance version.";
+  }
+  return "Sport protects the body infrastructure behind the rest of Jane's goals.";
+}
+
+function summarizeUsefulWindow(priorityWindows = []) {
+  const window = (priorityWindows || [])[0];
+  return window ? {
+    label: window.label,
+    start: window.start,
+    end: window.end,
+    reason: window.reason,
+  } : null;
+}
+
+function summarizeAssistantRhythm(rhythm) {
+  if (!rhythm?.oneFirstMove) {
+    return "";
+  }
+  const move = rhythm.oneFirstMove;
+  return `primary ${rhythm.primaryLane} -> ${move.label} ${move.minutes}m ${move.mode}`;
 }
 
 function readLatestDayOperationsPlan(filePath) {
@@ -565,6 +692,7 @@ module.exports = {
   evaluatePlanPhase,
   readLatestDayOperationsPlan,
   readPlanForDate,
+  buildAssistantRhythm,
   getCanonicalDayType,
   shouldDeferForOperationsPlan,
   summarizeOperationsPlanForPrompt,

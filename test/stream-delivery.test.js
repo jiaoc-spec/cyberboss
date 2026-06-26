@@ -561,6 +561,33 @@ test("plain weixin reply strips after-shift backend processing narration", async
   }]);
 });
 
+test("plain telegram reply strips taxonomy and timeline node backend narration", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4d-taxonomy", {
+    userId: "user-4d-taxonomy",
+    contextToken: "ctx-4d-taxonomy",
+    provider: "telegram",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4d-taxonomy",
+    turnId: "turn-4d-taxonomy",
+    itemId: "item-4d-taxonomy",
+    text: [
+      "刚才那条时间线写入被 taxonomy 卡住了，我先把现有分类找出来，避免乱塞一个新节点。这样这条记录会落到对的位置。",
+      "我找到 timeline 工程里的 taxonomy 了，先看它怎么定义语言学习类事件。只要能对上现成节点，这条就能落稳。",
+      "我已经对上了现成的 study.practice 节点。影子跟读本来就该算练习，不需要新造分类。",
+      "嗯，这个很值。20 分钟影子跟读不是随便混过去，是真正在把德语往里放。今天这条线挺扎实。",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4d-taxonomy",
+    text: "嗯，这个很值。20 分钟影子跟读不是随便混过去，是真正在把德语往里放。今天这条线挺扎实。",
+    contextToken: "ctx-4d-taxonomy",
+  }]);
+});
+
 test("plain weixin reply strips romance-novel stage directions", async () => {
   const { sent, streamDelivery } = createHarness();
   streamDelivery.queueReplyTargetForThread("thread-4e", {

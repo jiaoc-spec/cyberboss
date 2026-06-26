@@ -49,7 +49,7 @@ test("course day protects the course block, recovery buffer, and after-course pr
 
 test("off day opens flexible priority windows without fixed blocks", () => {
   const plan = buildDayOperationsPlan({
-    analysis: analysisFixture({ scheduleMode: "off_day", scheduleEventsToday: [] }),
+    analysis: analysisFixture({ scheduleMode: "off_day", scheduleEventsToday: [], allLevelAOpen: true }),
     now: new Date("2026-06-18T11:15:00+02:00"),
     date: "2026-06-18",
     config: {},
@@ -59,6 +59,18 @@ test("off day opens flexible priority windows without fixed blocks", () => {
   assert.equal(plan.fixedBlocks.length, 0);
   assert.equal(plan.currentPhase.kind, "priority_window");
   assert.equal(plan.currentPhase.reason, "off_day_flexible_morning");
+  assert.equal(plan.assistantRhythm.version, "v2");
+  assert.equal(plan.assistantRhythm.primaryLane, "health_fitness");
+  assert.deepEqual(plan.assistantRhythm.oneFirstMove, {
+    habitId: "sport",
+    label: "Sport",
+    minutes: 10,
+    mode: "minimum",
+    reason: "Sport is the longest Level A block and benefits from flexible off-day time.",
+  });
+  assert.deepEqual(plan.assistantRhythm.visibleLevelA, ["Sport", "Englisch", "Deutsch"]);
+  assert.equal(plan.assistantRhythm.doNotStackLowerPriority, true);
+  assert.match(summarizeOperationsPlanForPrompt(plan), /assistant_rhythm=primary health_fitness -> Sport 10m minimum/);
 });
 
 test("early shift blocks work time and adds a recovery buffer after work", () => {
@@ -134,7 +146,7 @@ test("overnight shifts protect the after-midnight part of the block", () => {
   assert.equal(plan.currentPhase.kind, "do_not_disturb");
 });
 
-function analysisFixture({ scheduleMode = "normal_day", scheduleEventsToday = [] } = {}) {
+function analysisFixture({ scheduleMode = "normal_day", scheduleEventsToday = [], allLevelAOpen = false } = {}) {
   return {
     date: "2026-06-17",
     timeZone: "Europe/Berlin",
@@ -150,7 +162,7 @@ function analysisFixture({ scheduleMode = "normal_day", scheduleEventsToday = []
     recommendedMode: "standard",
     levelA: [
       { id: "sport", label: "Sport", completed: false, estimatedMinutes: 60 },
-      { id: "english", label: "Englisch", completed: true, estimatedMinutes: 25 },
+      { id: "english", label: "Englisch", completed: !allLevelAOpen, estimatedMinutes: 25 },
       { id: "german", label: "Deutsch", completed: false, estimatedMinutes: 30 },
     ],
   };

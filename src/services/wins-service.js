@@ -72,6 +72,31 @@ class WinsService {
     return { wins, total: wins.length };
   }
 
+  async amend(winId = "", { success_factor = "", note = "" } = {}) {
+    const targetId = String(winId || "").trim();
+    if (!targetId) {
+      throw new Error("wins_amend: winId is required.");
+    }
+    if (!String(success_factor || "").trim()) {
+      throw new Error("wins_amend: success_factor is required.");
+    }
+
+    const ledger = this._load();
+    const index = ledger.wins.findIndex((win) => String(win?.id || "").trim() === targetId);
+    if (index < 0) {
+      throw new Error(`wins_amend: win not found: ${targetId}`);
+    }
+
+    ledger.wins[index] = {
+      ...ledger.wins[index],
+      success_factor: String(success_factor).trim(),
+      note: String(note || "").trim(),
+      amendedAt: new Date().toISOString(),
+    };
+    this._save(ledger);
+    return ledger.wins[index];
+  }
+
   _load() {
     try {
       const raw = fs.readFileSync(this.config.winsLedgerFile, "utf8");

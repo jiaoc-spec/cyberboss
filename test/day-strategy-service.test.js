@@ -206,6 +206,10 @@ test("course day queues after-course strategy and keeps all open Level A visible
   assert.match(queued[0].text, /Level A still open: Sport \(60m\), Englisch \(25m\), Deutsch \(30m\)/);
   assert.match(queued[0].text, /Do not omit Sport/);
   assert.match(queued[0].text, /Do not call it an off day/);
+  assert.match(queued[0].text, /Executive Assistant Rhythm v2/);
+  assert.match(queued[0].text, /Recommended first move: Sport 10m minimum/);
+  assert.match(queued[0].text, /Keep all open Level A visible, but do not turn them into a checklist/);
+  assert.match(queued[0].text, /Do not bring up Level B or Level C habits unless an active campaign or near deadline explicitly requires it/);
 });
 
 test("course day waits until the after-course window", async () => {

@@ -424,7 +424,11 @@ function hasUnansweredShiftRating(config, senderKey) {
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
     const prompt = parsed?.lastPromptBySender?.[senderKey];
-    return Boolean(prompt?.promptedAt && !prompt?.answeredAt);
+    if (prompt?.promptedAt && !prompt?.answeredAt) {
+      return true;
+    }
+    return (Array.isArray(parsed?.entries) ? parsed.entries : [])
+      .some((entry) => entry?.senderKey === senderKey && entry?.promptedAt && !entry?.answeredAt);
   } catch {
     return false;
   }

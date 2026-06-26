@@ -42,6 +42,12 @@ only answers:
 - Should non-urgent assistant messages defer right now?
 - If speaking is useful, what kind of window is this?
 
+It also writes `assistantRhythm.version = v2`, a compact executive-assistant
+briefing. This prevents CyberBoss from dumping several parallel tasks into one
+message. The rhythm names the canonical day type, current phase, open Level A
+map, one recommended first move, the primary identity lane being protected, and
+whether Level B/C topics should stay out of the prompt.
+
 Default config:
 
 ```dotenv
@@ -98,6 +104,16 @@ flexible time than a workday.
 The message should not say "you failed" or "you must". It should say, in a
 natural way, that today has a useful window and suggest one realistic first
 block for Sport, Deutsch, Englisch, or a near deadline.
+
+With Executive Assistant Rhythm v2, the bigger map can stay visible while the
+reply still recommends exactly one first move, for example:
+
+```text
+Recommended first move: Sport 10m minimum
+```
+
+The user-facing reply should feel like a private assistant choosing the next
+best leverage point, not like a task dump.
 
 ## Course-Day Example
 

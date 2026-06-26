@@ -296,7 +296,7 @@ class PeriodicReviewPipelineService {
 
 - 读取用 cyberboss_obsidian_note_read，写入必须用 cyberboss_obsidian_note_write（mode=append）；绝对不要用 shell 或 apply_patch 直接改 vault 文件（会触发人工审批）
 - 如果文件已存在（含 Jane 自己的模板和 dataview），追加一个 "${WEEKLY_MARKER}" section，不要动已有内容
-- 数据源：${dailyFolder}/ 本周 7 天的 Daily Note（截至 ${todayDate}）、~/.cyberboss/pattern-ledger.json、wins-ledger.json、decision-journal.json、research-ledger.json、apple-calendar-cache.json
+- 数据源：${dailyFolder}/ 本周 7 天的 Daily Note（截至 ${todayDate}）、~/.cyberboss/pattern-ledger.json、experience-ledger.json、wins-ledger.json、decision-journal.json、research-ledger.json、apple-calendar-cache.json
 
 每周复盘的职责（不是日记汇总）：
 1. 合并本周 Daily Review 的 Pattern Ledger 证据：用 cyberboss_pattern_ledger_add_evidence / upsert 修订 confidence，矛盾的 pattern 降级或标 contradicted
@@ -308,7 +308,8 @@ class PeriodicReviewPipelineService {
 7. 长期资产四象限：认知资产、关系资产、身体资产、人格资产。本周只写有证据的部分；没有证据就不要编造。
 8. 最差日计划检查：本周哪些计划是按"最佳状态"设得过大，导致一忙/一累就断掉；下周应把哪些习惯改成 worst-day baseline，再允许状态好时加量。
 9. 能量/睡眠/班次模式：本周班次结构对状态的影响，事实与假设分开
-10. 下周最小起步：一条具体的、最小版本的下周入口，优先选择最缺席但最重要的身份主线
+10. Experience Ledger 经验复利：调用 cyberboss_experience_ledger_read，合并本周重复出现的经验；对本周新出现的高信号复盘经验用 cyberboss_experience_record 补记；如果已有 guide_candidate，判断是否足够生成行动指南，但最多生成 1 条，避免系统膨胀。
+11. 下周最小起步：一条具体的、最小版本的下周入口，优先选择最缺席但最重要的身份主线
 
 完成后返回 {"action":"silent"}。`;
   }
@@ -327,7 +328,7 @@ class PeriodicReviewPipelineService {
 
 - 读取用 cyberboss_obsidian_note_read，写入必须用 cyberboss_obsidian_note_write（mode=append）；绝对不要用 shell 或 apply_patch 直接改 vault 文件（会触发人工审批）
 - 文件已存在则追加 "${MONTHLY_MARKER}" section，不要覆盖已有内容
-- 数据源优先用 ${weeklyFolder}/ 该月的周记（不要从原始聊天重建），加上 pattern-ledger.json、wins-ledger.json、decision-journal.json、research-ledger.json
+- 数据源优先用 ${weeklyFolder}/ 该月的周记（不要从原始聊天重建），加上 pattern-ledger.json、experience-ledger.json、wins-ledger.json、decision-journal.json、research-ledger.json
 
 每月复盘的职责：
 1. Pattern Ledger 长期修订：confidence 升降、retire 矛盾 pattern、把 3+ 次观察的 hypothesis 升为 active；这是月度的核心任务
@@ -338,11 +339,12 @@ class PeriodicReviewPipelineService {
 6. 长期资产盘点：认知资产（阅读、思考、判断力、知识沉淀）、关系资产（稳定支持、边界、可持续互动）、身体资产（睡眠、运动、恢复、能量基础设施）、人格资产（承受延迟反馈、波动和中间态）。不要把短期结果当作自我价值结论。
 7. 特定知识 / 杠杆检查：哪些投入不是一次性消耗，而是在形成 Jane 难以被复制的经验、判断、表达、护理科学视角或工作方法。
 8. 最差日计划审计：本月哪些习惯/学习计划只有在理想日才可执行，哪些应该重新设计成最差日也能完成的默认入口。
-9. 知识资产审计：调用 cyberboss_knowledge_portfolio_audit（includeDashboardMarkdown=true），区分来源类型、断链、孤儿卡、重复概念和活跃主题。只列问题，不自动删除或合并。把返回的 dashboardMarkdown 用 cyberboss_obsidian_note_write(mode=upsert_managed_block, blockId=long-term-memory-dashboard) 更新到 ${this.config.knowledgeFolder || "01. ⚪ Wissenskarte"}/00. Long-Term Memory Dashboard.md。
-10. Research Question Generator：只在本月有足够的学术笔记、临床经验或 Pattern Ledger 证据时，提出最多 3 个研究问题候选。必须标注来源线索和“候选/假设”，不要自动写入 Research Ledger，等 Jane 确认。
-11. Personal Pattern × Academic Knowledge Bridge：把个人模式与学术概念分开陈述，再指出可能连接；不要把个人经验冒充学术证据。
-12. Output / Project Hub：用 cyberboss_campaign_status 检查 active campaign、nextAction、linkedNotes、outputs 和 deadline。知识只有在能服务真实课程、Hausarbeit、教学或研究产出时才建议连接。
-13. 下月一个最重要的调整建议（只一个），必须对应一个身份主线或长期资产，而不是泛泛建议
+9. Experience Ledger 经验复利：调用 cyberboss_experience_ledger_read，检查 guide_candidate；本月最多生成 1-3 条行动指南，且必须来自重复证据。行动指南要写清适用场景、默认动作、最小版本、不要做什么。最后调用 cyberboss_experience_dashboard_update 刷新 Obsidian 经验复利看板。
+10. 知识资产审计：调用 cyberboss_knowledge_portfolio_audit（includeDashboardMarkdown=true），区分来源类型、断链、孤儿卡、重复概念和活跃主题。只列问题，不自动删除或合并。把返回的 dashboardMarkdown 用 cyberboss_obsidian_note_write(mode=upsert_managed_block, blockId=long-term-memory-dashboard) 更新到 ${this.config.knowledgeFolder || "01. ⚪ Wissenskarte"}/00. Long-Term Memory Dashboard.md。
+11. Research Question Generator：只在本月有足够的学术笔记、临床经验或 Pattern Ledger / Experience Ledger 证据时，提出最多 3 个研究问题候选。必须标注来源线索和“候选/假设”，不要自动写入 Research Ledger，等 Jane 确认。
+12. Personal Pattern × Academic Knowledge Bridge：把个人模式与学术概念分开陈述，再指出可能连接；不要把个人经验冒充学术证据。
+13. Output / Project Hub：用 cyberboss_campaign_status 检查 active campaign、nextAction、linkedNotes、outputs 和 deadline。知识只有在能服务真实课程、Hausarbeit、教学或研究产出时才建议连接。
+14. 下月一个最重要的调整建议（只一个），必须对应一个身份主线或长期资产，而不是泛泛建议
 
 完成后返回 {"action":"silent"}。`;
   }

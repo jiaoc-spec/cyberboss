@@ -162,6 +162,67 @@ test("scenario 6 (2026-06-13): a digit answer to the wins question must never re
   assert.match(evidence[0].note, /had_reminder/);
 });
 
+test("scenario 6b (2026-06-18): an immediate wins correction must amend the same recorded win", async () => {
+  // Real failure: Jane first replied "1+2" to the wins question, then
+  // immediately corrected it to "2+3". The bridge had already cleared the
+  // pending state and could no longer repair the wrong wins tuple.
+  const { CyberbossApp } = require("../src/core/app");
+  const { WinsLedgerState } = require("../src/core/wins-ledger-state");
+
+  const sent = [];
+  const recorded = [];
+  const amended = [];
+  const state = new WinsLedgerState();
+  state.setPending("jane", { task: "Deutsch", domain: "learning", date: "2026-06-18" });
+
+  const appLike = {
+    winsLedgerState: state,
+    projectServices: {
+      wins: {
+        async record(args) {
+          recorded.push(args);
+          return { id: "win_1", ...args };
+        },
+        async amend(winId, updates) {
+          amended.push({ winId, ...updates });
+          return { id: winId, ...updates };
+        },
+      },
+    },
+    channelAdapter: {
+      async sendText(payload) {
+        sent.push(payload.text);
+      },
+    },
+    async autoAddPatternEvidence() {},
+  };
+
+  const firstHandled = await CyberbossApp.prototype.handleWinsLedgerIntercept.call(appLike, {
+    senderId: "jane",
+    text: "1+2",
+    contextToken: "ctx",
+    receivedAt: "2026-06-18T21:23:55+02:00",
+  });
+  assert.equal(firstHandled, true, "the first answer must still be consumed");
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].success_factor, "right_after_work");
+
+  const correctionHandled = await CyberbossApp.prototype.handleWinsLedgerIntercept.call(appLike, {
+    senderId: "jane",
+    text: "错了，是2+3",
+    contextToken: "ctx",
+    receivedAt: "2026-06-18T21:24:20+02:00",
+  });
+
+  assert.equal(correctionHandled, true, "the immediate correction must be consumed too");
+  assert.equal(recorded.length, 1, "the bridge must not append a second win");
+  assert.equal(amended.length, 1, "the original win must be amended in place");
+  assert.equal(amended[0].winId, "win_1");
+  assert.equal(amended[0].success_factor, "small_chunk");
+  assert.match(amended[0].note, /had_reminder/);
+  assert.ok(sent.some((text) => text.includes("已更正")), "chat should acknowledge the correction");
+});
+
 test("scenario 6 guard: off-day must forbid after-shift framing in temporal context", () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "src/core/app.js"), "utf8");
   assert.match(appSource, /today is an OFF day per her calendar/);

@@ -39,6 +39,26 @@ function createHost() {
           return { pattern: { id: args.patternId, title: "Night shift recovery", evidence: args.evidence } };
         },
       },
+      experienceLedger: {
+        config: { experienceDashboardPath: "Knowledge/00. Experience Compound Dashboard.md" },
+        read(args) {
+          return { experiences: [{ id: "exp_1", title: "Worst-day baseline" }], guides: [], candidates: [], count: 1, totalCount: 1, ...args };
+        },
+        record(args) {
+          return { created: true, experience: { id: "exp_1", title: args.title || args.lesson, ...args }, candidates: [] };
+        },
+        createGuide(args) {
+          return { created: true, guide: { id: "guide_1", title: args.title || "Guide", ...args } };
+        },
+        buildDashboardMarkdown() {
+          return "# 个人经验复利看板\n";
+        },
+      },
+      obsidianNote: {
+        async write(args) {
+          return { action: "updated_managed_block", ...args };
+        },
+      },
       system: {
         queueMessage(args) {
           return { id: "system-1", ...args };
@@ -350,6 +370,31 @@ test("tool host exposes pattern ledger tools", async () => {
   assert.match(read.text, /Pattern Ledger loaded/);
   assert.match(upsert.text, /Pattern created/);
   assert.match(evidence.text, /Pattern evidence added/);
+});
+
+test("tool host exposes experience ledger tools and dashboard update", async () => {
+  const host = createHost();
+
+  const read = await host.invokeTool("cyberboss_experience_ledger_read", { domain: "learning_method" });
+  const record = await host.invokeTool("cyberboss_experience_record", {
+    date: "2026-06-20",
+    domain: "learning_method",
+    type: "principle",
+    lesson: "计划按最差真实日设计。",
+    nextAction: "先做 5 分钟入口。",
+  });
+  const guide = await host.invokeTool("cyberboss_experience_guide_create", {
+    domain: "learning_method",
+    title: "最差日计划行动指南",
+    defaultAction: "先保最小版本。",
+  });
+  const dashboard = await host.invokeTool("cyberboss_experience_dashboard_update", {});
+
+  assert.match(read.text, /Experience Ledger loaded/);
+  assert.match(record.text, /Experience recorded/);
+  assert.match(guide.text, /Experience guide created/);
+  assert.match(dashboard.text, /Experience Compound Dashboard updated/);
+  assert.equal(dashboard.data.blockId, "experience-compound-dashboard");
 });
 
 test("tool host descriptions include schema summary for models that only surface descriptions", () => {

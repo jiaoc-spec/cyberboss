@@ -97,6 +97,18 @@ class InsightRecallService {
         sourceType: "personal_observation",
         excerpt: [item.summary, item.hypothesis, item.supportStrategy].filter(Boolean).join(" "),
       })),
+      ...searchJsonArray(this.config.experienceLedgerFile, "experiences", terms, "reusable_experience", (item) => ({
+        title: item.title || item.theme || item.lesson,
+        source: item.date || item.source || "experience-ledger",
+        sourceType: item.type || "personal_experience",
+        excerpt: [item.situation, item.lesson, item.nextAction].filter(Boolean).join(" "),
+      })),
+      ...searchJsonArray(this.config.experienceLedgerFile, "guides", terms, "action_guide", (item) => ({
+        title: item.title || item.theme,
+        source: item.status || "experience-ledger",
+        sourceType: "personal_action_guide",
+        excerpt: [item.trigger, item.defaultAction, item.minimumVersion, item.notToDo].filter(Boolean).join(" "),
+      })),
       ...searchJsonArray(this.config.decisionJournalFile, "decisions", terms, "past_decision", (item) => ({
         title: item.decision,
         source: item.date || "decision-journal",
@@ -210,7 +222,7 @@ function formatRecallContext(items, terms) {
   return [
     `Just-in-time Insight Recall matched: ${terms.join(", ")}`,
     "Use these only when they help the user's current real task. Do not announce a database search and do not force every item into the reply.",
-    "Keep evidence types separate: academic notes/sources are not the same as personal patterns, hypotheses, or past decisions.",
+    "Keep evidence types separate: academic notes/sources are not the same as reusable personal experience, action guides, personal patterns, hypotheses, or past decisions.",
     ...items.map((item, index) => [
       `${index + 1}. [${item.evidenceType}] ${item.title}`,
       `   source_type=${item.sourceType}; source=${item.source}`,

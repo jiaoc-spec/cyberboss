@@ -20,8 +20,9 @@ ${attemptNote}
 4. ~/.cyberboss/critical-habits-state.json（Level A/B/C）
 5. ~/.cyberboss/shift-rating-state.json
 6. ~/.cyberboss/pattern-ledger.json
-7. ~/.cyberboss/wins-ledger.json
-8. ~/.cyberboss/decision-journal.json
+7. ~/.cyberboss/experience-ledger.json
+8. ~/.cyberboss/wins-ledger.json
+9. ~/.cyberboss/decision-journal.json
 
 Obsidian 目标文件：${folder}/${targetDate}.md
 - 读取用 cyberboss_obsidian_note_read，写入必须用 cyberboss_obsidian_note_write（relativePath=${folder}/${targetDate}.md）
@@ -35,6 +36,14 @@ Pattern Ledger 观察义务（这是长期记忆闭环的一部分）：
 - 读取 pattern-ledger.json 里 status 为 hypothesis / active / confirmed 的 pattern
 - 如果 ${targetDate} 的数据能回答某个 pattern 的 nextObservation，用 cyberboss_pattern_add_evidence 追加当天证据
 - 不要为了凑证据而编造；没有相关数据就跳过
+
+Experience Ledger 经验复利义务：
+- Daily Review 写完后，从当天复盘中提取 0-3 条高信号经验，用 cyberboss_experience_record 记录。没有值得复用的经验就不要硬记。
+- 只记录以后能复用的经验、原则或洞察，例如：重复踩坑、有效启动策略、恢复策略、工作/护理判断、学习方法、情绪/能量模式、长期身份相关原则。
+- 不记录 raw chat、提醒本身、后台处理、同步、工具失败、taxonomy、debug、普通物流/日程信息。
+- 使用固定 domain：learning_method、work_nursing、body_energy、emotion_relationship、executive_function、long_term_identity、language、career、health、other。
+- theme 要稳定，便于聚合，例如 night-shift-recovery、worst-day-baseline、after-work-start、screen-time-friction。
+- 如果同一 theme 达到候选阈值，先让 Experience Ledger 标为 guide_candidate；Daily Review 不必每天生成行动指南，优先留给 Weekly/Monthly Review 合并。
 
 复盘写作原则：
 - 写给 Jane 的未来自己，不写给数据管道。

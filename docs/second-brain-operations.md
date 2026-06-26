@@ -16,6 +16,7 @@ The unified growth-system architecture and conflict rules are documented in
 - Critical Habits Monitor: protects Level A/B/C long-term values.
 - Failure Watchdog: checks whether midnight review and archive finished.
 - Pattern Ledger: stores longitudinal patterns so reviews stay connected across days, weeks, and months.
+- Experience Ledger: stores reusable lessons, principles, insights, guide candidates, and action guides so reviews can be used again later.
 - Codex automations: generate Daily, Weekly, and Monthly Second Brain reviews.
 
 ## Daily State Engine
@@ -58,6 +59,11 @@ Default schedule modes:
 The strategy prompt should recognize the day shape, name the usable window,
 and reconnect Jane to Level A or an upcoming campaign/deadline without guilt.
 It is not a random check-in and not a checklist lecture.
+
+Executive Assistant Rhythm v2 adds one more constraint: keep the open Level A
+map visible, but recommend exactly one first move. When no active campaign or
+near deadline requires otherwise, Level B/C habits stay out of the proactive
+prompt so CyberBoss does not make one day feel overloaded.
 
 ## Assistant Command Center
 
@@ -104,7 +110,25 @@ items from Obsidian and the local ledgers. The results are injected into the
 current reply rather than sent as another notification.
 
 Academic notes, personal patterns, past decisions, research assets, and active
-projects retain separate evidence labels.
+projects retain separate evidence labels. Experience Ledger items appear as
+`reusable_experience` or `action_guide`, not as academic evidence.
+
+## Experience Compound System
+
+CyberBoss adapts the Obsidian "experience compounding" workflow without
+requiring Jane to manually tag Daily Notes.
+
+Daily Review may record 0-3 reusable lessons with
+`cyberboss_experience_record`. Weekly Review checks whether a theme is becoming
+repeated. Monthly Review can create action guides and refresh:
+
+```text
+01. ⚪ Wissenskarte/00. Experience Compound Dashboard.md
+```
+
+The dashboard is a CyberBoss-managed Obsidian page showing today's principle,
+experience counts, guide candidates, created action guides, and domain
+aggregation. It is not a raw transcript and should not contain backend logs.
 
 ## Knowledge Portfolio
 

@@ -27,7 +27,9 @@ useful action should stay silent.
    growth prompts.
 5. **Knowledge leverage**: recall old knowledge only when it helps a current
    task, decision, project, or output.
-6. **Review**: turn evidence into patterns and one useful adjustment, not a
+6. **Experience compounding**: convert repeated review lessons into reusable
+   action guides, not raw note piles.
+7. **Review**: turn evidence into patterns and one useful adjustment, not a
    backend report.
 
 ## Capability Map
@@ -43,6 +45,9 @@ useful action should stay silent.
 
 - Day Operations Planner defines fixed blocks, recovery buffers, and useful
   priority windows.
+- Executive Assistant Rhythm v2 turns that plan into a single leverage point:
+  one first move, one protected identity lane, and no unsolicited Level B/C
+  stacking unless a campaign or deadline makes it truly relevant.
 - Day Strategy, Critical Habits, Priority Awareness, Missing Context, active
   recall, digestion, decision follow-up, and random companionship all share one
   proactive budget.
@@ -54,11 +59,21 @@ useful action should stay silent.
 - Activates only for real work such as studying, writing, teaching preparation,
   research, planning, or an important decision.
 - Searches concept cards, notes, weekly/monthly reviews, Pattern Ledger,
-  Decision Journal, Research Ledger, and active Campaigns.
+  Experience Ledger, Decision Journal, Research Ledger, and active Campaigns.
 - Injects a few relevant items into the current reply; it does not send another
   notification.
-- Academic evidence, personal patterns, and past decisions remain labeled as
-  different evidence types.
+- Academic evidence, reusable experience, personal patterns, and past decisions
+  remain labeled as different evidence types.
+
+### Experience Compound System
+
+- Daily Review extracts only 0-3 reusable lessons, principles, or insights.
+- Experience Ledger groups them by stable theme and controlled domain.
+- Repeated themes become action-guide candidates after enough evidence.
+- Weekly/Monthly Review may turn candidates into practical action guides.
+- Monthly Review refreshes the Obsidian Experience Compound Dashboard.
+- Normal chat does not announce ledger writes; the value appears later through
+  review, dashboard, and just-in-time recall.
 
 ### Knowledge Portfolio and Source Reliability
 
@@ -103,3 +118,5 @@ research proposals, applications, and paper drafts use Campaign plus Obsidian.
 - Level C, knowledge audits, research-question generation, and graph maintenance
   never compete with Level A on the same day.
 - Personal observation never becomes academic evidence without a source.
+- Experience Ledger stores reusable personal lessons; Pattern Ledger stores
+  longitudinal patterns. Do not collapse them into one noisy ledger.

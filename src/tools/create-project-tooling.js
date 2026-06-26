@@ -21,6 +21,7 @@ const { FocusProtectionService } = require("../services/focus-protection-service
 const { HealthService } = require("../services/health-service");
 const { MissingContextService } = require("../services/missing-context-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
+const { ExperienceLedgerService } = require("../services/experience-ledger-service");
 const { PlaybookService } = require("../services/playbook-service");
 const { WinsService } = require("../services/wins-service");
 const { DecisionJournalService } = require("../services/decision-journal-service");
@@ -57,6 +58,7 @@ function createProjectTooling(config, options = {}) {
   const dayOperationsPlanner = new DayOperationsPlannerService({ config, dailyState });
   const campaign = new CampaignService({ config });
   const patternLedger = new PatternLedgerService({ config });
+  const experienceLedger = new ExperienceLedgerService({ config });
   const currentState = new CurrentStateService({ config });
   const proactiveIntervention = new ProactiveInterventionCoordinator({ config });
   const reminder = new ReminderService({ config, channelAdapter, sessionStore });
@@ -107,11 +109,12 @@ function createProjectTooling(config, options = {}) {
     health,
     missingContext,
     patternLedger,
+    experienceLedger,
     priorityAwareness,
     wins: new WinsService({ config }),
     decisionJournal: new DecisionJournalService({ config }),
     reminder,
-    shiftRating: new ShiftRatingService({ config, channelAdapter }),
+    shiftRating: new ShiftRatingService({ config, channelAdapter, dailyState, sessionStore, proactiveIntervention }),
     system: new SystemMessageService({ config, channelAdapter, sessionStore }),
     channelFile,
     sticker: new StickerService({ config, channelAdapter, sessionStore, channelFileService: channelFile }),

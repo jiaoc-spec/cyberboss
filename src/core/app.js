@@ -296,6 +296,7 @@ class CyberbossApp {
             this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
             this.flushDayStrategyMonitor(account),
+            this.flushShiftRatingMonitor(account),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
@@ -334,6 +335,7 @@ class CyberbossApp {
             this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
             this.flushDayStrategyMonitor(account),
+            this.flushShiftRatingMonitor(account),
             this.flushCriticalHabitsMonitor(account),
             this.flushPriorityAwarenessMonitor(account),
             this.flushMissingContextMonitor(account),
@@ -582,17 +584,17 @@ class CyberbossApp {
         return;
       }
     }
-    const pendingReplyHandled = typeof this.handleCommandCenterPendingReply === "function"
-      ? await this.handleCommandCenterPendingReply(normalized, commandContext)
-      : false;
-    if (pendingReplyHandled) {
-      return;
-    }
     if (typeof this.observeIncomingShiftRating === "function") {
       const handled = await this.observeIncomingShiftRating(normalized);
       if (handled) {
         return;
       }
+    }
+    const pendingReplyHandled = typeof this.handleCommandCenterPendingReply === "function"
+      ? await this.handleCommandCenterPendingReply(normalized, commandContext)
+      : false;
+    if (pendingReplyHandled) {
+      return;
     }
     if (typeof this.observeIncomingMissingContext === "function") {
       const handled = await this.observeIncomingMissingContext(normalized);
@@ -979,6 +981,44 @@ class CyberbossApp {
     const userText = normalizeText(normalized.text);
     const contextToken = normalizeText(normalized.contextToken);
     const hasAttachments = Array.isArray(normalized.attachments) && normalized.attachments.length > 0;
+    const receivedAt = parseDateOrNow(normalized.receivedAt);
+
+    if (!hasAttachments) {
+      const correction = parseWinsCorrection(userText);
+      const lastRecorded = correction ? this.winsLedgerState.getLastRecorded(senderId) : null;
+      if (correction && isFreshWinsCorrection(lastRecorded, receivedAt)) {
+        try {
+          const amended = await this.projectServices.wins.amend(lastRecorded.winId, {
+            success_factor: correction.success_factor,
+            note: correction.note,
+          });
+          this.winsLedgerState.setLastRecorded(senderId, {
+            ...lastRecorded,
+            success_factor: amended.success_factor,
+            note: amended.note,
+            recordedAt: receivedAt.toISOString(),
+          });
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: "✓ 已更正 Wins 记录",
+            contextToken,
+          });
+          await this.autoAddPatternEvidence({
+            domain: lastRecorded.domain,
+            note: `Win corrected: ${lastRecorded.task}, success_factor: ${amended.success_factor}, date: ${lastRecorded.date}`,
+            source: "wins-ledger",
+            date: lastRecorded.date,
+          });
+        } catch (err) {
+          await this.channelAdapter.sendText({
+            userId: senderId,
+            text: `更正失败：${err instanceof Error ? err.message : String(err)}`,
+            contextToken,
+          });
+        }
+        return true;
+      }
+    }
 
     if (this.winsLedgerState.hasPending(senderId)) {
       const parsed = userText && !hasAttachments ? parseWinsResponse(userText) : null;
@@ -986,12 +1026,21 @@ class CyberbossApp {
         const pending = this.winsLedgerState.getPending(senderId);
         this.winsLedgerState.clearPending(senderId);
         try {
-          await this.projectServices.wins.record({
+          const win = await this.projectServices.wins.record({
             task: pending.task,
             domain: pending.domain,
             success_factor: parsed.success_factor,
             note: parsed.note,
             date: pending.date,
+          });
+          this.winsLedgerState.setLastRecorded(senderId, {
+            winId: win.id,
+            task: pending.task,
+            domain: pending.domain,
+            date: pending.date,
+            success_factor: parsed.success_factor,
+            note: parsed.note,
+            recordedAt: receivedAt.toISOString(),
           });
           await this.channelAdapter.sendText({
             userId: senderId,
@@ -1757,6 +1806,14 @@ class CyberbossApp {
       await this.projectServices?.dayStrategy?.check(account);
     } catch (error) {
       console.error(`[cyberboss] day strategy monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushShiftRatingMonitor(account) {
+    try {
+      await this.projectServices?.shiftRating?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] shift rating monitor failed: ${formatErrorMessage(error)}`);
     }
   }
 
@@ -3508,6 +3565,26 @@ function addDaysDateText(dateText, days) {
 function parseDateOrNow(value) {
   const parsed = new Date(normalizeText(value));
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function parseWinsCorrection(text) {
+  const body = normalizeText(text);
+  if (!body) {
+    return null;
+  }
+  if (!/(错了|写错|说错|改成|更正|不是.+而是)/.test(body)) {
+    return null;
+  }
+  return parseWinsResponse(body);
+}
+
+function isFreshWinsCorrection(entry, receivedAt) {
+  if (!entry?.winId || !entry?.recordedAt) {
+    return false;
+  }
+  const recordedAt = parseDateOrNow(entry.recordedAt);
+  const ageMs = receivedAt.getTime() - recordedAt.getTime();
+  return ageMs >= 0 && ageMs <= 5 * 60_000;
 }
 
 function formatDatePart(date, timeZone) {

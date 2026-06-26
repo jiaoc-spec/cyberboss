@@ -311,6 +311,125 @@ const PROJECT_TOOLS = [
     },
   },
   {
+    name: "cyberboss_experience_ledger_read",
+    description: "Read CyberBoss Experience Ledger: reusable lessons, principles, insights, guide candidates, and action guides extracted from Daily/Weekly/Monthly Reviews. Use before reviews and just-in-time recall when Jane faces a similar situation.",
+    shortHint: "Read reusable experience assets.",
+    topics: ["review", "experience", "second-brain", "action-guides"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Optional controlled domain: learning_method, work_nursing, body_energy, emotion_relationship, executive_function, long_term_identity, language, career, health, other." },
+        status: { type: "string", description: "Optional status: seed, recurring, guide_candidate, guide_created, archived." },
+        type: { type: "string", description: "Optional type: principle, experience, insight." },
+        tag: { type: "string" },
+        query: { type: "string" },
+        limit: { type: "integer" },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.experienceLedger.read(args);
+      return {
+        text: `Experience Ledger loaded: ${result.count}/${result.totalCount} experiences; ${result.candidates.length} guide candidates.`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_experience_record",
+    description: "Record one reusable lesson, principle, or insight after a Daily/Weekly/Monthly Review. Use only for high-signal experiences that can help future Jane avoid repeated mistakes, repeat what worked, or build an action guide. Do not record raw chat, backend operations, debug notes, or ordinary logistics.",
+    shortHint: "Record a reusable experience.",
+    topics: ["review", "experience", "second-brain", "action-guides"],
+    inputSchema: {
+      type: "object",
+      required: ["date", "domain", "lesson"],
+      properties: {
+        id: { type: "string" },
+        date: { type: "string", description: "YYYY-MM-DD." },
+        domain: { type: "string", description: "Controlled domain: learning_method, work_nursing, body_energy, emotion_relationship, executive_function, long_term_identity, language, career, health, other." },
+        type: { type: "string", description: "principle, experience, or insight." },
+        title: { type: "string" },
+        theme: { type: "string", description: "Stable recurring theme name, e.g. night-shift-recovery, worst-day-baseline, after-work-start." },
+        themeKey: { type: "string" },
+        situation: { type: "string", description: "Concrete situation where this lesson appeared." },
+        lesson: { type: "string", description: "Reusable lesson in one sentence." },
+        nextAction: { type: "string", description: "Default next action when this situation appears again." },
+        evidence: { type: "string", description: "Short evidence from the review. Facts only." },
+        source: { type: "string", description: "daily-review, weekly-review, monthly-review, user-report, pattern-ledger, or other." },
+        sourcePath: { type: "string", description: "Optional Obsidian relative path for traceability." },
+        tags: { type: "array", items: { type: "string" } },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.experienceLedger.record(args);
+      return {
+        text: `${result.created ? "Experience recorded" : "Experience updated"}: ${result.experience.title}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_experience_guide_create",
+    description: "Create or update an action guide from repeated Experience Ledger evidence. Use when a guide_candidate has enough evidence and the review can define a practical default response. Keep it concise and reality-aware.",
+    shortHint: "Create an action guide from repeated experience.",
+    topics: ["review", "experience", "second-brain", "action-guides"],
+    inputSchema: {
+      type: "object",
+      required: ["domain"],
+      properties: {
+        id: { type: "string" },
+        domain: { type: "string" },
+        title: { type: "string" },
+        theme: { type: "string" },
+        themeKey: { type: "string" },
+        trigger: { type: "string", description: "When this guide applies." },
+        summary: { type: "string" },
+        defaultAction: { type: "string", description: "What to do by default next time." },
+        minimumVersion: { type: "string", description: "Smallest useful version for bad days." },
+        notToDo: { type: "string", description: "What usually makes this situation worse." },
+        warnings: { type: "array", items: { type: "string" } },
+        evidenceIds: { type: "array", items: { type: "string" } },
+        status: { type: "string", description: "draft, active, retired." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const result = services.experienceLedger.createGuide(args);
+      return {
+        text: `${result.created ? "Experience guide created" : "Experience guide updated"}: ${result.guide.title}`,
+        data: result,
+      };
+    },
+  },
+  {
+    name: "cyberboss_experience_dashboard_update",
+    description: "Update the Obsidian Experience Compound Dashboard from the local Experience Ledger. Use during Monthly Review or when Jane explicitly asks to refresh the experience compounding page. This writes a CyberBoss-managed dashboard, not raw chat.",
+    shortHint: "Update Experience Compound Dashboard.",
+    topics: ["review", "experience", "obsidian", "dashboard"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        relativePath: { type: "string", description: "Optional Obsidian relative path. Defaults to CYBERBOSS_EXPERIENCE_DASHBOARD_PATH." },
+      },
+      additionalProperties: false,
+    },
+    async handler({ services, args }) {
+      const relativePath = String(args.relativePath || services.experienceLedger.config.experienceDashboardPath || "01. ⚪ Wissenskarte/00. Experience Compound Dashboard.md").trim();
+      const content = services.experienceLedger.buildDashboardMarkdown();
+      const write = await services.obsidianNote.write({
+        relativePath,
+        content,
+        mode: "upsert_managed_block",
+        blockId: "experience-compound-dashboard",
+      });
+      return {
+        text: `Experience Compound Dashboard updated: ${relativePath}`,
+        data: { ...write, relativePath },
+      };
+    },
+  },
+  {
     name: "cyberboss_priority_set",
     description: "Set today's explicit priority-awareness commitments and their shared time boundary. Use this when the user says several things are important before sleep, leaving, work, or another deadline. Include realistic estimatedMinutes when the user gives a duration or when the default would be misleading. A list is unordered unless the user explicitly specifies an order.",
     shortHint: "Set an unordered priority set with a timezone-aware deadline and realistic duration estimates.",
