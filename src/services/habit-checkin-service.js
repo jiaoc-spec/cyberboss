@@ -8,7 +8,7 @@ const { TRACKED_HABITS } = require("./obsidian-tracker-sync-service");
 const HABIT_GROUPS = [
   {
     title: "Level A / 地基",
-    names: ["Sport", "英语发音", "英语影子跟读", "德语语法", "德语影子跟读"],
+    names: ["Sport", "英语发音", "英语影子跟读", "德语语法", "德语影子跟读", "德语表达"],
   },
   {
     title: "身体 / 塑形 / 舞蹈",

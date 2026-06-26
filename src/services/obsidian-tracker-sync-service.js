@@ -11,6 +11,7 @@ const TRACKED_HABITS = [
   { name: "英语影子跟读", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "德语语法", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "德语影子跟读", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
+  { name: "德语表达", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "骨盆", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "足弓", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "健身", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
@@ -36,6 +37,7 @@ const LEVEL_A_KEY_TO_HABIT = {
   english_shadow_reading: "英语影子跟读",
   german_grammar: "德语语法",
   german_shadowing: "德语影子跟读",
+  german_expression: "德语表达",
   meditation: "冥想",
 };
 
@@ -169,17 +171,19 @@ class ObsidianTrackerSyncService {
 }
 
 function mergeHabits(existing, defaults) {
-  const result = Array.isArray(existing)
+  const existingClean = Array.isArray(existing)
     ? existing
       .filter((habit) => !REMOVED_DEFAULT_HABIT_NAMES.has(habit?.name))
       .map((habit) => ({ ...habit }))
     : [];
+  const result = [];
   for (const habit of defaults) {
-    const index = result.findIndex((item) => item?.name === habit.name);
-    if (index >= 0) {
-      result[index] = { ...habit, ...result[index] };
-    } else {
-      result.push({ ...habit });
+    const existingHabit = existingClean.find((item) => item?.name === habit.name);
+    result.push(existingHabit ? { ...habit, ...existingHabit } : { ...habit });
+  }
+  for (const habit of existingClean) {
+    if (!defaults.some((item) => item.name === habit?.name)) {
+      result.push(habit);
     }
   }
   return result;
@@ -214,6 +218,7 @@ function extractTrackerEntries(fullText) {
   ], levelA.english_shadowing || levelA.englishShadowing));
   setBoolean(entries, "德语语法", resolveNamedHabit(habitData, text, "德语语法", [/德语语法|Deutsch Grammatik|German grammar/i]));
   setBoolean(entries, "德语影子跟读", resolveNamedHabit(habitData, text, "德语影子跟读", [/德语影子跟读|德语跟读|Deutsch shadowing|German shadowing|Deutsch shadow reading|German shadow reading/i]));
+  setBoolean(entries, "德语表达", resolveNamedHabit(habitData, text, "德语表达", [/德语表达|德语口语|德语输出|德语造句|Deutsch Ausdruck|German expression|German speaking|Deutsch sprechen/i]));
   setBoolean(entries, "骨盆", resolveNamedHabit(habitData, text, "骨盆", [/骨盆|盆底|pelvic(?:\s*floor)?|武当\s*1\s*\+?\s*2|武当|Wudang/i]));
   setBoolean(entries, "足弓", resolveNamedHabit(habitData, text, "足弓", [/足弓|foot arch/i]));
   setBoolean(entries, "健身", resolveNamedHabit(habitData, text, "健身", [/健身|力量训练|strength training|Krafttraining|gym/i]));

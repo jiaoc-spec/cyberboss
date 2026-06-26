@@ -25,6 +25,7 @@ test("habit check-in message includes the full visible checklist", () => {
   assert.match(text, /□ 英语影子跟读/);
   assert.match(text, /□ 德语语法/);
   assert.match(text, /□ 德语影子跟读/);
+  assert.match(text, /□ 德语表达/);
   assert.match(text, /□ Nursing Digest/);
   assert.match(text, /不是说今天全部都要做完/);
 });

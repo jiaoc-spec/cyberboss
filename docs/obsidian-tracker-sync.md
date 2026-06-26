@@ -16,7 +16,7 @@ is rebuilt from generated Daily Notes.
 
 Default boolean habits:
 
-- Level A / foundations: `Sport`, `英语发音`, `德语语法`, `德语影子跟读`
+- Level A / foundations: `Sport`, `英语发音`, `英语影子跟读`, `德语语法`, `德语影子跟读`, `德语表达`
 - Body / dance / recovery habits: `冥想`, `武当1+2`, `足弓`, `健身`, `基本功`, `成品舞`, `有氧操`, `美容灯`
 - Professional growth: `Praxisanleitung`, `Wundmanagement`, `Python`, `Nursing Digest`
 

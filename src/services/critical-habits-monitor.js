@@ -16,8 +16,8 @@ const DEFAULT_LEVEL_A = [
     stretchAction: "25 分钟发音加一句复述或跟读复盘",
   }),
   habit("german", "Deutsch", ["deutsch", "german", "德语"], [], "专业沟通、教学、护理文书、职业发展和未来学术工作", 30, {
-    minimumAction: "5-10 分钟德语语法或影子跟读",
-    standardAction: "20-30 分钟德语语法或影子跟读",
+    minimumAction: "5-10 分钟德语语法、影子跟读或表达练习",
+    standardAction: "20-30 分钟德语语法、影子跟读或表达练习",
     stretchAction: "标准学习后补一句主动输出",
   }),
 ];

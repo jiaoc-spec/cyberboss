@@ -30,6 +30,7 @@ test("tracker extraction does not turn unfinished sport into completion", () => 
   assert.equal(entries["英语发音"], null);
   assert.equal(entries["德语语法"], undefined);
   assert.equal(entries["德语影子跟读"], undefined);
+  assert.equal(entries["德语表达"], undefined);
   assert.equal(entries.Energy, undefined);
   assert.equal(entries.Mood, undefined);
   assert.equal(entries["Screen Time"], undefined);
@@ -61,7 +62,31 @@ test("tracker extraction records explicit completed language habits", () => {
   assert.equal(entries["英语影子跟读"], true);
   assert.equal(entries["德语语法"], undefined);
   assert.equal(entries["德语影子跟读"], undefined);
+  assert.equal(entries["德语表达"], undefined);
   assert.equal(entries.Sport, null);
+});
+
+test("tracker extraction records German expression as its own habit", () => {
+  const entries = extractTrackerEntries(`
+## 自动统计
+
+- 学习：德语表达 10 分钟。
+
+## 时间轴数据
+
+\`\`\`json
+{
+  "date": "2026-06-26",
+  "tracker": {
+    "completed": ["德语表达"]
+  }
+}
+\`\`\`
+`);
+
+  assert.equal(entries["德语表达"], true);
+  assert.equal(entries["德语语法"], undefined);
+  assert.equal(entries["德语影子跟读"], undefined);
 });
 
 test("tracker extraction does not treat generic English as shadowing", () => {

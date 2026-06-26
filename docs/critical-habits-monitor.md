@@ -41,7 +41,7 @@ Default Level A minimum versions:
 
 - Sport: 5-10 minutes of walking, stretching, or any low-friction body activity.
 - Englisch: 5 minutes of pronunciation.
-- Deutsch: 5-10 minutes of grammar or shadowing.
+- Deutsch: 5-10 minutes of grammar, shadowing, or expression practice.
 
 ## Configuration
 
