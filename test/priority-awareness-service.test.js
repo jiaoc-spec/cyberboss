@@ -48,6 +48,7 @@ function createService(overrides = {}) {
     currentState: overrides.currentState,
     dailyState: overrides.dailyState,
     dayOperationsPlanner: overrides.dayOperationsPlanner,
+    habitExceptions: overrides.habitExceptions,
   });
   return { service, queued };
 }
@@ -125,6 +126,30 @@ test("monitor queues a gentle dynamic checkpoint while time remains", async () =
   assert.match(queued[0].text, /Still open: Sport, Deutsch/);
   assert.match(queued[0].text, /Latest practical start time for the full versions: 14:00/);
   assert.match(queued[0].text, /unordered/);
+});
+
+test("monitor excludes temporarily paused priorities from open items", async () => {
+  const { service, queued } = createService({
+    habitExceptions: {
+      activeFor({ habitId }) {
+        return habitId === "sport"
+          ? { habitId: "sport", reason: "heat", untilDate: "2026-06-28" }
+          : null;
+      },
+    },
+  });
+  service.set({
+    date: "2026-06-04",
+    deadlineAt: "2026-06-04T16:00:00+02:00",
+    priorities: [{ label: "Sport" }, { label: "Deutsch" }],
+  });
+
+  const result = await service.check({ accountId: "account-1" }, new Date("2026-06-04T14:00:00+02:00"));
+
+  assert.equal(result.queued.length, 1);
+  assert.equal(queued.length, 1);
+  assert.match(queued[0].text, /Still open: Deutsch/);
+  assert.doesNotMatch(queued[0].text, /Still open: Sport/);
 });
 
 test("completion reevaluation reports the latest practical start before sleep", async () => {

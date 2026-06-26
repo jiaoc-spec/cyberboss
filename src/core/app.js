@@ -127,6 +127,7 @@ class CyberbossApp {
       dailyState: this.projectServices.dailyState,
       dayOperationsPlanner: this.projectServices.dayOperationsPlanner,
       focusProtection: this.projectServices.focusProtection,
+      habitExceptions: this.projectServices.habitExceptions,
       patternLedger: this.projectServices.patternLedger,
       currentState: this.projectServices.currentState,
       campaign: this.projectServices.campaign,
@@ -576,6 +577,9 @@ class CyberbossApp {
     }
     if (typeof this.observeIncomingPriorityCompletion === "function") {
       this.observeIncomingPriorityCompletion(normalized);
+    }
+    if (typeof this.observeIncomingHabitExceptions === "function") {
+      this.observeIncomingHabitExceptions(normalized);
     }
     if (typeof this.observeIncomingCurrentState === "function") {
       this.observeIncomingCurrentState(normalized);
@@ -2126,6 +2130,20 @@ class CyberbossApp {
       }
     } catch (error) {
       console.error(`[cyberboss] priority awareness message observation failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  observeIncomingHabitExceptions(normalized) {
+    try {
+      const result = this.projectServices?.habitExceptions?.observeIncoming({
+        text: normalized?.text,
+        receivedAt: normalized?.receivedAt,
+      });
+      if (result?.recorded?.length) {
+        console.log(`[cyberboss] habit exception recorded=${result.recorded.map((entry) => `${entry.habitId}:${entry.reason}`).join(",")}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] habit exception observation failed: ${formatErrorMessage(error)}`);
     }
   }
 

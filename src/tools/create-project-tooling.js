@@ -19,6 +19,7 @@ const { DayStrategyService } = require("../services/day-strategy-service");
 const { DiaryService } = require("../services/diary-service");
 const { FocusProtectionService } = require("../services/focus-protection-service");
 const { HabitCheckinService } = require("../services/habit-checkin-service");
+const { HabitExceptionService } = require("../services/habit-exception-service");
 const { HealthService } = require("../services/health-service");
 const { MissingContextService } = require("../services/missing-context-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
@@ -64,6 +65,7 @@ function createProjectTooling(config, options = {}) {
   const proactiveIntervention = new ProactiveInterventionCoordinator({ config });
   const reminder = new ReminderService({ config, channelAdapter, sessionStore });
   const focusProtection = new FocusProtectionService({ config, reminder, timeline, channelAdapter, sessionStore });
+  const habitExceptions = new HabitExceptionService({ config });
   const missingContext = new MissingContextService({ config, dailyState, channelAdapter, sessionStore, currentState, proactiveIntervention });
   const priorityAwareness = new PriorityAwarenessService({
     config,
@@ -71,6 +73,7 @@ function createProjectTooling(config, options = {}) {
     channelAdapter,
     sessionStore,
     focusProtection,
+    habitExceptions,
     currentState,
     dailyState,
     dayOperationsPlanner,
@@ -108,6 +111,7 @@ function createProjectTooling(config, options = {}) {
     diary,
     focusProtection,
     habitCheckin: new HabitCheckinService({ config, dailyState, dayOperationsPlanner, channelAdapter, sessionStore }),
+    habitExceptions,
     health,
     missingContext,
     patternLedger,

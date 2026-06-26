@@ -11,13 +11,14 @@ const CLOSED_STATUSES = new Set(["completed", "postponed", "skipped", "cancelled
 const VALID_STATUSES = new Set([...ACTIVE_STATUSES, ...CLOSED_STATUSES]);
 
 class PriorityAwarenessService {
-  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, currentState = null, dailyState = null, dayOperationsPlanner = null, proactiveIntervention = null }) {
+  constructor({ config, timeline = null, channelAdapter = null, sessionStore = null, systemMessageQueue = null, focusProtection = null, habitExceptions = null, currentState = null, dailyState = null, dayOperationsPlanner = null, proactiveIntervention = null }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.systemMessageQueue = systemMessageQueue;
     this.focusProtection = focusProtection;
+    this.habitExceptions = habitExceptions;
     this.currentState = currentState;
     this.dailyState = dailyState;
     this.dayOperationsPlanner = dayOperationsPlanner;
@@ -181,7 +182,10 @@ class PriorityAwarenessService {
     await this.syncTimelineEvidence(day);
     const deadlineMs = Date.parse(day.deadlineAt);
     const remainingMs = deadlineMs - now.getTime();
-    const pending = day.priorities.filter((item) => ACTIVE_STATUSES.has(item.status));
+    const pending = this.filterPausedPriorities(
+      day.priorities.filter((item) => ACTIVE_STATUSES.has(item.status)),
+      { date: targetDate, now },
+    );
     if (!Number.isFinite(deadlineMs) || remainingMs <= 0 || !pending.length) {
       this.saveState(state);
       return { queued: [] };
@@ -339,7 +343,10 @@ class PriorityAwarenessService {
       return [];
     }
 
-    const active = (day.priorities || []).filter((item) => ACTIVE_STATUSES.has(item.status));
+    const active = this.filterPausedPriorities(
+      (day.priorities || []).filter((item) => ACTIVE_STATUSES.has(item.status)),
+      { date: targetDate, now },
+    );
     const completed = (day.priorities || []).filter((item) => item.status === "completed");
     const explicit = Boolean((day.priorities || []).length);
     const text = [
@@ -401,6 +408,17 @@ class PriorityAwarenessService {
     } catch (error) {
       console.error(`[cyberboss] priority awareness timeline read failed date=${day.date}: ${error.message}`);
     }
+  }
+
+  filterPausedPriorities(priorities, { date, now } = {}) {
+    if (!this.habitExceptions || typeof this.habitExceptions.activeFor !== "function") {
+      return priorities;
+    }
+    return (priorities || []).filter((priority) => !this.habitExceptions.activeFor({
+      habitId: priority?.id || priority?.label || "",
+      date,
+      now,
+    }));
   }
 
   markMatchingCompleted({ date, matcher, completedAt, note }) {

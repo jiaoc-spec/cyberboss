@@ -59,6 +59,7 @@ function createMonitor(overrides = {}) {
     dailyState: overrides.dailyState,
     dayOperationsPlanner: overrides.dayOperationsPlanner,
     focusProtection: overrides.focusProtection,
+    habitExceptions: overrides.habitExceptions,
     patternLedger: overrides.patternLedger,
     currentState: overrides.currentState,
     proactiveIntervention: overrides.proactiveIntervention,
@@ -145,6 +146,37 @@ test("level A reminder is paused during active focus protection", async () => {
   });
 
   const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-05T20:04:00+02:00"));
+
+  assert.equal(result.queued.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test("level A reminder respects a temporary sport pause", async () => {
+  const { monitor, sent } = createMonitor({
+    dailyState: {
+      async analyze() {
+        return {
+          recommendedMode: "minimum",
+          priorityTiming: { isDue: true, reason: "fixed_daily_guardian_time" },
+          temporalContext: { currentEvent: null },
+          levelA: [
+            { id: "sport", label: "Sport", completed: false },
+            { id: "english", label: "Englisch", completed: true },
+            { id: "german", label: "Deutsch", completed: true },
+          ],
+        };
+      },
+    },
+    habitExceptions: {
+      activeFor({ habitId }) {
+        return habitId === "sport"
+          ? { habitId: "sport", reason: "heat", untilDate: "2026-06-28" }
+          : null;
+      },
+    },
+  });
+
+  const result = await monitor.check({ accountId: "account-1" }, new Date("2026-06-26T20:04:00+02:00"));
 
   assert.equal(result.queued.length, 0);
   assert.equal(sent.length, 0);

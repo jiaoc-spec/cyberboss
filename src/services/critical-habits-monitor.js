@@ -64,7 +64,7 @@ const PATTERN_CONTEXT_RULES = [
 ];
 
 class CriticalHabitsMonitor {
-  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, dayOperationsPlanner, focusProtection, patternLedger, currentState, campaign, proactiveIntervention }) {
+  constructor({ config, timeline, channelAdapter, sessionStore, systemMessageQueue, dailyState, dayOperationsPlanner, focusProtection, habitExceptions, patternLedger, currentState, campaign, proactiveIntervention }) {
     this.config = config || {};
     this.timeline = timeline;
     this.channelAdapter = channelAdapter;
@@ -73,6 +73,7 @@ class CriticalHabitsMonitor {
     this.dailyState = dailyState;
     this.dayOperationsPlanner = dayOperationsPlanner;
     this.focusProtection = focusProtection;
+    this.habitExceptions = habitExceptions;
     this.patternLedger = patternLedger;
     this.currentState = currentState;
     this.campaign = campaign;
@@ -136,6 +137,9 @@ class CriticalHabitsMonitor {
       const events = await this.readEventsForDates([local.date]);
       const missing = [];
       for (const item of this.resolveLevelAItems(local.date)) {
+        if (this.activeHabitException(item, { date: local.date, now })) {
+          continue;
+        }
         const key = `${promptKind === "midday" ? "A_MIDDAY" : "A"}:${local.date}:${item.id}`;
         const dailyStateHabit = todayState?.levelA?.find((habitState) => habitState.id === item.id);
         const completed = dailyStateHabit?.completed || events.some((event) => matchesHabit(event, item));
@@ -166,6 +170,9 @@ class CriticalHabitsMonitor {
       const dailyKey = `B_DAY:${local.date}`;
       const missing = [];
       for (const item of this.config.criticalHabitsLevelB) {
+        if (this.activeHabitException(item, { date: local.date, now })) {
+          continue;
+        }
         const key = `B:${local.isoWeek}:${item.id}`;
         if (!state.sent[key] && !events.some((event) => matchesHabit(event, item))) {
           missing.push({ item, key });
@@ -185,6 +192,17 @@ class CriticalHabitsMonitor {
     state.sent = pruneSentState(state.sent, local.date);
     this.saveState(state);
     return { queued };
+  }
+
+  activeHabitException(item, { date, now }) {
+    if (!this.habitExceptions || typeof this.habitExceptions.activeFor !== "function") {
+      return null;
+    }
+    return this.habitExceptions.activeFor({
+      habitId: item?.id || item?.label || "",
+      date,
+      now,
+    });
   }
 
   resolveTarget(account) {
