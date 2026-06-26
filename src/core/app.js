@@ -111,6 +111,9 @@ class CyberbossApp {
       this.projectServices.dayStrategy.systemMessageQueue = this.systemMessageQueue;
       this.projectServices.dayStrategy.sessionStore = this.runtimeAdapter.getSessionStore();
     }
+    if (this.projectServices?.habitCheckin) {
+      this.projectServices.habitCheckin.sessionStore = this.runtimeAdapter.getSessionStore();
+    }
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
@@ -295,6 +298,7 @@ class CyberbossApp {
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushHabitCheckin(account),
             this.flushDayStrategyMonitor(account),
             this.flushShiftRatingMonitor(account),
             this.flushCriticalHabitsMonitor(account),
@@ -334,6 +338,7 @@ class CyberbossApp {
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
+            this.flushHabitCheckin(account),
             this.flushDayStrategyMonitor(account),
             this.flushShiftRatingMonitor(account),
             this.flushCriticalHabitsMonitor(account),
@@ -1806,6 +1811,14 @@ class CyberbossApp {
       await this.projectServices?.dayStrategy?.check(account);
     } catch (error) {
       console.error(`[cyberboss] day strategy monitor failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  async flushHabitCheckin(account) {
+    try {
+      await this.projectServices?.habitCheckin?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] habit check-in failed: ${formatErrorMessage(error)}`);
     }
   }
 

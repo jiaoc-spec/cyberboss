@@ -18,6 +18,7 @@ const { DayOperationsPlannerService } = require("../services/day-operations-plan
 const { DayStrategyService } = require("../services/day-strategy-service");
 const { DiaryService } = require("../services/diary-service");
 const { FocusProtectionService } = require("../services/focus-protection-service");
+const { HabitCheckinService } = require("../services/habit-checkin-service");
 const { HealthService } = require("../services/health-service");
 const { MissingContextService } = require("../services/missing-context-service");
 const { PatternLedgerService } = require("../services/pattern-ledger-service");
@@ -106,6 +107,7 @@ function createProjectTooling(config, options = {}) {
     dayOperationsPlanner,
     diary,
     focusProtection,
+    habitCheckin: new HabitCheckinService({ config, dailyState, dayOperationsPlanner, channelAdapter, sessionStore }),
     health,
     missingContext,
     patternLedger,

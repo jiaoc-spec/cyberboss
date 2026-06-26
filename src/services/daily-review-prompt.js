@@ -76,12 +76,12 @@ Experience Ledger 经验复利义务：
 - 复盘正文优先使用这些 section：一天主线、Future Self Vote、自我理解、习惯和恢复、值得进入长期观察、明日最小延续。避免过多机械小标题。
 - 使用 Be-Do-Have / Identity Ledger 视角：先写今天哪些"正在成为的人"获得了证据，再写对应行动。不要只列 habit 完成/未完成。至少检查四条身份主线：
   1. 健康、有体能、身体自主的人：Sport、健身、有氧操；塑形 / 身体结构维护：骨盆、足弓、美容灯；不要把骨盆或足弓算成 Sport
-  2. 德语/英语能力优秀的人：英语发音、德语语法、德语影子跟读
+  2. 德语/英语能力优秀的人：英语发音、英语影子跟读、德语语法、德语影子跟读
   3. 护理科学家 / 教授 / 教师 / ANP / 研究者：Praxisanleitung、Wundmanagement、Python、Nursing Digest、Pflegewissenschaft、Literature Reading、Forschung
   4. 持续跳舞、有表达力和生命力的人：成品舞、基本功、有氧操、身体练习
 - 对每条身份主线，区分：今天有证据、今天缺席、或数据不足。缺席不是失败；写成"这个身份今天没有获得新证据"，并给出明天/本周的最小行为版本。
 - Future Self Vote 判定：
-  - 可以来自 Level A：Sport / 英语发音 / 德语语法 / 德语影子跟读。
+  - 可以来自 Level A：Sport / 英语发音 / 英语影子跟读 / 德语语法 / 德语影子跟读。
   - 也可以来自长期身份：Nursing Digest、Praxisanleitung、Wundmanagement、Python、舞蹈/身体练习。
   - 只要是明确完成的小行为就算，不要求完整版本。
   - 如果当天只有计划、提醒、意愿，没有完成证据，不算 Future Self Vote。
@@ -115,8 +115,8 @@ Obsidian Tracker 义务：
     }
   }
 - Tracker habit 名称只使用这些：
-  Sport、冥想、英语发音、德语语法、德语影子跟读、骨盆、足弓、健身、基本功、成品舞、有氧操、美容灯、看书、Praxisanleitung、Wundmanagement、Python、Nursing Digest。读书/看书（读一本书、读了某书第N章）记为「看书」。
-- Englisch 在 tracker 中具体指"英语发音"。
+  Sport、冥想、英语发音、英语影子跟读、德语语法、德语影子跟读、骨盆、足弓、健身、基本功、成品舞、有氧操、美容灯、看书、Praxisanleitung、Wundmanagement、Python、Nursing Digest。读书/看书（读一本书、读了某书第N章）记为「看书」。
+- Englisch 在 tracker 中默认指"英语发音"；只有用户明确说英语影子跟读 / 英语跟读 / English shadowing 时，才记为"英语影子跟读"。
 - Deutsch 在 tracker 中拆成"德语语法"和"德语影子跟读"；如果当天只知道笼统 Deutsch，不要编造成两个都完成。
 - Energy、Mood、Shift Fatigue、Screen Time 是状态/指标，不是 habit。可以保留为 daily state 字段，但不要放进 tracker habit 列表。
 - JSON 只放紧凑结构化数据；人类复盘不要解释同步过程。

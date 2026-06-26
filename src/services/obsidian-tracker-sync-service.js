@@ -8,6 +8,7 @@ const TRACKED_HABITS = [
   { name: "Sport", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "冥想", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "英语发音", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
+  { name: "英语影子跟读", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "德语语法", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "德语影子跟读", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
   { name: "骨盆", type: "boolean", frequency: "day", completionGoal: 1, statsType: "heatmap" },
@@ -31,6 +32,8 @@ const LEVEL_A_KEY_TO_HABIT = {
   english: "英语发音",
   englisch: "英语发音",
   english_pronunciation: "英语发音",
+  english_shadowing: "英语影子跟读",
+  english_shadow_reading: "英语影子跟读",
   german_grammar: "德语语法",
   german_shadowing: "德语影子跟读",
   meditation: "冥想",
@@ -204,8 +207,13 @@ function extractTrackerEntries(fullText) {
   setBoolean(entries, "英语发音", resolveNamedHabit(habitData, text, "英语发音", [/英语发音|English pronunciation|Englisch|Rachel'?s English|Rachel’s English/i], [
     /(?:英语发音|English|Englisch)[^；。,\n]*(?:未完成|未记录|not_recorded|not completed)/i,
   ], levelA.english || levelA.englisch));
+  setBoolean(entries, "英语影子跟读", resolveNamedHabit(habitData, text, "英语影子跟读", [
+    /英语影子跟读|英语跟读|English shadowing|English shadow reading|shadowing English/i,
+  ], [
+    /(?:英语影子跟读|英语跟读|English shadowing|English shadow reading)[^；。,\n]*(?:未完成|未记录|not_recorded|not completed)/i,
+  ], levelA.english_shadowing || levelA.englishShadowing));
   setBoolean(entries, "德语语法", resolveNamedHabit(habitData, text, "德语语法", [/德语语法|Deutsch Grammatik|German grammar/i]));
-  setBoolean(entries, "德语影子跟读", resolveNamedHabit(habitData, text, "德语影子跟读", [/德语影子跟读|影子跟读|shadowing|shadow reading/i]));
+  setBoolean(entries, "德语影子跟读", resolveNamedHabit(habitData, text, "德语影子跟读", [/德语影子跟读|德语跟读|Deutsch shadowing|German shadowing|Deutsch shadow reading|German shadow reading/i]));
   setBoolean(entries, "骨盆", resolveNamedHabit(habitData, text, "骨盆", [/骨盆|盆底|pelvic(?:\s*floor)?|武当\s*1\s*\+?\s*2|武当|Wudang/i]));
   setBoolean(entries, "足弓", resolveNamedHabit(habitData, text, "足弓", [/足弓|foot arch/i]));
   setBoolean(entries, "健身", resolveNamedHabit(habitData, text, "健身", [/健身|力量训练|strength training|Krafttraining|gym/i]));

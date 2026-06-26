@@ -39,7 +39,9 @@ test("tracker extraction records explicit completed language habits", () => {
   const entries = extractTrackerEntries(`
 ## 自动统计
 
-- 学习：英语 25 分钟；Deutsch 未记录。
+- 学习：英语 25 分钟。
+- 学习：英语影子跟读 15 分钟。
+- 学习：Deutsch 未记录。
 
 ## 时间轴数据
 
@@ -56,9 +58,29 @@ test("tracker extraction records explicit completed language habits", () => {
 `);
 
   assert.equal(entries["英语发音"], true);
+  assert.equal(entries["英语影子跟读"], true);
   assert.equal(entries["德语语法"], undefined);
   assert.equal(entries["德语影子跟读"], undefined);
   assert.equal(entries.Sport, null);
+});
+
+test("tracker extraction does not treat generic English as shadowing", () => {
+  const entries = extractTrackerEntries(`
+## 自动统计
+
+- Englisch 完成 25 分钟。
+
+## 时间轴数据
+
+\`\`\`json
+{
+  "date": "2026-06-25"
+}
+\`\`\`
+`);
+
+  assert.equal(entries["英语发音"], true);
+  assert.equal(entries["英语影子跟读"], undefined);
 });
 
 test("tracker extraction records requested body and care habits", () => {
