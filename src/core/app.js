@@ -297,6 +297,7 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushFollowupInbox(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
@@ -337,6 +338,7 @@ class CyberbossApp {
             this.flushPendingInboundMessages(),
             this.flushPendingSystemMessages(),
             this.flushPendingTimelineScreenshots(account),
+            this.flushFollowupInbox(account),
             this.flushPendingCalendarTimelineSync(),
             this.flushPendingToday3x3TimelineSync(),
             this.flushPendingHealthImports(),
@@ -575,6 +577,9 @@ class CyberbossApp {
     }
     if (typeof this.autoCaptureIncomingTimeline === "function") {
       await this.autoCaptureIncomingTimeline(normalized);
+    }
+    if (typeof this.observeIncomingFollowupInbox === "function") {
+      this.observeIncomingFollowupInbox(normalized);
     }
     if (typeof this.observeIncomingPriorityCompletion === "function") {
       this.observeIncomingPriorityCompletion(normalized);
@@ -1806,6 +1811,14 @@ class CyberbossApp {
     }
   }
 
+  async flushFollowupInbox(account) {
+    try {
+      await this.projectServices?.followupInbox?.check(account);
+    } catch (error) {
+      console.error(`[cyberboss] follow-up inbox failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
   async flushCriticalHabitsMonitor(account) {
     try {
       await this.criticalHabitsMonitor.check(account);
@@ -2134,6 +2147,23 @@ class CyberbossApp {
       }
     } catch (error) {
       console.error(`[cyberboss] priority awareness message observation failed: ${formatErrorMessage(error)}`);
+    }
+  }
+
+  observeIncomingFollowupInbox(normalized) {
+    try {
+      const result = this.projectServices?.followupInbox?.observeIncoming({
+        text: normalized?.text,
+        receivedAt: normalized?.receivedAt,
+      });
+      if (result?.recorded?.length) {
+        console.log(`[cyberboss] follow-up inbox recorded=${result.recorded.map((entry) => entry.id).join(",")}`);
+      }
+      if (result?.closed?.length) {
+        console.log(`[cyberboss] follow-up inbox closed=${result.closed.map((entry) => `${entry.id}:${entry.status}`).join(",")}`);
+      }
+    } catch (error) {
+      console.error(`[cyberboss] follow-up inbox observation failed: ${formatErrorMessage(error)}`);
     }
   }
 

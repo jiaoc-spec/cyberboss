@@ -18,6 +18,7 @@ const { DayOperationsPlannerService } = require("../services/day-operations-plan
 const { DayStrategyService } = require("../services/day-strategy-service");
 const { DiaryService } = require("../services/diary-service");
 const { FocusProtectionService } = require("../services/focus-protection-service");
+const { FollowupInboxService } = require("../services/followup-inbox-service");
 const { HabitCheckinService } = require("../services/habit-checkin-service");
 const { HabitExceptionService } = require("../services/habit-exception-service");
 const { HabitObservationService } = require("../services/habit-observation-service");
@@ -112,6 +113,7 @@ function createProjectTooling(config, options = {}) {
     dayOperationsPlanner,
     diary,
     focusProtection,
+    followupInbox: new FollowupInboxService({ config, channelAdapter, sessionStore }),
     habitCheckin: new HabitCheckinService({ config, dailyState, dayOperationsPlanner, channelAdapter, sessionStore }),
     habitExceptions,
     habitObservations,
