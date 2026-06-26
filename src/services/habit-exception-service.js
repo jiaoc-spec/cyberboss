@@ -30,18 +30,24 @@ class HabitExceptionService {
 
   observeIncoming({ text = "", receivedAt = "" } = {}) {
     const sourceText = normalizeText(text);
-    if (!sourceText || !looksLikePause(sourceText)) {
-      return { recorded: [] };
+    if (!sourceText) {
+      return { recorded: [], cleared: [] };
     }
     const now = parseDateOrNow(receivedAt);
     const timeZone = this.timeZone();
+    const habits = HABITS.filter((habit) => habit.patterns.some((pattern) => pattern.test(sourceText)));
+    if (looksLikeResume(sourceText)) {
+      return { recorded: [], cleared: this.clearHabits(habits, now) };
+    }
+    if (!looksLikePause(sourceText)) {
+      return { recorded: [], cleared: [] };
+    }
     const startDate = resolveStartDate(sourceText, now, timeZone);
     const untilDate = resolveUntilDate(sourceText, startDate, this.config);
     const reason = inferReason(sourceText);
-    const habits = HABITS.filter((habit) => habit.patterns.some((pattern) => pattern.test(sourceText)));
     const recorded = [];
     if (!habits.length) {
-      return { recorded };
+      return { recorded, cleared: [] };
     }
     const state = this.loadState();
     state.exceptions = Array.isArray(state.exceptions) ? state.exceptions : [];
@@ -62,7 +68,7 @@ class HabitExceptionService {
     }
     state.exceptions = pruneExceptions(state.exceptions, localDate(now, timeZone));
     this.saveState(state);
-    return { recorded };
+    return { recorded, cleared: [] };
   }
 
   activeFor({ habitId = "", date = "", now = new Date() } = {}) {
@@ -92,6 +98,31 @@ class HabitExceptionService {
     }
   }
 
+  clearHabits(habits, now = new Date()) {
+    if (!habits.length) {
+      return [];
+    }
+    const ids = new Set(habits.map((habit) => normalizeHabitId(habit.id)));
+    const state = this.loadState();
+    const cleared = [];
+    state.exceptions = (state.exceptions || []).map((entry) => {
+      if (entry?.status !== "paused" || !ids.has(normalizeHabitId(entry.habitId || entry.label))) {
+        return entry;
+      }
+      const updated = {
+        ...entry,
+        status: "cleared",
+        clearedAt: now.toISOString(),
+      };
+      cleared.push(updated);
+      return updated;
+    });
+    if (cleared.length) {
+      this.saveState(state);
+    }
+    return cleared;
+  }
+
   saveState(state) {
     if (!this.stateFile) {
       return;
@@ -114,6 +145,10 @@ function looksLikePause(text) {
     return false;
   }
   return /(这几天|最近|这段时间|今天|明天|这周|本周|暂时|先|目前|现在|等.+再说|延期|暂停|不想|不做|不练|休息)/i.test(normalized);
+}
+
+function looksLikeResume(text) {
+  return /(恢复|重新开始|可以.*(?:运动|sport|健身|workout|training)|开始.*(?:运动|sport|健身|workout|training)|resume|restart)/i.test(normalizeText(text));
 }
 
 function inferReason(text) {
