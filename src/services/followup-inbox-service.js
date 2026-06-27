@@ -94,14 +94,14 @@ class FollowupInboxService {
   }
 
   observeCloseIntent(state, body, now) {
-    if (!COMPLETE_PATTERN.test(body) && !CANCEL_PATTERN.test(body)) {
+    const isComplete = COMPLETE_PATTERN.test(body);
+    const isCancel = CANCEL_PATTERN.test(body);
+    if (!isComplete && !isCancel) {
       return [];
     }
-    if (!CANCEL_PATTERN.test(body) && !COMPLETE_OBJECT_PATTERN.test(body)) {
-      return [];
-    }
-    const status = CANCEL_PATTERN.test(body) ? "cancelled" : "completed";
-    const item = findClosableItem(state, body);
+    const status = isCancel ? "cancelled" : "completed";
+    const hasExplicitReference = COMPLETE_OBJECT_PATTERN.test(body) || Boolean(normalizeUrl((body.match(URL_PATTERN) || [])[0] || ""));
+    const item = findClosableItem(state, body, { allowImplicit: !hasExplicitReference, now });
     if (!item) {
       return [];
     }
@@ -192,7 +192,7 @@ function extractResource(text) {
   };
 }
 
-function findClosableItem(state, body) {
+function findClosableItem(state, body, { allowImplicit = false, now = new Date() } = {}) {
   const open = (Array.isArray(state.items) ? state.items : [])
     .filter((item) => item.status === "open")
     .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
@@ -205,8 +205,33 @@ function findClosableItem(state, body) {
     if (byUrl) return byUrl;
   }
   const lower = body.toLowerCase();
-  return open.find((item) => item.title && lower.includes(String(item.title).slice(0, 12).toLowerCase()))
-    || (open.length === 1 ? open[0] : open[0]);
+  const byTitle = open.find((item) => item.title && lower.includes(String(item.title).slice(0, 12).toLowerCase()));
+  if (byTitle) {
+    return byTitle;
+  }
+  if (open.length === 1) {
+    return open[0];
+  }
+  if (allowImplicit) {
+    return findSingleRecentlyRemindedItem(open, now);
+  }
+  return open[0];
+}
+
+function findSingleRecentlyRemindedItem(openItems, now) {
+  const nowMs = now.getTime();
+  const recentWindowMs = 12 * 60 * 60 * 1000;
+  const recent = openItems
+    .map((item) => ({ item, remindedAtMs: Date.parse(item.lastReminderAt || "") }))
+    .filter((entry) => Number.isFinite(entry.remindedAtMs) && nowMs - entry.remindedAtMs >= 0 && nowMs - entry.remindedAtMs <= recentWindowMs)
+    .sort((left, right) => right.remindedAtMs - left.remindedAtMs);
+  if (recent.length === 1) {
+    return recent[0].item;
+  }
+  if (recent.length > 1 && recent[0].remindedAtMs > recent[1].remindedAtMs) {
+    return recent[0].item;
+  }
+  return null;
 }
 
 function buildFollowupMessage(items, total, config = {}) {

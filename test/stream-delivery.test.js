@@ -615,6 +615,33 @@ test("plain telegram reply strips real German shadowing timeline backend narrati
   }]);
 });
 
+test("plain telegram reply strips follow-up close backend narration", async () => {
+  const { sent, streamDelivery } = createHarness();
+  streamDelivery.queueReplyTargetForThread("thread-4d-followup-close", {
+    userId: "user-4d-followup-close",
+    contextToken: "ctx-4d-followup-close",
+    provider: "telegram",
+  });
+
+  await runCompletedTurn(streamDelivery, {
+    threadId: "thread-4d-followup-close",
+    turnId: "turn-4d-followup-close",
+    itemId: "item-4d-followup-close",
+    text: [
+      "我去把这条从待办里收掉，免得它还挂着。",
+      "我在找能直接把提醒作废的入口。没有的话，我就把状态更新掉，再不让它烦你。",
+      "我把那条收掉，不再让它跳出来。",
+      "行，那条不提醒了，算已完成。",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(sent, [{
+    userId: "user-4d-followup-close",
+    text: "行，那条不提醒了，算已完成。",
+    contextToken: "ctx-4d-followup-close",
+  }]);
+});
+
 test("plain weixin reply strips romance-novel stage directions", async () => {
   const { sent, streamDelivery } = createHarness();
   streamDelivery.queueReplyTargetForThread("thread-4e", {
